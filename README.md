@@ -1,4 +1,5 @@
 # 🤖 ST-Copilot
+![Banner](Assets/Github/Banner.png)
 
 [![SillyTavern Extension](https://img.shields.io/badge/SillyTavern-Extension-blue.svg)](https://docs.sillytavern.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -9,11 +10,12 @@ Enter **ST-Copilot** — an advanced Out-Of-Character (OOC) meta-assistant, crea
 
 ---
 
-## 🌟 What can it do?
+## What can it do?
 
 | Feature | Description |
 | :--- | :--- |
 | **🧠 Smart Brainstorming** | Ask for plot twists, scene analysis, or character psychological breakdowns without breaking your RP flow. |
+| **🎭 Character Editor** | Create characters from scratch or edit existing cards (description, personality, first messages, etc.) directly in the UI. |
 | **📚 AI Lorebook Manager** | Command the AI to draft, edit, or delete Lorebook entries based on the chat. Review changes via a Diff-viewer before applying. |
 | **🎯 Surgical Context** | Hand-pick specific messages from your chat history to feed into the Copilot's context payload. |
 | **👻 Ghost Mode** | Make the Copilot window semi-transparent and completely click-through so it never gets in your way. |
@@ -121,6 +123,16 @@ A fully integrated, highly detailed theme editor.
 ---
 
 ## 📜 Changelog History
+
+### V2.5.0
+*   **Massive Token Optimization:** Completely overhauled the "Proposed Changes" system. Instead of rewriting entire text blocks, it now uses a smart search-and-replace method, reducing token consumption by over 80%! *(Huge thanks to @Steel-skull on GitHub!)*
+*   **Character Card Creator & Editor:** You can now create characters entirely from scratch or edit existing card fields (Description, Personality, Scenario, First Message, Alternate Greetings, and more) directly inside the extension.
+*   **Robust Parsing:** Significantly improved parsing logic for "proposed changes" blocks to successfully apply edits even if the AI makes formatting mistakes.
+*   **Session Export & Import:** Easily back up, share, or transfer your sessions. Under-the-hood session saving has also been rewritten to be much more efficient.
+*   **UI, Sounds & Polish:** Added a generation-complete sound notification, a soothing "wobble" physics effect when dragging windows, smooth interactive chart animations in Stats, and new Streaming modes (Auto, Force On, Force Off).
+*   **Lorebook Updates:** Added a "constant" parameter for proposed changes, and reorganized settings by moving the AI Edit and Keytrigger toggles to the main Settings window.
+*   **Mobile & Bug Fixes:** The Enter key on mobile keyboards now correctly inserts line breaks instead of sending messages. Fixed mobile UI headers, resolved user message duplication bugs, and redesigned system message outputs.
+*   *Note: The default Lorebook AI Edit prompt has been updated. Please reset your prompt to default in the settings to ensure compatibility!*
 
 ### V2.3.0
 *   **Stream Support:** Added streaming support so you can see generations in real-time.

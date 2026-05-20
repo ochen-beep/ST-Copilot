@@ -53,13 +53,17 @@
 }
 .scp-window.scp-dragging,
 .scp-window.scp-resizing {
-    will-change: left, top, width, height;
+    will-change: left, top, width, height, transform;
     transition: none;
     user-select: none;
 }
 .scp-window.scp-dragging { cursor: grabbing; }
 .scp-window.scp-dragging * { pointer-events: none; }
 .scp-window.scp-resizing * { pointer-events: none; }
+/* Wobbly settle animation — transform is applied inline via JS */
+.scp-window:not(.scp-dragging):not(.scp-resizing) {
+    /* smooth settle back via JS rAF, CSS handles opacity only */
+}
 
 .scp-window *::-webkit-scrollbar { width: 5px; height: 5px; }
 .scp-window *::-webkit-scrollbar-track { background: transparent; }
@@ -792,6 +796,13 @@
     font-size: 11px; display: block;
 }
 
+.st-copilot-settings .menu_button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
 .st-copilot-settings .inline-drawer-toggle.inline-drawer-header {
     border-left: 2px solid rgba(119, 119, 119, 0.5) !important;
     border-radius: 4px !important;
@@ -799,6 +810,7 @@
     background: linear-gradient(90deg, rgba(107, 107, 107, 0.185) 0%, transparent 100%) !important;
     transition: background 0.2s, border-color 0.2s;
 }
+
 
 .st-copilot-settings .inline-drawer-toggle.inline-drawer-header:hover {
     background: linear-gradient(90deg, rgba(78, 78, 78, 0.493) 0%, transparent 100%) !important;
@@ -883,6 +895,20 @@
 }
 .scp-preset-pill:hover {
     background: rgba(124,109,250,0.15); border-color: rgba(124,109,250,0.4); color: #a99bfb;
+}
+
+/* Theme profile bar: select now contains optgroups for presets vs custom */
+.scp-profile-bar select optgroup {
+    background: #1a1a20;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: rgba(255,255,255,0.35);
+}
+.scp-profile-bar select option {
+    background: #1a1a20;
+    color: var(--SmartThemeBodyColorText, #e2e2e6);
+    padding: 3px 6px;
 }
 
 .scp-theme-var-grid {
@@ -3306,8 +3332,14 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
 }
 
 .scp-stats-dot {
-    transition: r 0.12s;
+    transition: r 0.18s cubic-bezier(0.34,1.56,0.64,1), fill 0.35s ease, opacity 0.3s ease;
     cursor: pointer;
+}
+.scp-stats-line-path {
+    transition: stroke 0.35s ease;
+}
+.scp-stats-area-path {
+    transition: fill 0.35s ease;
 }
 
 /* ── Tooltip ──────────────────────────────────────────────── */
@@ -3494,15 +3526,35 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     border-color: var(--scp-accent) !important;
 }
 
-/* Prevent title from being squeezed by count badge */
-.scp-picker-box .scp-modal-header {
-    overflow: hidden;
+/* Picker header: flex-wrap on mobile so title goes above buttons */
+.scp-picker-header {
+    flex-wrap: wrap;
+    gap: 6px;
 }
-.scp-picker-box .scp-modal-header > span:first-child {
-    flex: 1 1 0;
+.scp-picker-header > span:first-child {
+    flex: 1 1 auto;
     min-width: 0;
-    overflow: hidden;
     white-space: nowrap;
+}
+.scp-picker-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-shrink: 0;
+}
+
+@media screen and (max-width: 520px) {
+    .scp-picker-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .scp-picker-header > span:first-child {
+        width: 100%;
+    }
+    .scp-picker-header-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
 }
 
 /* ── Pick button badge ───────────────────────────────────────── */
@@ -3669,7 +3721,70 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
 .scp-fav-item:hover .scp-fav-item-remove { opacity: 1; }
 .scp-fav-item-remove:hover { color: var(--scp-danger); background: rgba(255,92,92,0.1); }
 
-/* ── Scroll-to flash animation ───────────────────────────────── */
+/* ── Save Dirty Dot ──────────────────────────────────────────── */
+.scp-save-dirty-dot {
+    position: absolute;
+    top: 2px; right: 2px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #ffb432;
+    border: 1px solid rgba(0,0,0,0.4);
+    box-shadow: 0 0 4px rgba(255,180,50,0.7);
+    pointer-events: none;
+    animation: scp-dirty-pulse 2s ease-in-out infinite;
+}
+@keyframes scp-dirty-pulse {
+    0%,100% { box-shadow: 0 0 3px rgba(255,180,50,0.5); }
+    50% { box-shadow: 0 0 8px rgba(255,180,50,0.9); }
+}
+.scp-profile-icon-btn { position: relative; }
+
+/* ── History Message Collapsible ─────────────────────────────── */
+
+.scp-hist-details {
+    margin-top: 5px;
+}
+
+.scp-hist-summary {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--scp-text-muted);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+}
+.scp-hist-summary::-webkit-details-marker { display: none; }
+.scp-hist-summary::before {
+    content: '▶';
+    font-size: 7px;
+    transition: transform 0.18s;
+    flex-shrink: 0;
+}
+details.scp-hist-details[open] .scp-hist-summary::before { transform: rotate(90deg); }
+.scp-hist-summary:hover { opacity: 1; }
+
+.scp-hist-body {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding-left: 4px;
+    border-left: 2px solid rgba(255,255,255,0.08);
+}
+
+/* ── ST Stream Buttons ───────────────────────────────────────── */
+.scp-stream-btn.active {
+    color: var(--scp-accent) !important;
+    background: var(--scp-accent-bg) !important;
+    border-color: var(--scp-accent-dim) !important;
+}
+
 @keyframes scp-msg-flash {
     0%  { outline: 2px solid rgba(255,180,50,0.7); outline-offset: 2px; }
     60% { outline: 2px solid rgba(255,180,50,0.2); outline-offset: 3px; }

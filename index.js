@@ -63,19 +63,19 @@ If you look at the chat history and notice your previous \`lorebook-changes\` bl
 </system_mechanics>
 
 <guidelines>
-1. Authorization Role: You are authorized to PROPOSE Lorebook updates ONLY when explicitly commanded by the user. You do not apply changes directly; the user makes the final decision.
-2. Cognitive Processing & Explanation: Before generating the proposal block, you MUST explain your reasoning in your regular conversational response. Briefly describe what entry you are proposing to add, edit, or delete, and why. 
-3. Conversational Flow: Since your code blocks will be deleted later, do not end your conversational text with phrases like "Here is the code block below:". Treat the code block as a detached technical appendix.
-4. Semantic Restrictions: ALWAYS use language indicating a suggestion (e.g., "I propose adding...", "I suggest editing..."). NEVER state that changes have been "applied", "saved", or "made", as you only generate drafts.
-5. Semantic Density of Entries: Write \`content\` that is concise, factual, and information-dense. Avoid fluff to minimize token consumption. Start every \`content\` section with the proper name of the location, character, item, lore, etc being described (e.g., "Greg Thumbhill is...").
-6. Character Morphology & Visuals: When drafting entries for PEOPLE/CHARACTERS, you MUST anchor their physical reality. Always explicitly detail their physical appearance: approximate height, body build/morphology (e.g., wiry, broad-shouldered, petite), facial features, hair and eye color, distinctive physical marks (scars, tattoos, posture), and typical attire. Blend these physical traits seamlessly into the description to provide a concrete, vivid visual reference for the roleplay.
-7. Nomenclature & Anti-Cliché: When inventing names for new characters, locations, or items, you MUST actively avoid statistically overused LLM tropes and generic default names (e.g., Elara, Lyra, Kael, Aric, Seraphina, Aria). "Think thrice" before assigning a name: ensure it is highly original, phonetically distinct, and culturally/linguistically grounded within the specific setting of the roleplay. 
-8. Objective & Timeless Content (CRITICAL): Entries (characters, locations, items, lore, etc.) MUST NOT be tied to the current story progression, plot developments, or recent chat events. Write them as objective, standalone encyclopedic descriptions that exist entirely independently of the ongoing narrative. 
-9. Trigger Optimization: Choose \`triggers\` carefully. Use specific nouns, names, or unique phrases. Avoid overly generic words.
-10. Target Definition and Naming Conventions (CRITICAL):
-   - Currently active lorebooks: {{active_lorebooks}}
-   - Modifying Existing: If your target lorebook exists in the active list above, you MUST apply absolute strict string matching. Do not alter spelling, spacing, capitalization, or punctuation.
-   - Creating New: If the context requires a categorization not present in the active list, you are authorized to draft a NEW lorebook. Assign it a concise, logical name.
+1. Interaction Protocol: Propose updates ONLY upon explicit user command. Use suggestive language ("I propose...", NEVER "Saved/Applied"). Explain your reasoning (what/why) within your conversational response. Treat the code block as a detached appendix—NEVER narratively introduce it (e.g., omit "Here is the code block").
+2. Content Architecture (CRITICAL): Write consice, token-dense, objective, encyclopedic entries. 
+   - ANCHOR RULE: Every \`content\` string MUST start with the [Subject's Proper Name] followed by "is/was". 
+   - PROHIBITION: NEVER start with pronouns (He/She/It), articles (The/A), or introductory fluff.
+   - CHARACTER SPECS: Define height, build/morphology, facial features, hair/eyes, marks/scars, and typical attire.
+3. Anti-Cliché Nomenclature: Actively reject statistically overused LLM names (e.g., Elara, Kael, Lyra). Invent highly original, phonetically distinct names strictly grounded in the specific setting's culture.
+4. Triggers & Routing (CRITICAL): Optimize \`triggers\` using specific, unique nouns (no generic words). Route to active lorebooks (\`{{active_lorebooks}}\`) using absolute strict-string matching. If a required category is missing, generate a logically named NEW lorebook.
+5. MODIFICATION PROTOCOL (Patch vs. Edit):
+   - \`edit\`: Complete field overwrite. STRICTLY RESTRICTED to extremely short entries or 100% total rewrites. NEVER use \`edit\` for minor tweaks in a large block.
+   - \`patch\`: Your DEFAULT operation for modifying existing entries. 
+     * BOUNDARY ANCHOR SYNTAX (CRITICAL): You are STRICTLY FORBIDDEN from writing the full text in the \`search\` key. You MUST extract exactly 3-4 words from the START of the target text, add " || ", then 3-4 words from the END.
+     * BAD: "The ancient castle was built in 1240 by a grumpy dwarf."
+     * GOOD: "The ancient castle || grumpy dwarf."
 </guidelines>
 
 <output_formatting>
@@ -88,18 +88,122 @@ Format requirement (Strictly adhere to this JSON structure):
 
     const LB_FORMAT_BLOCK = `\`\`\`lorebook-changes
 {"changes":[
-  {"action":"add","worldName":"BookName","name":"EntryName","triggers":["keyword"],"content":"Entry content"},
-  {"action":"edit","worldName":"BookName","uid":123,"name":"NewName","triggers":["kw"],"content":"New content"},
+  {"action":"add","worldName":"BookName","name":"EntryName","triggers":["keyword"],"content":"Entry content","constant":false},
+  {"action":"edit","worldName":"BookName","uid":123,"name":"NewName","triggers":null (for original keywords) | ["newKw"],"content":"New content","constant":false},
+  {"action":"patch","worldName":"BookName","uid":123,"triggers":null (for original keywords) | ["newKw"],"patches":[{"search":"first || last","replace":"replacement"}]},
   {"action":"delete","worldName":"BookName","uid":123,"name":"EntryName"}
 ]}
+\`\`\`
+
+Triggers field rules:
+- Omit or set \`null\` to keep the original triggers unchanged (preferred for patches and partial edits)
+- Provide an array to set new triggers`;
+
+    const CHAR_EDIT_FORMAT_BLOCK = `\`\`\`character-changes
+<replace field="FIELD_NAME">
+<<<<<<< SEARCH
+first || last
+=======
+replacement text
+>>>>>>> REPLACE
+</replace>
+<overwrite field="FIELD_NAME">Complete replacement content for this field</overwrite>
+<prepend field="FIELD_NAME">Text to insert at the very beginning of the field</prepend>
+<append_text field="FIELD_NAME">Text to append at the very end of the field</append_text>
+
+<!-- ALTERNATE GREETINGS OPERATIONS -->
+<append field="alternate_greetings">New alternate greeting to add as a NEW entry</append>
+<overwrite field="alternate_greetings" index="1">Complete rewrite of the EXISTING greeting with id="1"</overwrite>
+<replace field="alternate_greetings" index="2">
+<<<<<<< SEARCH
+first || last
+=======
+replacement text
+>>>>>>> REPLACE
+</replace>
 \`\`\``;
+
+    const CHAR_CREATE_FORMAT_BLOCK = `\`\`\`character-create
+{
+  "name_suggestion": "Character Name",
+  "description": "Full character description",
+  "personality": "Personality summary",
+  "scenario": "Scenario / setting",
+  "first_mes": "Opening message",
+  "mes_example": "<START>\\n{{user}}: Hi\\n{{char}}: Hello!"
+}
+\`\`\``;
+
+    const DEFAULT_CHAR_EDIT_DIRECTIVE = `<context>
+SillyTavern Cards define AI behavior, memory, and world-state. Cards possess ontological flexibility: they can be individual personas, settings, RPG systems, or narrators. This module enables dynamic card metadata editing, new card creation, AND \`user_persona\` (player profile) modifications via user requests.
+</context>
+
+<system_mechanics>
+Generated \`character-edits\` or \`character-creation\` blocks are AUTO-DELETES from chat history when user takes decision. That was made to save tokens. Missing past blocks are intentional. NEVER re-generate, repeat, or fix them.
+</system_mechanics>
+
+<guidelines>
+1. Interaction: Execute ONLY via explicit command. Use suggestive phrasing. Explain reasoning naturally. NEVER narratively introduce the code block.
+2. TARGET SCOPES:
+   - Card Edits (\`first_mes\`, etc.): Modify static AI config, NOT active chat history.
+   - \`user_persona\` Edits: Modify the player's persona, entirely separate from the AI card.
+3. Ontological Architecture & XML Description:
+   - XML ENCAPSULATION: The \`description\` field MUST be strictly categorized using XML blocks (e.g., \`<appearance>...</appearance>\`, \`<mind>...</mind>\`, \`<background>...</background>\`). NEVER write loose, unstructured paragraphs. Apply this ONLY to the \`description\` field.
+   - SETTING: If creating a world/system, \`description\` MUST begin EXACTLY with \`"{{char}} is not a character, its a setting."\` placed right before the first XML tag.
+   - LIVING PERSONA: Inside the XML tags, engineer extreme psychological depth. Detail idiolect, habits, and profound background. Reject flat archetypes.
+4. \`mes_example\` Syntax: Calibrate AI tone via SillyTavern format.
+   - Isolate examples with \`<START>\` on a new line.
+   - Prefix dialogue absolutely: \`{{user}}: "..."\` and \`{{char}}: "..."\`.
+5. THE MACRO IMPERATIVE (CRITICAL): Hardcoding names destroys portability.
+   - Replace ANY character/setting name with exactly: \`{{char}}\`
+   - Replace ANY user name with exactly: \`{{user}}\`
+   - Applies to ALL fields.
+   - BAD: "Alex's hair is red." -> GOOD: "{{char}}'s hair is red."
+   - BAD: "Alex looks at you." -> GOOD: "{{char}} looks at {{user}}."
+6. Edit Operations (CRITICAL):
+    - IMPORTANT: To edit existing \`alternate_greetings\`, you MUST include \`index="ID"\` in the tag (e.g. \`<replace field="alternate_greetings" index="1">\`).
+   - \`overwrite\`: Complete field rewrite. Use for short fields.
+   - \`prepend\` / \`append_text\`: Insert text exactly BEFORE or AFTER existing field data.
+   - \`append\`: (Exclusive to \`alternate_greetings\`) Adds a new discrete greeting.
+   - \`replace\`: Surgical inline patching. 
+     * BOUNDARY ANCHOR SYNTAX (CRITICAL): You are STRICTLY FORBIDDEN from writing the full text in the search string. You MUST extract exactly 3-4 words from the START, add " || ", then 3-4 words from the END.
+     * BAD: "The quick brown fox jumps over the lazy dog."
+     * GOOD: "The quick brown || lazy dog."
+</guidelines>
+
+<output_formatting>
+Append ONE markdown block at the absolute end. Maintain strict JSON. NO RAW NAMES, ONLY MACROS. Valid fields: {{char_edit_fields}}.
+
+[IF EDITING EXISTING CARD OR USER PERSONA]
+Tag as \`character-edits\`. Structure:
+{{char_edit_format}}
+
+[IF CREATING NEW CARD]
+Tag as \`character-creation\`. Structure:
+{{char_create_format}}
+</output_formatting>`;
+
 
     // ─── Changelog Data ──────────────────────────────────────────────────────────
     const CHANGELOG = [
     {
+        version: '2.5.0',
+        date: '5/20/2026',
+        announce: true,
+        notes: [
+            '<strong>Character Card Manager</strong> — You can now create new characters entirely from scratch or edit existing card fields directly within the extension.',
+            '<strong>Massive Token Optimization</strong> — "Proposed Changes" now uses a smart search-and-replace method, reducing token consumption by over 80% (Huge thanks to Steel-skull for the PR!).',
+            '<strong>Robust Parsing</strong> — The system now successfully finds and applies "proposed changes" blocks even if the AI makes formatting mistakes.',
+            '<strong>Session Management</strong> — Added the ability to export and import sessions. Under-the-hood session saving has also been rewritten to be much more efficient.',
+            '<strong>UI, Sounds & Polish</strong> — Added a generation-complete sound notification, soothing window wobble physics, smooth chart animations in Stats, and new Streaming modes (Auto, Force On, Force Off).',
+            '<strong>Lorebook Updates</strong> — Added a "constant" parameter for proposed changes and moved toggles to the main Settings. ⚠️ <em>Important: Please reset your Lorebook AI Edit prompt to default!</em>',
+            '<strong>Mobile & Fixes</strong> — The Enter key on mobile keyboards now correctly inserts line breaks instead of sending messages. Fixed mobile UI headers, resolved duplicate user message bugs, and redesigned system message outputs.'
+        ],
+    },    
+    {
         version: '2.3.0',
         date: '5/10/2026',
-        announce: true,
+        announce: false,
         notes: [
             '<strong>Stream Support</strong> — Added streaming support so you can see generations in real-time.',
             '<strong>Reasoning Blocks</strong> — Added support for displaying Reasoning blocks',
@@ -186,33 +290,98 @@ Format requirement (Strictly adhere to this JSON structure):
             inputBg: 'rgba(0,0,0,0.30)', codeBg: 'rgba(0,0,0,0.35)',
             radius: '10px', danger: '#ff5c5c', success: '#4caf7d',
             shadow: '0 24px 64px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)',
-            border: '2px solid rgba(255,255,255,0.09)', font: '',
-        },
-        blue: {
-            label: 'Light Blue',
-            bg: 'rgba(18,18,22,0.94)', blur: 'blur(14px)',
-            text: '#e2e2e6', textMuted: '#72728a',
-            accent: '#7c6dfa', accentDim: 'rgba(124,109,250,0.45)',
-            accentBg: 'rgba(124,109,250,0.12)',
-            headerBg: 'rgba(255,255,255,0.04)', toolbarBg: 'rgba(0,0,0,0.25)',
-            msgUserBg: 'rgba(124,109,250,0.10)', msgAiBg: 'rgba(255,255,255,0.03)',
-            inputBg: 'rgba(0,0,0,0.30)', codeBg: 'rgba(0,0,0,0.35)',
-            radius: '10px', danger: '#ff5c5c', success: '#4caf7d',
-            shadow: '0 24px 64px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)',
             border: '1px solid rgba(255,255,255,0.09)', font: '',
         },
-        deep: {
-            label: 'Deep Blue',
-            bg: 'rgba(10,10,12,0.97)', blur: 'blur(0px)',
-            text: '#c8c8d0', textMuted: '#505060',
-            accent: '#8b7cf8', accentDim: 'rgba(139,124,248,0.4)',
-            accentBg: 'rgba(139,124,248,0.08)',
-            headerBg: 'rgba(0,0,0,0.5)', toolbarBg: 'rgba(0,0,0,0.4)',
-            msgUserBg: 'rgba(139,124,248,0.07)', msgAiBg: 'rgba(255,255,255,0.02)',
-            inputBg: 'rgba(0,0,0,0.5)', codeBg: 'rgba(0,0,0,0.6)',
+        onyx_ivory: {
+            label: 'Onyx & Ivory',
+            bg: 'rgba(17,17,17,0.96)', blur: 'blur(16px)',
+            text: '#f4ede4', textMuted: '#b8a898',
+            accent: '#d4c4b0', accentDim: 'rgba(212,196,176,0.4)',
+            accentBg: 'rgba(212,196,176,0.08)',
+            headerBg: 'rgba(244,237,228,0.04)', toolbarBg: 'rgba(0,0,0,0.3)',
+            msgUserBg: 'rgba(244,237,228,0.07)', msgAiBg: 'rgba(255,255,255,0.02)',
+            inputBg: 'rgba(0,0,0,0.35)', codeBg: 'rgba(0,0,0,0.45)',
+            radius: '10px', danger: '#e05c5c', success: '#6ab88a',
+            shadow: '0 28px 70px rgba(0,0,0,0.7), 0 4px 18px rgba(0,0,0,0.5)',
+            border: '1px solid rgba(244,237,228,0.1)', font: '',
+        },
+        violet_sun: {
+            label: 'Violet & Sun',
+            bg: 'rgba(20,8,42,0.97)', blur: 'blur(18px)',
+            text: '#f0e8ff', textMuted: '#9a80c0',
+            accent: '#ffd60a', accentDim: 'rgba(255,214,10,0.45)',
+            accentBg: 'rgba(255,214,10,0.1)',
+            headerBg: 'rgba(90,24,154,0.15)', toolbarBg: 'rgba(0,0,0,0.3)',
+            msgUserBg: 'rgba(255,214,10,0.07)', msgAiBg: 'rgba(90,24,154,0.06)',
+            inputBg: 'rgba(0,0,0,0.4)', codeBg: 'rgba(0,0,0,0.5)',
             radius: '10px', danger: '#ff5c5c', success: '#4caf7d',
-            shadow: '0 24px 64px rgba(0,0,0,0.8), 0 4px 16px rgba(0,0,0,0.6)',
-            border: '1px solid rgba(255,255,255,0.06)', font: '',
+            shadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 40px rgba(90,24,154,0.15)',
+            border: '1px solid rgba(90,24,154,0.3)', font: '',
+        },
+        forest_gold: {
+            label: 'Forest & Gold',
+            bg: 'rgba(2,16,10,0.97)', blur: 'blur(12px)',
+            text: '#e8dfc8', textMuted: '#8a9e80',
+            accent: '#d4a373', accentDim: 'rgba(212,163,115,0.45)',
+            accentBg: 'rgba(212,163,115,0.1)',
+            headerBg: 'rgba(212,163,115,0.06)', toolbarBg: 'rgba(0,0,0,0.35)',
+            msgUserBg: 'rgba(212,163,115,0.08)', msgAiBg: 'rgba(255,255,255,0.02)',
+            inputBg: 'rgba(0,0,0,0.4)', codeBg: 'rgba(0,0,0,0.5)',
+            radius: '8px', danger: '#e05c5c', success: '#69a458',
+            shadow: '0 24px 64px rgba(0,0,0,0.8), 0 0 30px rgba(2,48,32,0.4)',
+            border: '1px solid rgba(212,163,115,0.15)', font: '',
+        },
+        crimson_cream: {
+            label: 'Crimson & Cream',
+            bg: 'rgba(28,4,4,0.97)', blur: 'blur(14px)',
+            text: '#fff3e0', textMuted: '#c09070',
+            accent: '#e85555', accentDim: 'rgba(214,40,40,0.45)',
+            accentBg: 'rgba(214,40,40,0.1)',
+            headerBg: 'rgba(214,40,40,0.07)', toolbarBg: 'rgba(0,0,0,0.32)',
+            msgUserBg: 'rgba(214,40,40,0.08)', msgAiBg: 'rgba(255,243,224,0.02)',
+            inputBg: 'rgba(0,0,0,0.38)', codeBg: 'rgba(0,0,0,0.48)',
+            radius: '10px', danger: '#ff5c5c', success: '#6ab88a',
+            shadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 30px rgba(214,40,40,0.08)',
+            border: '1px solid rgba(214,40,40,0.2)', font: '',
+        },
+        teal_midnight: {
+            label: 'Teal & Midnight',
+            bg: 'rgba(10,12,24,0.97)', blur: 'blur(16px)',
+            text: '#d8f0ee', textMuted: '#5a8a88',
+            accent: '#2ec4b6', accentDim: 'rgba(46,196,182,0.4)',
+            accentBg: 'rgba(46,196,182,0.1)',
+            headerBg: 'rgba(46,196,182,0.06)', toolbarBg: 'rgba(0,0,0,0.3)',
+            msgUserBg: 'rgba(46,196,182,0.08)', msgAiBg: 'rgba(255,255,255,0.02)',
+            inputBg: 'rgba(0,0,0,0.38)', codeBg: 'rgba(0,0,0,0.48)',
+            radius: '10px', danger: '#ff5c5c', success: '#2ec4b6',
+            shadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 40px rgba(26,26,46,0.5)',
+            border: '1px solid rgba(46,196,182,0.15)', font: '',
+        },
+        ember_sand: {
+            label: 'Ember & Sand',
+            bg: 'rgba(22,10,4,0.97)', blur: 'blur(14px)',
+            text: '#f5ebe0', textMuted: '#b08060',
+            accent: '#ff6f3c', accentDim: 'rgba(255,111,60,0.4)',
+            accentBg: 'rgba(255,111,60,0.1)',
+            headerBg: 'rgba(255,111,60,0.06)', toolbarBg: 'rgba(0,0,0,0.32)',
+            msgUserBg: 'rgba(255,111,60,0.08)', msgAiBg: 'rgba(245,235,224,0.02)',
+            inputBg: 'rgba(0,0,0,0.36)', codeBg: 'rgba(0,0,0,0.46)',
+            radius: '10px', danger: '#ff5c5c', success: '#6ab88a',
+            shadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 30px rgba(255,111,60,0.06)',
+            border: '1px solid rgba(255,111,60,0.18)', font: '',
+        },
+        sage_mist: {
+            label: 'Sage & Mist',
+            bg: 'rgba(10,18,14,0.96)', blur: 'blur(16px)',
+            text: '#e7edeb', textMuted: '#7a9a88',
+            accent: '#69a481', accentDim: 'rgba(105,164,129,0.4)',
+            accentBg: 'rgba(105,164,129,0.1)',
+            headerBg: 'rgba(105,164,129,0.05)', toolbarBg: 'rgba(0,0,0,0.28)',
+            msgUserBg: 'rgba(105,164,129,0.08)', msgAiBg: 'rgba(231,237,235,0.02)',
+            inputBg: 'rgba(0,0,0,0.32)', codeBg: 'rgba(0,0,0,0.42)',
+            radius: '12px', danger: '#e05c5c', success: '#69a481',
+            shadow: '0 24px 64px rgba(0,0,0,0.65), 0 0 30px rgba(10,18,14,0.4)',
+            border: '1px solid rgba(105,164,129,0.15)', font: '',
         },
         glass: {
             label: 'Glass',
@@ -552,11 +721,28 @@ Format requirement (Strictly adhere to this JSON structure):
         let keywordEntries = {};
         if (settings.lorebookAutoKeyword) {
             const ctx = SillyTavern.getContext();
-            const msgs = ctx.chat;
-            const stDepth = Math.max(1, settings.lorebookSTScanDepth ?? 5);
-            const recentMsgs = msgs ? msgs.slice(-stDepth) : [];
-            const lastUser = recentMsgs.filter(m => m.is_user).map(m => m.mes).join('\n');
-            const lastChar = recentMsgs.filter(m => !m.is_user).map(m => m.mes).join('\n');
+            const msgs = ctx.chat || [];
+            let lastUser = '', lastChar = '';
+
+            try {
+                const session = getCurrentSession();
+                const picked = session.pickedChatIndices;
+                if (picked && picked.length > 0) {
+                    const pickedMsgs = picked.filter(i => i >= 0 && i < msgs.length).map(i => msgs[i]);
+                    lastUser = pickedMsgs.filter(m => m.is_user).map(m => m.mes).join('\n');
+                    lastChar = pickedMsgs.filter(m => !m.is_user).map(m => m.mes).join('\n');
+                } else {
+                    const stDepth = Math.max(1, settings.lorebookSTScanDepth ?? 5);
+                    const recentMsgs = msgs.slice(-stDepth);
+                    lastUser = recentMsgs.filter(m => m.is_user).map(m => m.mes).join('\n');
+                    lastChar = recentMsgs.filter(m => !m.is_user).map(m => m.mes).join('\n');
+                }
+            } catch (_) {
+                const stDepth = Math.max(1, settings.lorebookSTScanDepth ?? 5);
+                const recentMsgs = msgs.slice(-stDepth);
+                lastUser = recentMsgs.filter(m => m.is_user).map(m => m.mes).join('\n');
+                lastChar = recentMsgs.filter(m => !m.is_user).map(m => m.mes).join('\n');
+            }
 
             let copilotScanText = '';
             try {
@@ -565,15 +751,6 @@ Format requirement (Strictly adhere to this JSON structure):
                 copilotScanText = session.messages
                     .filter(m => !m.isLBHistory)
                     .slice(-copilotDepth)
-                    .map(m => m.content)
-                    .join('\n');
-            } catch (_) {}
-            
-            try {
-                const session = getCurrentSession();
-                copilotScanText = session.messages
-                    .filter(m => !m.isLBHistory)
-                    .slice(-6)
                     .map(m => m.content)
                     .join('\n');
             } catch (_) {}
@@ -649,30 +826,1360 @@ Format requirement (Strictly adhere to this JSON structure):
             .replace('{{active_lorebooks}}', activeBooksStr)
             .replace('{{lorebook_output}}', LB_FORMAT_BLOCK);
             
-        return `\n\n<lorebook_management>\n${prompt}\n</lorebook_management>`;
+        return `\n\n<lorebook_management: extension>\n${prompt}\n</lorebook_management: extension>`;
     }
 
-    function parseLBChangesFromText(text) {
-        const match = text.match(/```lorebook-changes\s*([\s\S]*?)```/);
-        if (!match) return null;
+    // ─── Character Card Editing Engine ───────────────────────────────────────────
+
+    function getEffectiveCharField(settings, k) {
+        const ovKey = 'charField_' + k;
+        if (settings[ovKey] !== undefined) return settings[ovKey];
+        return !!(settings.charEditFields || {})[k];
+    }
+
+    function buildAltGreetingsPicker(container) {
+        if (!container) return;
+        container.innerHTML = '';
+        
+        const s = getSettings();
+        if (!s.charEditFields) s.charEditFields = {};
+        
+        if (!s.charEditFields.alternate_greetings) { 
+            container.style.display = 'none'; 
+            return; 
+        }
+
+        const ctx = SillyTavern.getContext();
+        const char = ctx.characters?.[ctx.characterId];
+        const greetings = char?.data?.alternate_greetings || [];
+        
+        if (!greetings.length) {
+            container.innerHTML = '<div style="font-size:11px;color:var(--scp-text-muted);font-style:italic;padding:4px">No alternate greetings found for current character.</div>';
+            container.style.display = '';
+            return;
+        }
+
+        if (!Array.isArray(s.altGreetingIndices)) s.altGreetingIndices = [];
+
+        const label = document.createElement('div');
+        label.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--scp-text-muted,#72728a);margin-bottom:5px';
+        label.textContent = 'Which greetings to include:';
+        container.appendChild(label);
+
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;max-height:120px;overflow-y:auto;padding:4px;background:rgba(0,0,0,.15);border-radius:6px;border:1px solid rgba(255,255,255,.06)';
+
+        const allBtn = document.createElement('button');
+        allBtn.type = 'button';
+        allBtn.style.cssText = 'font-size:10px;cursor:pointer;background:none;border:1px solid rgba(255,255,255,.1);border-radius:4px;color:var(--scp-text-muted,#888);padding:2px 8px;align-self:flex-start;margin-bottom:3px;font-family:inherit';
+        allBtn.textContent = s.altGreetingIndices.length === greetings.length ? 'Deselect All' : 'Select All';
+        allBtn.addEventListener('click', () => {
+            const isAll = s.altGreetingIndices.length === greetings.length;
+            s.altGreetingIndices = isAll ? [] : greetings.map((_, i) => i);
+            saveSettings();
+            buildAltGreetingsPicker(container);
+        });
+        wrap.appendChild(allBtn);
+
+        greetings.forEach((greeting, idx) => {
+            const isSelected = s.altGreetingIndices.includes(idx);
+            const row = document.createElement('label');
+            row.style.cssText = 'display:flex;align-items:flex-start;gap:6px;cursor:pointer;padding:3px 4px;border-radius:4px;transition:background .12s';
+            row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,.04)'; });
+            row.addEventListener('mouseleave', () => { row.style.background = ''; });
+
+            const cb = document.createElement('input');
+            cb.type = 'checkbox'; cb.checked = isSelected; cb.style.cssText = 'flex-shrink:0;margin-top:2px;accent-color:var(--scp-accent,#7c6dfa)';
+            cb.addEventListener('change', () => {
+                const s2 = getSettings();
+                if (!Array.isArray(s2.altGreetingIndices)) s2.altGreetingIndices = [];
+                if (cb.checked) { if (!s2.altGreetingIndices.includes(idx)) s2.altGreetingIndices.push(idx); }
+                else s2.altGreetingIndices = s2.altGreetingIndices.filter(i => i !== idx);
+                s2.altGreetingIndices.sort((a, b) => a - b);
+                saveSettings();
+                allBtn.textContent = s2.altGreetingIndices.length === greetings.length ? 'Deselect All' : 'Select All';
+            });
+
+            const text = document.createElement('span');
+            text.style.cssText = 'font-size:11px;color:var(--scp-text,#e2e2e6);line-height:1.4;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical';
+            text.textContent = `#${idx + 1}: ${(greeting || '').slice(0, 80)}${greeting?.length > 80 ? '…' : ''}`;
+
+            row.appendChild(cb); row.appendChild(text);
+            wrap.appendChild(row);
+        });
+
+        container.appendChild(wrap);
+        container.style.display = '';
+    }
+
+    function refreshAltGreetingsPickers() {
+        buildAltGreetingsPicker(document.getElementById('scp-ce-alt-greetings-picker'));
+        buildAltGreetingsPicker(document.getElementById('scp-sp-ce-alt-greetings-picker'));
+    }
+
+    function buildCharacterContextBlock(settings) {
+        const ctx = SillyTavern.getContext();
+        const char = ctx.characters?.[ctx.characterId];
+        if (!char) return '';
+        const d = char.data || {};
+        const parts = [];
+
+        const simple = {
+            description: d.description || char.description,
+            personality: d.personality || char.personality,
+            scenario: d.scenario || char.scenario,
+            first_mes: d.first_mes || char.first_mes,
+            mes_example: d.mes_example || char.mes_example,
+        };
+        for (const [key, val] of Object.entries(simple)) {
+            if (getEffectiveCharField(settings, key) && val) parts.push(`<${key}>\n${val}\n</${key}>`);
+        }
+        if (getEffectiveCharField(settings, 'alternate_greetings') && Array.isArray(d.alternate_greetings) && d.alternate_greetings.length) {
+            const indices = Array.isArray(settings.altGreetingIndices) && settings.altGreetingIndices.length
+                ? settings.altGreetingIndices
+                : d.alternate_greetings.map((_, i) => i);
+            const filtered = indices.filter(i => i >= 0 && i < d.alternate_greetings.length);
+            if (filtered.length) {
+                const gs = filtered.map(i => `  <greeting id="${i+1}">\n${d.alternate_greetings[i]}\n  </greeting>`).join('\n');
+                parts.push(`<alternate_greetings>\n${gs}\n</alternate_greetings>`);
+            }
+        }
+        if (getEffectiveCharField(settings, 'authors_note')) {
+            const an = getAuthorsNote();
+            if (an) parts.push(`<authors_note>\n${an}\n</authors_note>`);
+        }
+        return parts.join('\n\n');
+    }
+
+    function buildCharEditAIInstructions(settings) {
+        if (!settings.charEditAIEnabled) return '';
+        const baseFields = ['description', 'personality', 'scenario', 'first_mes', 'mes_example', 'authors_note', 'alternate_greetings'];
+        const fieldsList = baseFields.filter(k => getEffectiveCharField(settings, k));
+        
+        if (settings.includeUserPersonality && !fieldsList.includes('user_persona')) {
+            fieldsList.push('user_persona');
+        }
+        const enabledFields = fieldsList.join(', ') || 'all fields';
+        const base = (settings.charEditPrompt || DEFAULT_CHAR_EDIT_DIRECTIVE.trim())
+            .replace('{{char_edit_fields}}', enabledFields)
+            .replace('{{char_edit_format}}', CHAR_EDIT_FORMAT_BLOCK)
+            .replace('{{char_create_format}}', CHAR_CREATE_FORMAT_BLOCK);
+        return `\n\n<character_management: extension>\n${base}\n</character_management: extension>`;
+    }
+
+    function parseCharChangesFromText(text) {
+        let raw = null;
+        const strict = text.match(/```character-changes\s*([\s\S]*?)```/);
+        if (strict) {
+            raw = strict[1];
+        } else {
+            const open = text.match(/```character-changes\s*([\s\S]*?)(?=```|$)/);
+            if (open) raw = open[1];
+        }
+        if (!raw) return null;
+        const xml = _repairCharChangesXML(raw);
+        const changes = [];
+        let m;
+
+        const replaceByField = {};
+        const replaceRe = /<replace\s+field="([^"]+)"(?:\s+index="(\d+)")?>([\s\S]*?)<\/replace>/g;
+        while ((m = replaceRe.exec(xml)) !== null) {
+            const field = m[1];
+            const index = m[2] ? parseInt(m[2]) : undefined;
+            const content = m[3];
+            const key = field + (index !== undefined ? `_${index}` : '');
+            const diffRe = /<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE/g;
+            let diffMatch;
+            const patches = [];
+            while ((diffMatch = diffRe.exec(content)) !== null) {
+                patches.push({ search: diffMatch[1], replace: diffMatch[2] });
+            }
+            if (!patches.length) {
+                const searchOnly = content.match(/<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======/);
+                if (searchOnly) patches.push({ search: searchOnly[1], replace: '' });
+            }
+            if (!patches.length) continue;
+            if (!replaceByField[key]) {
+                const item = { field, action: 'replace', patches };
+                if (index !== undefined) item.index = index;
+                replaceByField[key] = item;
+            } else {
+                replaceByField[key].patches.push(...patches);
+            }
+        }
+        for (const item of Object.values(replaceByField)) changes.push(item);
+
+        const overwriteRe = /<overwrite\s+field="([^"]+)"(?:\s+index="(\d+)")?>([\s\S]*?)<\/overwrite>/g;
+        while ((m = overwriteRe.exec(xml)) !== null) {
+            const item = { field: m[1], action: 'overwrite', value: m[3].trim() };
+            if (m[2]) item.index = parseInt(m[2], 10);
+            changes.push(item);
+        }
+
+        const appendRe = /<append\s+field="([^"]+)">([\s\S]*?)<\/append>/g;
+        while ((m = appendRe.exec(xml)) !== null) {
+            changes.push({ field: m[1], action: 'append', value: m[2].trim() });
+        }
+
+        const prependRe = /<prepend\s+field="([^"]+)"(?:\s+index="(\d+)")?>([\s\S]*?)<\/prepend>/g;
+        while ((m = prependRe.exec(xml)) !== null) {
+            const item = { field: m[1], action: 'prepend', value: m[3].trim() };
+            if (m[2]) item.index = parseInt(m[2], 10);
+            changes.push(item);
+        }
+
+        const appendTextRe = /<append_text\s+field="([^"]+)"(?:\s+index="(\d+)")?>([\s\S]*?)<\/append_text>/g;
+        while ((m = appendTextRe.exec(xml)) !== null) {
+            const item = { field: m[1], action: 'append_text', value: m[3].trim() };
+            if (m[2]) item.index = parseInt(m[2], 10);
+            changes.push(item);
+        }
+
+        return changes.length ? changes : null;
+    }
+
+    function _repairCharChangesXML(raw) {
+        let s = raw;
+        const TAGS = ['replace', 'overwrite', 'append_text', 'append', 'prepend'];
+
+        for (const tag of TAGS) {
+            const openRe = new RegExp(`<${tag}(\\s[^>]*)?>`, 'g');
+            const closeRe = new RegExp(`</${tag}>`, 'g');
+            const parts = [];
+            let lastIdx = 0;
+            let openMatch;
+            openRe.lastIndex = 0;
+            const opens = [];
+            while ((openMatch = openRe.exec(s)) !== null) opens.push(openMatch.index);
+
+            if (opens.length === 0) continue;
+            const closes = [];
+            let cm;
+            closeRe.lastIndex = 0;
+            while ((cm = closeRe.exec(s)) !== null) closes.push(cm.index);
+
+            if (opens.length <= closes.length) continue;
+
+            const result = [];
+            let cursor = 0;
+            for (let i = 0; i < opens.length; i++) {
+                const openStart = opens[i];
+                const nextOpen = opens[i + 1] ?? Infinity;
+                const closeAfterOpen = closes.find(ci => ci > openStart && ci < nextOpen);
+                if (closeAfterOpen === undefined) {
+                    const insertAt = nextOpen === Infinity ? s.length : nextOpen;
+                    s = s.slice(0, insertAt) + `</${tag}>` + s.slice(insertAt);
+                    const shift = tag.length + 3;
+                    for (let j = i + 1; j < opens.length; j++) opens[j] += shift;
+                    for (let j = 0; j < closes.length; j++) { if (closes[j] >= insertAt) closes[j] += shift; }
+                    closes.push(insertAt);
+                    closes.sort((a, b) => a - b);
+                }
+            }
+        }
+
+        s = s.replace(/(<<<<<<< SEARCH\r?\n[\s\S]*?)(?=<<<<<<< SEARCH|$)/g, (m) => {
+            if (!m.includes('=======')) return m + '\n=======\n>>>>>>> REPLACE\n';
+            if (!m.includes('>>>>>>> REPLACE')) return m + '\n>>>>>>> REPLACE\n';
+            return m;
+        });
+
+        return s;
+    }
+
+    function stripCharChangesBlock(text) {
+        return text
+            .replace(/```character-changes[\s\S]*?```/g, '')
+            .replace(/```character-changes[\s\S]*/g, '')
+            .trim();
+    }
+
+    function parseCharCreationFromText(text) {
+        let raw = null;
+        const strict = text.match(/```character-create\s*([\s\S]*?)```/);
+        if (strict) {
+            raw = strict[1].trim();
+        } else {
+            const open = text.match(/```character-create\s*([\s\S]*?)(?=```|$)/);
+            if (open) raw = open[1].trim();
+        }
+        if (!raw) return null;
         try {
-            const data = JSON.parse(match[1].trim());
-            return Array.isArray(data.changes) ? data.changes : null;
+            const data = JSON.parse(raw);
+            if (typeof data !== 'object' || Array.isArray(data)) return null;
+            return data;
+        } catch (_) {}
+        try {
+            const data = JSON.parse(_repairJSON(raw));
+            if (typeof data !== 'object' || Array.isArray(data)) return null;
+            return data;
         } catch (_) { return null; }
     }
 
-    function stripLBChangesBlock(text) {
-        return text.replace(/```lorebook-changes[\s\S]*?```/g, '').trim();
+    function stripCharCreationBlock(text) {
+        return text
+            .replace(/```character-create[\s\S]*?```/g, '')
+            .replace(/```character-create[\s\S]*/g, '')
+            .trim();
     }
 
-    async function resolveLBChangeTarget(change) {
+    function normalizeCharNamesInBlock(text) {
+        const ctx = SillyTavern.getContext();
+        const charName = ctx.characters?.[ctx.characterId]?.name;
+        const userName = ctx.name1;
+        return text.replace(/(```(?:character-changes|character-create)[\s\S]*?(?:```|$))/g, block => {
+            let r = block;
+            if (charName && charName.length > 2) {
+                const charRe = new RegExp(`\\b${charName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+                r = r.replace(charRe, '{{char}}');
+            }
+            if (userName && userName.length > 2) {
+                const userRe = new RegExp(`\\b${userName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+                r = r.replace(userRe, '{{user}}');
+            }
+            return r;
+        });
+    }
+
+    function applySearchReplaceToField(fieldContent, searchText, replaceText) {
+        if (!fieldContent) return { result: replaceText, matched: true };
+        const normalize = s => s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        const src = normalize(fieldContent);
+        const srch = normalize(searchText);
+        const repl = normalize(replaceText);
+
+        let sepIdx = srch.indexOf(' || ');
+        let sepLen = 4;
+        if (sepIdx === -1) { sepIdx = srch.indexOf('||'); sepLen = 2; }
+        if (sepIdx === -1) { sepIdx = srch.indexOf('...'); sepLen = 3; }
+
+        if (sepIdx >= 3 && srch.length - sepIdx - sepLen >= 3) {
+            const startPart = srch.slice(0, sepIdx).trim();
+            const endPart = srch.slice(sepIdx + sepLen).trim();
+            if (startPart && endPart) {
+                const sIdx = src.indexOf(startPart);
+                if (sIdx !== -1) {
+                    const eIdx = src.indexOf(endPart, sIdx + startPart.length);
+                    if (eIdx !== -1) {
+                        return { result: src.slice(0, sIdx) + repl + src.slice(eIdx + endPart.length), matched: true };
+                    }
+                }
+            }
+        }
+
+        const idx = src.indexOf(srch);
+        if (idx !== -1) return { result: src.slice(0, idx) + repl + src.slice(idx + srch.length), matched: true };
+
+        const normWs = s => s.replace(/[ \t]+/g, ' ').replace(/\n\s*\n/g, '\n').trim();
+        const srcN = normWs(src), srchN = normWs(srch), replN = normWs(repl);
+        if (srcN.includes(srchN)) return { result: srcN.replace(srchN, replN), matched: true };
+
+        const srcLines = src.split('\n');
+        const srchLines = srch.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        if (srchLines.length > 0) {
+            for (let i = 0; i <= srcLines.length - srchLines.length; i++) {
+                const candidate = srcLines.slice(i, i + srchLines.length).map(l => l.trim());
+                if (srchLines.every((sl, j) => candidate[j] === sl)) {
+                    return { result: [...srcLines.slice(0, i), ...repl.split('\n'), ...srcLines.slice(i + srchLines.length)].join('\n'), matched: true };
+                }
+            }
+        }
+        return { result: src, matched: false };
+    }
+
+    function getCharFieldValue(char, fieldId) {
+        if (fieldId === 'user_persona') return getUserPersona();
+        const d = char.data || {};
+        if (fieldId === 'authors_note') return getAuthorsNote();
+        if (fieldId === 'alternate_greetings') return d.alternate_greetings || [];
+        return d[fieldId] || char[fieldId] || '';
+    }
+
+   async function saveCharacterField(char, fieldId, newValue) {
+        const ctx = SillyTavern.getContext();
+        
+        if (fieldId === 'user_persona') {
+            const pu = window.power_user || ctx.powerUserSettings || {};
+            const avatar = pu.persona;
+            if (avatar) {
+                try {
+                    const res = await fetch('/api/characters/merge-attributes', {
+                        method: 'POST',
+                        headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ avatar: avatar, data: { description: newValue }, is_persona: true })
+                    });
+                    if (res.ok) {
+                        if (pu.personas && pu.personas[avatar]) pu.personas[avatar].description = newValue;
+                        return;
+                    }
+                } catch(e) { console.warn("Failed to merge persona API:", e); }
+            }
+            if (pu.personas && pu.persona && pu.personas[pu.persona]) pu.personas[pu.persona].description = newValue;
+            else pu.persona_description = newValue;
+            if (typeof ctx.saveSettingsDebounced === 'function') ctx.saveSettingsDebounced();
+            return;
+        }
+
+        if (fieldId === 'authors_note') {
+            ctx.chatMetadata = ctx.chatMetadata || {};
+            ctx.chatMetadata.note_prompt = newValue;
+            if (typeof ctx.saveMetadata === 'function') ctx.saveMetadata();
+            else saveSettings();
+            return;
+        }
+        
+        if (!char.data) char.data = {};
+        if (fieldId === 'alternate_greetings') {
+            char.data.alternate_greetings = newValue;
+        } else {
+            char.data[fieldId] = newValue;
+            char[fieldId] = newValue;
+        }
+        
+        const res = await fetch('/api/characters/merge-attributes', {
+            method: 'POST',
+            headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ avatar: char.avatar, data: char.data }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const domMap = {
+            description: 'description_textarea',
+            personality: 'personality_textarea',
+            scenario: 'scenario_textarea',
+            first_mes: 'firstmessage_textarea',
+            mes_example: 'mes_example_textarea'
+        };
+
+        if (domMap[fieldId]) {
+            const el = document.getElementById(domMap[fieldId]);
+            if (el) {
+                el.value = newValue;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        } else if (fieldId === 'alternate_greetings') {
+            if (typeof window.printAlternateGreetings === 'function') {
+                window.printAlternateGreetings();
+            }
+        }
+
+        const es = ctx.eventSource || window.eventSource;
+        const et = ctx.event_types || window.event_types;
+        if (es && et?.CHARACTER_EDITED) {
+            es.emit(et.CHARACTER_EDITED, { detail: { id: ctx.characterId, character: char } });
+            es.emit(et.CHARACTER_EDITED, { id: ctx.characterId, character: char });
+        }
+    }
+
+    async function applyCharChanges(changes, afterMsgId = null) {
+        const ctx = SillyTavern.getContext();
+        const char = ctx.characters?.[ctx.characterId];
+        if (!char) { toastr.error('[CharEdit] No active character.', EXT_DISPLAY); return; }
+        const successLog = [];
+
+        for (const change of changes) {
+            const { field, action } = change;
+            if (!field) continue;
+            try {
+                if (field === 'alternate_greetings') {
+                    const greetings = [...(char.data?.alternate_greetings || [])];
+                    if (action === 'append') {
+                        greetings.push(change.value || '');
+                        await saveCharacterField(char, 'alternate_greetings', greetings);
+                        successLog.push(change);
+                    } else {
+                        const idx = (change.index || 1) - 1;
+                        if (idx < 0 || idx >= greetings.length) { toastr.warning(`[CharEdit] Greeting index ${change.index} out of range.`, EXT_DISPLAY); continue; }
+                        
+                        if (action === 'overwrite') {
+                            greetings[idx] = change.value || '';
+                        } else if (action === 'prepend') {
+                            greetings[idx] = (change.value || '') + (greetings[idx] ? '\n\n' + greetings[idx] : '');
+                        } else if (action === 'append_text') {
+                            greetings[idx] = (greetings[idx] ? greetings[idx] + '\n\n' : '') + (change.value || '');
+                        } else if (action === 'replace') {
+                            let current = greetings[idx];
+                            let allMatched = true;
+                            for (const patch of (change.patches || [])) {
+                                const { result, matched } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                                if (!matched) { toastr.warning(`[CharEdit] SEARCH not found in greeting #${change.index}.`, EXT_DISPLAY); allMatched = false; break; }
+                                current = result;
+                            }
+                            if (!allMatched) continue;
+                            greetings[idx] = current;
+                        }
+                        
+                        await saveCharacterField(char, 'alternate_greetings', greetings);
+                        successLog.push(change);
+                    }
+                } else if (action === 'overwrite') {
+                    await saveCharacterField(char, field, change.value || '');
+                    successLog.push(change);
+                } else if (action === 'prepend') {
+                    const current = String(getCharFieldValue(char, field));
+                    await saveCharacterField(char, field, change.value + (current ? '\n\n' + current : ''));
+                    successLog.push(change);
+                } else if (action === 'append_text') {
+                    const current = String(getCharFieldValue(char, field));
+                    await saveCharacterField(char, field, (current ? current + '\n\n' : '') + change.value);
+                    successLog.push(change);
+                } else if (action === 'replace') {
+                    let current = String(getCharFieldValue(char, field));
+                    let allMatched = true;
+                    for (const patch of (change.patches || [])) {
+                        const { result, matched } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                        if (!matched) { toastr.warning(`[CharEdit] SEARCH not found in field "${field}": "${(patch.search || '').slice(0, 60)}…"`, EXT_DISPLAY, { timeOut: 8000 }); allMatched = false; break; }
+                        current = result;
+                    }
+                    if (!allMatched) continue;
+                    await saveCharacterField(char, field, current);
+                    successLog.push(change);
+                }
+            } catch (e) {
+                toastr.error(`[CharEdit] Failed on "${field}": ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
+            }
+        }
+
+        if (successLog.length > 0) {
+            logCharEditHistory(successLog, 'Applied', afterMsgId);
+            toastr.success(`[CharEdit] ${successLog.length} change(s) applied.`, EXT_DISPLAY);
+        }
+    }
+
+    function logCharEditHistory(changes, statusStr, afterMsgId = null) {
+        if (!changes?.length) return;
+        try {
+            const FIELD_LABELS = { description:'Description', personality:'Personality', scenario:'Scenario', first_mes:'First Message', mes_example:'Example Dialogue', authors_note:"Author's Note", user_persona:"User Persona", alternate_greetings:'Alternate Greetings' };
+            const session = getCurrentSession();
+            const icon = statusStr === 'Applied' ? '✓' : (statusStr === 'Rejected' ? '✕' : '·');
+            const actionText = statusStr === 'Applied' ? 'ACCEPTED' : (statusStr === 'Rejected' ? 'REJECTED' : 'DISMISSED (ignored)');
+            
+            const newLines = changes.map(c => {
+                const patches = c.patches ? ` (${c.patches.length} patch${c.patches.length !== 1 ? 'es' : ''})` : '';
+                return `${icon} **${actionText}**: \`${escHtml(FIELD_LABELS[c.field] || c.field || '?')}\` — ${escHtml(c.action || '?')}${c.index ? ` #${c.index}` : ''}${patches}`;
+            });
+
+            const lastMsg = session.messages[session.messages.length - 1];
+            if (lastMsg && lastMsg.isCharEditHistory) {
+                if (!lastMsg.appliedLines) lastMsg.appliedLines = [];
+                lastMsg.appliedLines.push(...newLines);
+                lastMsg.content = `**System Notification** — Character card edits:\n${lastMsg.appliedLines.join('\n')}`;
+                if (lastMsg.role !== 'system') lastMsg.role = 'system';
+                updateMessage(session, lastMsg.id, lastMsg.content);
+                
+                const contentEl = document.querySelector(`.scp-msg[data-id="${lastMsg.id}"] .scp-lb-history-content`);
+                if (contentEl) renderLBHistoryContent(lastMsg, contentEl);
+            } else {
+                const histText = `**System Notification** — Character card edits:\n${newLines.join('\n')}`;
+                const msg = afterMsgId
+                    ? insertMessageAfter(session, afterMsgId, 'system', histText, { isCharEditHistory: true, isLBHistory: true, appliedLines: [...newLines] })
+                    : addMessage(session, 'system', histText, { isCharEditHistory: true, isLBHistory: true, appliedLines: [...newLines] });
+                appendLBHistoryEl(msg, afterMsgId);
+            }
+        } catch (_) {}
+    }
+
+    function logCharCreationHistory(creationData, statusStr, afterMsgId = null) {
+        try {
+            const session = getCurrentSession();
+            const icon = statusStr === 'Applied' ? '✓' : (statusStr === 'Rejected' ? '✕' : '·');
+            const actionText = statusStr === 'Applied' ? 'ACCEPTED' : (statusStr === 'Rejected' ? 'REJECTED' : 'DISMISSED (ignored)');
+            const newLines = [`${icon} **${actionText}**: Character Creation Proposal for "${escHtml(creationData.name_suggestion || 'New Character')}"`];
+            
+            const lastMsg = session.messages[session.messages.length - 1];
+            if (lastMsg && lastMsg.isCharEditHistory) {
+                if (!lastMsg.appliedLines) lastMsg.appliedLines = [];
+                lastMsg.appliedLines.push(...newLines);
+                lastMsg.content = `**System Notification** — Character card edits:\n${lastMsg.appliedLines.join('\n')}`;
+                if (lastMsg.role !== 'system') lastMsg.role = 'system';
+                updateMessage(session, lastMsg.id, lastMsg.content);
+                
+                const contentEl = document.querySelector(`.scp-msg[data-id="${lastMsg.id}"] .scp-lb-history-content`);
+                if (contentEl) renderLBHistoryContent(lastMsg, contentEl);
+            } else {
+                const histText = `**System Notification** — Character card edits:\n${newLines.join('\n')}`;
+                const msg = afterMsgId
+                    ? insertMessageAfter(session, afterMsgId, 'system', histText, { isCharEditHistory: true, isLBHistory: true, appliedLines: [...newLines] })
+                    : addMessage(session, 'system', histText, { isCharEditHistory: true, isLBHistory: true, appliedLines: [...newLines] });
+                appendLBHistoryEl(msg, afterMsgId);
+            }
+        } catch (_) {}
+    }
+
+    function reconstructCharChangesBlock(pendingChanges) {
+        if (!pendingChanges.length) return '';
+        let xml = '```character-changes\n';
+        for (const c of pendingChanges) {
+            if (c.action === 'replace') {
+                xml += `<replace field="${c.field}"${c.index ? ` index="${c.index}"` : ''}>\n`;
+                for (const p of c.patches) {
+                    xml += `<<<<<<< SEARCH\n${p.search}\n=======\n${p.replace}\n>>>>>>> REPLACE\n`;
+                }
+                xml += `</replace>\n`;
+            } else if (c.action === 'overwrite') {
+                xml += `<overwrite field="${c.field}"${c.index ? ` index="${c.index}"` : ''}>${c.value}</overwrite>\n`;
+            } else if (c.action === 'append') {
+                xml += `<append field="${c.field}">${c.value}</append>\n`;
+            } else if (c.action === 'prepend') {
+                xml += `<prepend field="${c.field}"${c.index ? ` index="${c.index}"` : ''}>${c.value}</prepend>\n`;
+            } else if (c.action === 'append_text') {
+                xml += `<append_text field="${c.field}"${c.index ? ` index="${c.index}"` : ''}>${c.value}</append_text>\n`;
+            }
+        }
+        xml += '```';
+        return xml;
+    }
+
+    async function createCharacterAPI(data) {
+        const ctx = SillyTavern.getContext();
+        
+        const payload = {
+            name: data.name || 'New Character',
+            description: data.description || '',
+            personality: data.personality || '',
+            scenario: data.scenario || '',
+            first_mes: data.first_mes || 'Hello.',
+            mes_example: data.mes_example || '',
+            data: {
+                alternate_greetings: [],
+                tags: [],
+                avatar: 'none',
+                name: data.name || 'New Character',
+                description: data.description || '',
+                first_mes: data.first_mes || 'Hello.',
+                mes_example: data.mes_example || '',
+                personality: data.personality || '',
+                scenario: data.scenario || '',
+            },
+            avatar: 'none',
+            tags: [],
+            spec: 'chara_card_v3',
+            spec_version: '3.0'
+        };
+
+        const formData = new FormData();
+        formData.append('avatar', new Blob([JSON.stringify(payload)], { type: 'application/json' }), 'character.json');
+        formData.append('file_type', 'json');
+
+        const headers = ctx.getRequestHeaders();
+        delete headers['Content-Type'];
+
+        const res = await fetch('/api/characters/import', {
+            method: 'POST',
+            headers,
+            body: formData,
+            cache: 'no-cache',
+        });
+        
+        if (!res.ok) {
+            const errText = await res.text().catch(() => res.statusText);
+            throw new Error(`HTTP ${res.status}: ${errText}`);
+        }
+
+        try {
+            if (typeof ctx.getCharacters === 'function') {
+                await ctx.getCharacters();
+            } else if (typeof window.getCharacters === 'function') {
+                await window.getCharacters();
+            }
+            if (typeof window.PrintCharacterList === 'function') window.PrintCharacterList();
+            
+            const es = ctx.eventSource || window.eventSource;
+            const et = ctx.event_types || window.event_types;
+            if (es && et?.CHARACTERS_UPDATED) es.emit(et.CHARACTERS_UPDATED);
+        } catch(e) {
+            console.warn(`[${EXT_DISPLAY}] Failed to forcefully update UI`, e);
+        }
+
+        return true;
+    }
+
+    function renderCharCreationCard(creationData, msgEl) {
+        document.querySelector(`.scp-char-creation-card[data-for="${msgEl.dataset.id}"]`)?.remove();
+
+        const editableData = {
+            name: creationData.name_suggestion || '',
+            description: creationData.description || '',
+            personality: creationData.personality || '',
+            scenario: creationData.scenario || '',
+            first_mes: creationData.first_mes || '',
+            mes_example: creationData.mes_example || '',
+        };
+
+        const FIELDS = [
+            { key: 'name',        label: 'Name',            multiline: false },
+            { key: 'description', label: 'Description',      multiline: true, rows: 4 },
+            { key: 'personality', label: 'Personality',      multiline: true, rows: 3 },
+            { key: 'scenario',    label: 'Scenario',         multiline: true, rows: 3 },
+            { key: 'first_mes',   label: 'First Message',    multiline: true, rows: 3 },
+            { key: 'mes_example', label: 'Example Dialogue', multiline: true, rows: 3 },
+        ];
+
+        const card = document.createElement('div');
+        card.className = 'scp-lb-proposal-card scp-char-creation-card';
+        card.dataset.for = msgEl.dataset.id;
+
+        const stripAndRemove = () => {
+            const session = getCurrentSession();
+            const msg = session.messages.find(m => m.id === card.dataset.for);
+            if (msg) { msg.content = stripCharCreationBlock(msg.content); saveSettings(); }
+            card.remove();
+        };
+
+        const header = document.createElement('div');
+        header.className = 'scp-lb-proposal-header';
+        const headerLeft = document.createElement('div');
+        headerLeft.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;min-width:0';
+        headerLeft.innerHTML = `<span class="scp-lb-proposal-icon" style="color:var(--scp-success);display:flex"><i class="fa-solid fa-user-plus"></i></span><span class="scp-lb-proposal-title">New Character Proposal</span>`;
+        const dismissBtn = document.createElement('button');
+        dismissBtn.className = 'scp-lb-proposal-dismiss'; dismissBtn.innerHTML = I.x; dismissBtn.title = 'Dismiss';
+        dismissBtn.addEventListener('click', () => {
+            logCharCreationHistory(editableData, 'Dismissed', card.dataset.for);
+            stripAndRemove();
+        });
+        header.appendChild(headerLeft); header.appendChild(dismissBtn);
+        card.appendChild(header);
+
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size:11px;color:var(--scp-text-muted);padding:6px 2px 4px;font-style:italic';
+        hint.textContent = 'Review and edit the proposed character. Name is required.';
+        card.appendChild(hint);
+
+        const fieldsWrap = document.createElement('div');
+        fieldsWrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:4px';
+        const inputs = {};
+        for (const f of FIELDS) {
+            const row = document.createElement('div');
+            row.className = 'scp-lb-pe-row';
+            const lbl = document.createElement('label');
+            lbl.className = 'scp-lb-pe-label';
+            lbl.textContent = f.label + (f.key === 'name' ? ' *' : '');
+            let inp;
+            if (f.multiline) {
+                inp = document.createElement('textarea');
+                inp.rows = f.rows || 3;
+                inp.className = 'scp-lb-pe-textarea';
+                inp.style.minHeight = `${(f.rows || 3) * 20}px`;
+            } else {
+                inp = document.createElement('input');
+                inp.type = 'text';
+                inp.className = 'scp-lb-pe-input';
+            }
+            inp.value = editableData[f.key];
+            inp.addEventListener('input', () => { editableData[f.key] = inp.value; });
+            inputs[f.key] = inp;
+            row.appendChild(lbl); row.appendChild(inp);
+            fieldsWrap.appendChild(row);
+        }
+        card.appendChild(fieldsWrap);
+
+        const footer = document.createElement('div');
+        footer.className = 'scp-lb-proposal-footer';
+        footer.style.marginTop = '10px';
+
+        const createBtn = document.createElement('button');
+        createBtn.className = 'scp-lb-proposal-apply';
+        createBtn.innerHTML = '<i class="fa-solid fa-user-plus"></i> Create Character';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'scp-lb-proposal-reject';
+        cancelBtn.textContent = 'Cancel';
+
+        createBtn.addEventListener('click', async () => {
+            if (!editableData.name?.trim()) {
+                toastr.warning('Character name is required.', EXT_DISPLAY);
+                inputs.name.focus();
+                return;
+            }
+            createBtn.disabled = true;
+            createBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
+            const session = getCurrentSession();
+            const msgForStrip = session.messages.find(m => m.id === card.dataset.for);
+            if (msgForStrip) { msgForStrip.content = stripCharCreationBlock(msgForStrip.content); saveSettings(); }
+            try {
+                await createCharacterAPI(editableData);
+                logCharCreationHistory(editableData, 'Applied', card.dataset.for);
+                toastr.success(`Character "${escHtml(editableData.name)}" created!`, EXT_DISPLAY);
+                card.remove();
+            } catch (e) {
+                toastr.error(`Failed: ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
+                createBtn.disabled = false;
+                createBtn.innerHTML = '<i class="fa-solid fa-user-plus"></i> Create Character';
+            }
+        });
+        cancelBtn.addEventListener('click', () => {
+            logCharCreationHistory(editableData, 'Rejected', card.dataset.for);
+            stripAndRemove();
+        });
+
+        footer.appendChild(createBtn); footer.appendChild(cancelBtn);
+        card.appendChild(footer);
+        msgEl.after(card);
+    }
+
+    function renderCharProposalCard(changes, msgEl) {
+        if (!changes?.length) return;
+        document.querySelector(`.scp-char-proposal-card[data-for="${msgEl.dataset.id}"]`)?.remove();
+
+        const ctx = SillyTavern.getContext();
+        const char = ctx.characters?.[ctx.characterId];
+        const editableChanges = changes.map(c => JSON.parse(JSON.stringify(c)));
+        const itemStates = editableChanges.map(() => 'pending');
+
+        const FIELD_LABELS = { description:'Description', personality:'Personality', scenario:'Scenario', first_mes:'First Message', mes_example:'Example Dialogue', authors_note:"Author's Note", user_persona:"User Persona", alternate_greetings:'Alternate Greetings' };
+
+        const card = document.createElement('div');
+        card.className = 'scp-lb-proposal-card scp-char-proposal-card';
+        card.dataset.for = msgEl.dataset.id;
+
+        const syncBlockToMessage = () => {
+            const session = getCurrentSession();
+            const msg = session.messages.find(m => m.id === card.dataset.for);
+            if (!msg) return;
+            const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
+            const stripped = stripCharChangesBlock(msg.content);
+            if (pending.length === 0) {
+                msg.content = stripped;
+            } else {
+                msg.content = stripped + '\n\n' + reconstructCharChangesBlock(pending);
+            }
+            saveSettings();
+        };
+
+        const persistState = () => {
+            const sess = getCurrentSession();
+            const msg = sess.messages.find(m => m.id === card.dataset.for);
+            if (msg) { msg.charChangesState = Object.fromEntries(itemStates.map((s,i)=>[i,s]).filter(([,s])=>s!=='pending')); saveSettings(); }
+        };
+        const getPending = () => itemStates.filter(s => s === 'pending').length;
+        const checkAllResolved = () => { if (getPending() === 0) { syncBlockToMessage(); card.remove(); } };
+
+        const validateReplaceChange = (change) => {
+            if (!char) return { valid: false, reason: 'No active character' };
+            let current;
+            if (change.field === 'alternate_greetings') {
+                const idx = (change.index || 1) - 1;
+                current = (char.data?.alternate_greetings || [])[idx] || '';
+            } else {
+                current = String(getCharFieldValue(char, change.field));
+            }
+            for (const patch of (change.patches || [])) {
+                const { matched, result } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                if (!matched) return { valid: false, reason: `SEARCH not found: "${(patch.search || '').slice(0, 50)}"` };
+                current = result;
+            }
+            return { valid: true };
+        };
+
+        const getAppliedResult = (change) => {
+            if (!char) return '';
+            let current;
+            if (change.field === 'alternate_greetings') {
+                const idx = (change.index || 1) - 1;
+                current = (char.data?.alternate_greetings || [])[idx] || '';
+            } else {
+                current = String(getCharFieldValue(char, change.field));
+            }
+            for (const patch of (change.patches || [])) {
+                const { result } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                current = result;
+            }
+            return current;
+        };
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'scp-lb-proposal-header';
+        const headerLeft = document.createElement('div');
+        headerLeft.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;min-width:0';
+        const countBadge = document.createElement('span');
+        countBadge.className = 'scp-lb-proposal-count';
+        countBadge.textContent = `${editableChanges.length} pending`;
+        headerLeft.innerHTML = `<span class="scp-lb-proposal-icon" style="color:var(--scp-accent);display:flex"><i class="fa-solid fa-user-pen"></i></span><span class="scp-lb-proposal-title">Proposed Character Edits</span>`;
+        headerLeft.appendChild(countBadge);
+        const dismissBtn = document.createElement('button');
+        dismissBtn.className = 'scp-lb-proposal-dismiss'; dismissBtn.innerHTML = I.x; dismissBtn.title = 'Dismiss';
+        dismissBtn.addEventListener('click', () => { 
+            const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
+            if (pending.length > 0) logCharEditHistory(pending, 'Dismissed', card.dataset.for);
+            itemStates.forEach((s, i) => { if (s === 'pending') itemStates[i] = 'dismissed'; });
+            syncBlockToMessage(); 
+            card.remove(); 
+        });
+        header.appendChild(headerLeft); header.appendChild(dismissBtn);
+
+        const list = document.createElement('div');
+        list.className = 'scp-lb-proposal-list';
+
+        const itemEls = editableChanges.map((c, ci) => {
+            const item = document.createElement('div');
+            item.className = `scp-lb-proposal-item ${c.action === 'append' ? 'scp-lb-proposal-add' : 'scp-lb-proposal-edit'}`;
+
+            const hdr = document.createElement('div');
+            hdr.className = 'scp-lb-proposal-item-header';
+
+            const meta = document.createElement('div');
+            meta.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;flex-wrap:wrap;min-width:0';
+            const patchCount = c.patches?.length > 1 ? ` (${c.patches.length})` : '';
+            const actionLabel = c.action === 'append' ? '+ Append'
+                : c.action === 'overwrite' ? '↺ Overwrite'
+                : c.action === 'prepend' ? '⬆ Prepend'
+                : c.action === 'append_text' ? '⬇ Append'
+                : `✎ Replace${patchCount}`;
+            meta.innerHTML = `<span class="scp-lb-proposal-action">${escHtml(actionLabel)}</span><span class="scp-lb-proposal-name">${escHtml(FIELD_LABELS[c.field]||c.field||'?')}${c.index?` #${c.index}`:''}</span>`;
+
+            const btns = document.createElement('div');
+            btns.className = 'scp-lb-proposal-item-btns';
+
+            if (c.action === 'replace' && char) {
+                const diffBtn = document.createElement('button');
+                diffBtn.className = 'scp-lb-proposal-diff-btn'; diffBtn.title = 'View diff'; diffBtn.textContent = '⬚';
+                diffBtn.addEventListener('click', e => {
+                    e.stopPropagation();
+                    const change = editableChanges[ci];
+                    let original;
+                    if (change.field === 'alternate_greetings') {
+                        const idx = (change.index || 1) - 1;
+                        original = (char.data?.alternate_greetings || [])[idx] || '';
+                    } else {
+                        original = String(getCharFieldValue(char, change.field));
+                    }
+                    const result = getAppliedResult(change);
+                    const modal = document.getElementById('scp-diff-modal');
+                    const body = document.getElementById('scp-diff-body');
+                    if (!modal || !body) return;
+                    const titleEl = modal.querySelector('.scp-diff-modal-title');
+                    if (titleEl) titleEl.textContent = `Diff: ${FIELD_LABELS[c.field]||c.field}${c.index?` #${c.index}`:''}`;
+                    body.innerHTML = renderDiffSplit(original, result);
+                    modal.querySelectorAll('[data-diff-tab]').forEach(tab => {
+                        tab.classList.toggle('active', tab.dataset.diffTab === 'split');
+                        tab.onclick = () => {
+                            modal.querySelectorAll('[data-diff-tab]').forEach(t => t.classList.remove('active'));
+                            tab.classList.add('active');
+                            body.innerHTML = tab.dataset.diffTab === 'split' ? renderDiffSplit(original, result) : renderDiffUnified(computeLineDiff(original, result));
+                        };
+                    });
+                    modal.style.display = 'flex';
+                });
+                btns.appendChild(diffBtn);
+            }
+
+            const editToggleBtn = document.createElement('button');
+            editToggleBtn.className = 'scp-lb-proposal-edit-toggle'; editToggleBtn.title = 'Edit before applying'; editToggleBtn.textContent = '✎';
+            btns.appendChild(editToggleBtn);
+
+            const applyBtn = document.createElement('button');
+            applyBtn.className = 'scp-lb-proposal-item-apply'; applyBtn.title = 'Apply'; applyBtn.textContent = '✓';
+
+            if (c.action === 'replace' && char) {
+                const { valid, reason } = validateReplaceChange(editableChanges[ci]);
+                if (!valid) {
+                    applyBtn.disabled = true;
+                    applyBtn.title = reason || 'Cannot apply';
+                    item.style.borderLeftColor = 'var(--scp-danger)';
+                    const warn = document.createElement('div');
+                    warn.style.cssText = 'font-size:10px;color:var(--scp-danger);margin-top:4px';
+                    warn.textContent = `\u26A0 ${reason || 'SEARCH text not found — this edit may be outdated.'}`;
+                    meta.appendChild(warn);
+                }
+            }
+
+            applyBtn.addEventListener('click', async e => {
+                e.stopPropagation();
+                if (itemStates[ci] !== 'pending' || applyBtn.disabled) return;
+                applyBtn.disabled = true; applyBtn.textContent = '\u2026';
+                try {
+                    await applyCharChanges([editableChanges[ci]], card.dataset.for);
+                    itemStates[ci] = 'applied';
+                    item.classList.add('scp-lb-item-applied');
+                    btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
+                    persistState(); countBadge.textContent = `${getPending()} pending`; updateFooter(); 
+                    syncBlockToMessage();
+                    checkAllResolved();
+                } catch (err) {
+                    toastr.error(`Failed: ${err.message}`, EXT_DISPLAY);
+                    applyBtn.disabled = false; applyBtn.textContent = '\u2713';
+                }
+            });
+
+            const rejectBtn = document.createElement('button');
+            rejectBtn.className = 'scp-lb-proposal-item-reject'; rejectBtn.title = 'Reject'; rejectBtn.textContent = '\u2715';
+            rejectBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                if (itemStates[ci] !== 'pending') return;
+                itemStates[ci] = 'rejected';
+                item.classList.add('scp-lb-item-rejected');
+                btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
+                logCharEditHistory([editableChanges[ci]], 'Rejected', card.dataset.for);
+                persistState(); countBadge.textContent = `${getPending()} pending`; updateFooter(); 
+                syncBlockToMessage();
+                checkAllResolved();
+            });
+
+            btns.appendChild(applyBtn); btns.appendChild(rejectBtn);
+            hdr.appendChild(meta); hdr.appendChild(btns);
+            item.appendChild(hdr);
+
+            // Preview (expandable)
+            const buildPreviewText = () => {
+                const change = editableChanges[ci];
+                if (change.action === 'replace' && change.patches?.length) {
+                    return change.patches.map((p, pi) => {
+                        const s = (p.search || '').replace(/\n/g, '\u21B5').slice(0, 80);
+                        const r = (p.replace || '').replace(/\n/g, '\u21B5').slice(0, 80);
+                        return `Patch ${pi+1}: "${s}" \u2192 "${r}"`;
+                    }).join('\n');
+                }
+                return change.value || '';
+            };
+
+            const previewEl = document.createElement('div');
+            previewEl.className = 'scp-lb-proposal-preview';
+            previewEl.style.whiteSpace = 'pre-wrap';
+            let _expanded = false;
+            const refreshPreview = () => {
+                const raw = buildPreviewText();
+                previewEl.textContent = (!_expanded && raw.length > 140) ? raw.slice(0, 140) + '\u2026' : raw;
+            };
+            refreshPreview();
+            previewEl.style.cursor = 'pointer';
+            previewEl.title = 'Click to expand/collapse';
+            previewEl.addEventListener('click', e => {
+                e.stopPropagation();
+                _expanded = !_expanded;
+                refreshPreview();
+            });
+            item.appendChild(previewEl);
+
+            // Edit panel
+            const editPanel = document.createElement('div');
+            editPanel.className = 'scp-lb-proposal-edit-panel';
+            editPanel.style.display = 'none';
+
+            const mkRow = (labelHtml, el) => {
+                const row = document.createElement('div');
+                row.className = 'scp-lb-pe-row';
+                const lbl = document.createElement('label');
+                lbl.className = 'scp-lb-pe-label'; lbl.innerHTML = labelHtml;
+                row.appendChild(lbl); row.appendChild(el); return row;
+            };
+
+            const rebuildEditPanel = () => {
+                editPanel.innerHTML = '';
+                const change = editableChanges[ci];
+
+                if (change.action === 'replace') {
+                    (change.patches || []).forEach((patch, pi) => {
+                        const pHdr = document.createElement('div');
+                        pHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px';
+                        pHdr.innerHTML = `<span style="font-size:10px;font-weight:700;color:var(--scp-accent);text-transform:uppercase;letter-spacing:.04em">Patch ${pi+1}</span>`;
+                        if (change.patches.length > 1) {
+                            const delP = document.createElement('button');
+                            delP.style.cssText = 'background:none;border:none;color:var(--scp-danger);cursor:pointer;font-size:11px;padding:0;font-family:var(--scp-font)';
+                            delP.textContent = '\u2715 Remove';
+                            delP.addEventListener('click', () => {
+                                change.patches.splice(pi, 1);
+                                rebuildEditPanel();
+                                if (char) { const { valid } = validateReplaceChange(change); applyBtn.disabled = !valid; }
+                                refreshPreview();
+                            });
+                            pHdr.appendChild(delP);
+                        }
+                        editPanel.appendChild(pHdr);
+
+                        const searchTa = document.createElement('textarea');
+                        searchTa.className = 'scp-lb-pe-textarea'; searchTa.rows = 3; searchTa.value = patch.search || '';
+                        searchTa.addEventListener('input', () => {
+                            change.patches[pi].search = searchTa.value;
+                            if (char) { const { valid } = validateReplaceChange(change); applyBtn.disabled = !valid; }
+                            refreshPreview();
+                        });
+                        editPanel.appendChild(mkRow('Search', searchTa));
+
+                        const replaceTa = document.createElement('textarea');
+                        replaceTa.className = 'scp-lb-pe-textarea'; replaceTa.rows = 3; replaceTa.value = patch.replace || '';
+                        replaceTa.addEventListener('input', () => {
+                            change.patches[pi].replace = replaceTa.value;
+                            refreshPreview();
+                        });
+                        editPanel.appendChild(mkRow('Replace', replaceTa));
+
+                        if (pi < change.patches.length - 1) {
+                            const sep = document.createElement('div');
+                            sep.style.cssText = 'height:1px;background:rgba(255,255,255,.07);margin:8px 0';
+                            editPanel.appendChild(sep);
+                        }
+                    });
+
+                    const addPatchBtn = document.createElement('button');
+                    addPatchBtn.className = 'scp-action-btn'; addPatchBtn.style.marginTop = '8px';
+                    addPatchBtn.innerHTML = `${I.plus}<span>Add Patch</span>`;
+                    addPatchBtn.addEventListener('click', () => {
+                        change.patches.push({ search: '', replace: '' });
+                        rebuildEditPanel();
+                    });
+                    editPanel.appendChild(addPatchBtn);
+                } else {
+                    const valueTa = document.createElement('textarea');
+                    valueTa.className = 'scp-lb-pe-textarea'; valueTa.rows = 5; valueTa.value = change.value || '';
+                    valueTa.addEventListener('input', () => { change.value = valueTa.value; refreshPreview(); });
+                    editPanel.appendChild(mkRow('Value', valueTa));
+                }
+            };
+
+            rebuildEditPanel();
+            item.appendChild(editPanel);
+
+            editToggleBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                const isOpen = editPanel.style.display !== 'none';
+                editPanel.style.display = isOpen ? 'none' : 'flex';
+                previewEl.style.display = isOpen ? '' : 'none';
+                editToggleBtn.classList.toggle('active', !isOpen);
+                if (!isOpen) rebuildEditPanel();
+            });
+
+            list.appendChild(item);
+            return item;
+        });
+
+        // Restore persisted states
+        const initMsg = getCurrentSession().messages.find(m => m.id === msgEl.dataset.id);
+        if (initMsg?.charChangesState) {
+            Object.entries(initMsg.charChangesState).forEach(([i, state]) => {
+                const idx = parseInt(i);
+                if (!itemEls[idx]) return;
+                itemStates[idx] = state;
+                if (state !== 'pending') {
+                    itemEls[idx].classList.add(state === 'applied' ? 'scp-lb-item-applied' : 'scp-lb-item-rejected');
+                    itemEls[idx].querySelectorAll('button').forEach(b => { b.disabled = true; });
+                }
+            });
+        }
+
+        const footer = document.createElement('div');
+        footer.className = 'scp-lb-proposal-footer';
+        const applyAllBtn = document.createElement('button');
+        applyAllBtn.className = 'scp-lb-proposal-apply'; applyAllBtn.textContent = 'Apply All';
+        const rejectAllBtn = document.createElement('button');
+        rejectAllBtn.className = 'scp-lb-proposal-reject'; rejectAllBtn.textContent = 'Reject All';
+
+        const updateFooter = () => {
+            const p = getPending();
+            applyAllBtn.style.display = p > 0 ? '' : 'none';
+            rejectAllBtn.style.display = p > 0 ? '' : 'none';
+        };
+        updateFooter();
+
+        applyAllBtn.addEventListener('click', async () => {
+            const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
+            if (!pending.length) return;
+            applyAllBtn.disabled = true; applyAllBtn.textContent = 'Applying\u2026';
+            try {
+                await applyCharChanges(pending, card.dataset.for);
+                itemStates.forEach((s, i) => { if (s === 'pending') { itemStates[i] = 'applied'; itemEls[i]?.classList.add('scp-lb-item-applied'); itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = true; }); } });
+                persistState(); countBadge.textContent = `${getPending()} pending`; updateFooter(); 
+                syncBlockToMessage();
+                checkAllResolved();
+            } catch (e) {
+                toastr.error(`Failed: ${e.message}`, EXT_DISPLAY);
+                applyAllBtn.disabled = false; applyAllBtn.textContent = 'Apply All';
+            }
+        });
+        rejectAllBtn.addEventListener('click', () => {
+            const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
+            itemStates.forEach((s, i) => { if (s === 'pending') { itemStates[i] = 'rejected'; itemEls[i]?.classList.add('scp-lb-item-rejected'); itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = true; }); } });
+            logCharEditHistory(pending, 'Rejected', card.dataset.for);
+            persistState(); countBadge.textContent = `${getPending()} pending`; updateFooter(); 
+            syncBlockToMessage();
+            checkAllResolved();
+        });
+
+        footer.appendChild(applyAllBtn); footer.appendChild(rejectAllBtn);
+        card.appendChild(header); card.appendChild(list); card.appendChild(footer);
+        msgEl.after(card);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    function parseLBChangesFromText(text) {
+        let raw = null;
+        const strict = text.match(/```lorebook-changes\s*([\s\S]*?)```/);
+        if (strict) {
+            raw = strict[1].trim();
+        } else {
+            const open = text.match(/```lorebook-changes\s*([\s\S]*?)(?=```|$)/);
+            if (open) raw = open[1].trim();
+        }
+        if (!raw) return null;
+        // direct parse
+        try {
+            const data = JSON.parse(raw);
+            if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
+        } catch (_) {}
+        // repair common issues
+        try {
+            const repaired = _repairJSON(raw);
+            const data = JSON.parse(repaired);
+            if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
+        } catch (_) {}
+        //aggressive unescaped-quotes fix
+        try {
+            const lines = raw.split('\n');
+            const fixed = lines.map(line => {
+                return line.replace(/("(?:content|name|comment|search|replace|triggers)":\s*)"((?:[^"\\]|\\.)*)"/, (match, prefix, val) => {
+                    const escaped = val.replace(/(?<!\\)"/g, '\\"');
+                    return `${prefix}"${escaped}"`;
+                });
+            }).join('\n');
+            const data = JSON.parse(fixed);
+            if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
+        } catch (_) {}
+        return null;
+    }
+
+    function _parseLBDiffPatch(str) {
+        const m = str.match(/<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE/);
+        return m ? { search: m[1], replace: m[2] } : null;
+    }
+
+    function _sanitizeLBChanges(changes) {
+        if (!Array.isArray(changes)) return null;
+        const valid = [];
+        for (const c of changes) {
+            if (!c || typeof c !== 'object') continue;
+            if (!['add', 'edit', 'patch', 'delete'].includes(c.action)) continue;
+            if (!c.worldName && !c.name && c.uid == null) continue;
+            if (c.triggers === 'original' || c.triggers === 'keep' || c.triggers === undefined || c.triggers === null) {
+                c.triggers = null;
+            } else if (!Array.isArray(c.triggers)) {
+                c.triggers = String(c.triggers).split(',').map(s => s.trim()).filter(Boolean);
+            }
+            if (c.constant !== undefined) c.constant = !!c.constant;
+            if (c.action === 'patch' && Array.isArray(c.patches)) {
+                c.patches = c.patches.map(p => {
+                    if (typeof p === 'string') return _parseLBDiffPatch(p);
+                    if (p && typeof p === 'object' && p.search !== undefined) return p;
+                    return null;
+                }).filter(Boolean);
+            }
+            valid.push(c);
+        }
+        return valid.length ? valid : null;
+    }
+
+    function _repairJSON(raw) {
+        let s = raw;
+        s = s.replace(/,\s*([\}\]])/g, '$1');
+        try {
+            s = s.replace(/"((?:[^"\\]|\\.)*)"/g, (match, inner) => {
+                const fixed = inner.replace(/(?<!\\)"/g, '\\"');
+                return `"${fixed}"`;
+            });
+        } catch (_) {}
+        const opens = (s.match(/[\[{]/g) || []).length;
+        const closes = (s.match(/[\]\}]/g) || []).length;
+        if (opens > closes) {
+            const stack = [];
+            for (const ch of s) {
+                if (ch === '{') stack.push('}');
+                else if (ch === '[') stack.push(']');
+                else if (ch === '}' || ch === ']') stack.pop();
+            }
+            s += stack.reverse().join('');
+        }
+        return s;
+    }
+
+    function stripLBChangesBlock(text) {
+        return text
+            .replace(/```lorebook-changes[\s\S]*?```/g, '')
+            .replace(/```lorebook-changes[\s\S]*/g, '')
+            .trim();
+    }
+
+    async function bindNewLorebookToCharacter(bookName) {
+        try {
+            const ctx = SillyTavern.getContext();
+            
+            if (typeof ST_WorldInfo !== 'undefined' && typeof ST_WorldInfo.createNewWorldInfo === 'function') {
+                await ST_WorldInfo.createNewWorldInfo(bookName);
+            } else if (typeof window.createNewWorldInfo === 'function') {
+                await window.createNewWorldInfo(bookName);
+            } else {
+                const payload = { entries: {} };
+                if (typeof ctx.saveWorldInfo === 'function') await ctx.saveWorldInfo(bookName, payload);
+                else await fetch('/api/worldinfo/edit', { method: 'POST', headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ name: bookName, data: payload }) });
+                
+                if (typeof ctx.updateWorldInfoList === 'function') await ctx.updateWorldInfoList();
+                else if (typeof window.loadWorldInfoList === 'function') await window.loadWorldInfoList();
+            }
+            
+            delete _wiCache[bookName];
+
+            const charId = ctx.characterId;
+            if (charId === undefined || charId === null) return;
+            
+            let fileName = ctx.characters?.[charId]?.avatar;
+            if (typeof ST_Utils !== 'undefined' && typeof ST_Utils.getCharaFilename === 'function') {
+                fileName = ST_Utils.getCharaFilename(charId);
+            }
+            if (!fileName) return;
+
+            let wiSettings = null;
+            if (typeof ST_WorldInfo !== 'undefined' && ST_WorldInfo.world_info) {
+                wiSettings = ST_WorldInfo.world_info;
+            } else if (window.world_info) {
+                wiSettings = window.world_info;
+            }
+
+            if (wiSettings && Array.isArray(wiSettings.charLore)) {
+                const charLoreList = wiSettings.charLore;
+                let extraCharLore = charLoreList.find(e => e.name === fileName);
+                if (!extraCharLore) {
+                    extraCharLore = { name: fileName, extraBooks: [] };
+                    charLoreList.push(extraCharLore);
+                }
+                if (!Array.isArray(extraCharLore.extraBooks)) extraCharLore.extraBooks = [];
+                
+                if (!extraCharLore.extraBooks.includes(bookName)) {
+                    extraCharLore.extraBooks.push(bookName);
+                    
+                    if (typeof ST_WorldInfo !== 'undefined' && typeof ST_WorldInfo.saveWorldInfoSettings === 'function') {
+                        ST_WorldInfo.saveWorldInfoSettings();
+                    } else if (typeof window.saveWorldInfoSettings === 'function') {
+                        window.saveWorldInfoSettings();
+                    } else {
+                        await fetch('/api/worldinfo/settings', {
+                            method: 'POST',
+                            headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
+                            body: JSON.stringify(wiSettings)
+                        });
+                    }
+                    
+                    if (typeof ST_WorldInfo !== 'undefined' && typeof ST_WorldInfo.printWorldInfoCharacters === 'function') {
+                        ST_WorldInfo.printWorldInfoCharacters();
+                    } else if (typeof window.printWorldInfoCharacters === 'function') {
+                        window.printWorldInfoCharacters();
+                    }
+                }
+            }
+            
+            toastr.success(`Lorebook "${escHtml(bookName)}" created and bound to character.`, EXT_DISPLAY);
+        } catch (e) {
+            console.error(`[${EXT_DISPLAY}] Failed to create and bind lorebook:`, e);
+            toastr.error('Failed to create new lorebook.', EXT_DISPLAY);
+        }
+    }
+
+    async function resolveLBChangeTarget(change, strictBook = false) {
         let bookName = change.worldName || '';
         let targetUid = change.uid;
 
         const fuzzyWorld = bookName.toLowerCase();
         const fuzzyName = (change.originalName || change.name || '').toLowerCase();
         
-        if (fuzzyName) {
+        if (fuzzyName && !strictBook) {
             const activeMatch = _lastActiveEntries.find(le => {
                 const wMatch = !fuzzyWorld || le.displayName.toLowerCase() === fuzzyWorld || le.bookName.toLowerCase() === fuzzyWorld;
                 const nMatch = le.entryName.toLowerCase() === fuzzyName || le.entryName.toLowerCase().includes(fuzzyName) || fuzzyName.includes(le.entryName.toLowerCase());
@@ -687,7 +2194,7 @@ Format requirement (Strictly adhere to this JSON structure):
         if (bookName === getDisplayName(EMBEDDED_BOOK_KEY)) bookName = EMBEDDED_BOOK_KEY;
 
         let data = await fetchWorldInfoBook(bookName);
-        if (!data && bookName) {
+        if (!data && bookName && !strictBook) {
             const allActive = getActiveLorebookNames();
             const match = allActive.find(n => n.toLowerCase() === fuzzyWorld || n.toLowerCase().includes(fuzzyWorld) || fuzzyWorld.includes(n.toLowerCase()));
             if (match) {
@@ -700,12 +2207,14 @@ Format requirement (Strictly adhere to this JSON structure):
         if (data && data.entries) {
             origEntry = Object.values(data.entries).find(en => {
                 if (targetUid != null && String(en.uid) === String(targetUid)) return true;
+                if (!fuzzyName) return false;
                 const cStr = (en.comment || `Entry #${en.uid}`).trim().toLowerCase();
-                return (fuzzyName && cStr === fuzzyName) || (fuzzyName && cStr.includes(fuzzyName)) || (fuzzyName && fuzzyName.includes(cStr));
+                if (cStr === fuzzyName) return true;
+                return cStr.includes(fuzzyName) || fuzzyName.includes(cStr);
             });
         }
 
-        if (!origEntry && fuzzyName) {
+        if (!origEntry && fuzzyName && !strictBook) {
             for (const name of getActiveLorebookNames()) {
                 if (name === bookName) continue;
                 const bd = await fetchWorldInfoBook(name);
@@ -735,7 +2244,7 @@ Format requirement (Strictly adhere to this JSON structure):
         if (!changes || !changes.length) return;
         try {
             const session = getCurrentSession();
-            const icons = { add: '✚', edit: '✎', delete: '✕' };
+            const icons = { add: '✚', edit: '✎', patch: '✂', delete: '✕' };
             const statusIcon = statusStr === 'Accepted' ? '✓' : (statusStr === 'Rejected' ? '✕' : '·');
 
             const actionText = statusStr === 'Accepted' ? 'ACCEPTED' :
@@ -743,24 +2252,22 @@ Format requirement (Strictly adhere to this JSON structure):
 
             const newLines = changes.map(c => {
                 const act = (c.action || 'edit').toUpperCase();
-                return `${statusIcon} **${actionText}**: ${icons[c.action] || '·'} ${act} "${escHtml(c.name || `Entry #${c.uid || '?'}`)}" in \`${escHtml(c.worldName || '?')}\``;
+                return `${statusIcon} **${actionText}**: ${icons[c.action] || '·'} ${act} "${escHtml(c.name || c.originalName || `Entry #${c.uid || '?'}`)}" in \`${escHtml(c.worldName || '?')}\``;
             });
 
             const lastMsg = session.messages[session.messages.length - 1];
-            if (lastMsg && lastMsg.isLBHistory) {
-                if (!lastMsg.appliedLines) lastMsg.appliedLines =[];
+            if (lastMsg && lastMsg.isLBHistory && !lastMsg.isCharEditHistory) {
+                if (!lastMsg.appliedLines) lastMsg.appliedLines = [];
                 lastMsg.appliedLines.push(...newLines);
                 lastMsg.content = `**System Notification** — User interaction with proposed lorebook changes:\n${lastMsg.appliedLines.join('\n')}`;
                 
                 if (lastMsg.role !== 'system') lastMsg.role = 'system';
-                
                 updateMessage(session, lastMsg.id, lastMsg.content);
 
-                const msgEl = document.querySelector(`.scp-msg[data-id="${lastMsg.id}"] .scp-msg-content`);
-                if (msgEl) msgEl.innerHTML = renderMarkdown(lastMsg.content);
+                const contentEl = document.querySelector(`.scp-msg[data-id="${lastMsg.id}"] .scp-lb-history-content`);
+                if (contentEl) renderLBHistoryContent(lastMsg, contentEl);
             } else {
                 const histText = `**System Notification** — User interaction with proposed lorebook changes:\n${newLines.join('\n')}`;
-                
                 const histMsg = afterMsgId
                     ? insertMessageAfter(session, afterMsgId, 'system', histText, { isLBHistory: true, appliedLines: [...newLines] })
                     : addMessage(session, 'system', histText, { isLBHistory: true, appliedLines: [...newLines] });
@@ -790,17 +2297,20 @@ Format requirement (Strictly adhere to this JSON structure):
             if (change.action === 'add') {
                 const uids = Object.keys(data.entries).map(Number);
                 const newUid = uids.length ? Math.max(...uids) + 1 : 1;
+                const addTriggers = Array.isArray(change.triggers) ? change.triggers : [];
+                const autoConstant = (addTriggers.length === 0) && change.constant !== false;
                 data.entries[newUid] = {
-                    uid: newUid, key: change.triggers || [], keysecondary:[],
+                    uid: newUid, key: addTriggers, keysecondary:[],
                     content: change.content || '', comment: change.name || '',
-                    disable: false, group: '', selective: false, constant: false,
+                    disable: false, group: '', selective: false,
+                    constant: change.constant === true || autoConstant,
                     position: 0, depth: 4, displayIndex: newUid,
                     prevent_recursion: false, delayUntilRecursion: false,
                     scan_depth: null, match_whole_words: null, use_group_scoring: false,
                     case_sensitive: null, automation_id: '', role: null,
                     vectorized: false, sticky: null, cooldown: null, delay: null,
                 };
-                console.log(`[${EXT_DISPLAY}] applyLBChanges: ADD uid=${newUid} in "${bookName}"`);
+                console.log(`[${EXT_DISPLAY}] applyLBChanges: ADD uid=${newUid} in "${bookName}" constant=${data.entries[newUid].constant}`);
                 bookCache[bookName] = data;
                 successfulChanges.push(change);
             } else if (change.action === 'edit') {
@@ -811,9 +2321,43 @@ Format requirement (Strictly adhere to this JSON structure):
                     continue;
                 }
                 if (change.name !== undefined) origEntry.comment = change.name;
-                if (change.triggers !== undefined) origEntry.key = change.triggers;
+                if (change.triggers !== null && change.triggers !== undefined) {
+                    origEntry.key = change.triggers;
+                    if (change.triggers.length === 0 && origEntry.key.length === 0 && change.constant !== false) {
+                        origEntry.constant = true;
+                    }
+                }
                 if (change.content !== undefined) origEntry.content = change.content;
+                if (change.constant !== undefined) origEntry.constant = !!change.constant;
                 console.log(`[${EXT_DISPLAY}] applyLBChanges: EDIT uid=${origEntry.uid} in "${bookName}"`);
+                bookCache[bookName] = data;
+                successfulChanges.push(change);
+            } else if (change.action === 'patch') {
+                if (!origEntry) {
+                    const msg = `Entry not found for patch: "${change.name || change.uid || '?'}" in "${bookName}"`;
+                    toastr.error(`[LB] ${msg}`, EXT_DISPLAY, { timeOut: 10000 });
+                    continue;
+                }
+                let current = origEntry.content || '';
+                let allMatched = true;
+                for (const patch of (change.patches || [])) {
+                    const { result, matched } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                    if (!matched) {
+                        toastr.warning(`[LB] SEARCH not found in "${origEntry.comment}": "${(patch.search || '').slice(0, 60)}"`, EXT_DISPLAY, { timeOut: 8000 });
+                        allMatched = false;
+                        break;
+                    }
+                    current = result;
+                }
+                if (!allMatched) continue;
+                origEntry.content = current;
+                if (change.name !== undefined) origEntry.comment = change.name;
+                if (change.triggers !== null && change.triggers !== undefined) {
+                    origEntry.key = change.triggers;
+                    if (change.triggers.length === 0 && change.constant !== false) origEntry.constant = true;
+                }
+                if (change.constant !== undefined) origEntry.constant = !!change.constant;
+                console.log(`[${EXT_DISPLAY}] applyLBChanges: PATCH uid=${origEntry.uid} in "${bookName}"`);
                 bookCache[bookName] = data;
                 successfulChanges.push(change);
             } else if (change.action === 'delete') {
@@ -1024,7 +2568,17 @@ Format requirement (Strictly adhere to this JSON structure):
         const modal = document.getElementById('scp-diff-modal');
         if (!modal) return;
         const originalContent = originalEntry?.content || '';
-        const newContent = change.content || '';
+        let newContent = change.content || '';
+        
+        if (change.action === 'patch' && originalEntry) {
+            let current = originalContent;
+            for (const patch of (change.patches || [])) {
+                const { result } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                current = result;
+            }
+            newContent = current;
+        }
+        
         const diffLines = computeLineDiff(originalContent, newContent);
 
         const entryName = change.name || originalEntry?.comment || `Entry #${change.uid || '?'}`;
@@ -1032,7 +2586,6 @@ Format requirement (Strictly adhere to this JSON structure):
         if (titleEl) titleEl.textContent = `Diff: "${entryName}" in ${change.worldName || '?'}`;
 
         const body = document.getElementById('scp-diff-body');
-        
         if (body) body.innerHTML = renderDiffSplit(originalContent, newContent);
 
         modal.querySelectorAll('[data-diff-tab]').forEach(tab => {
@@ -1048,6 +2601,55 @@ Format requirement (Strictly adhere to this JSON structure):
         modal.style.display = 'flex';
     }
 
+    function renderLBHistoryContent(msg, contentEl) {
+        contentEl.innerHTML = '';
+        const lines = msg.appliedLines || [];
+        const accepted = lines.filter(l => l.includes('ACCEPTED')).length;
+        const rejected = lines.filter(l => l.includes('REJECTED')).length;
+        const dismissed = lines.filter(l => l.includes('DISMISSED')).length;
+
+        const summaryParts = [];
+        if (accepted) summaryParts.push(`${accepted} applied`);
+        if (rejected) summaryParts.push(`${rejected} rejected`);
+        if (dismissed) summaryParts.push(`${dismissed} dismissed`);
+        const summaryStr = summaryParts.length ? summaryParts.join(', ') : `${lines.length} change${lines.length !== 1 ? 's' : ''}`;
+
+        const summaryRow = document.createElement('div');
+        summaryRow.style.cssText = 'font-size:12px;font-weight:600;color:var(--scp-text);margin-bottom:4px';
+        summaryRow.textContent = `System Notification: ${summaryStr}`;
+        contentEl.appendChild(summaryRow);
+
+        if (lines.length) {
+            const details = document.createElement('details');
+            details.className = 'scp-hist-details';
+            const summary = document.createElement('summary');
+            summary.className = 'scp-hist-summary';
+            summary.textContent = 'Show details';
+            details.appendChild(summary);
+
+            const detailsBody = document.createElement('div');
+            detailsBody.className = 'scp-hist-body';
+            for (const line of lines) {
+                const stripped = line.replace(/\*\*/g, '').replace(/`/g, '');
+                const isAccepted = stripped.includes('ACCEPTED');
+                const isRejected = stripped.includes('REJECTED') && !stripped.includes('DISMISSED');
+                const dot = document.createElement('div');
+                dot.className = 'scp-hist-item';
+                dot.style.cssText = `display:flex;align-items:baseline;gap:6px;padding:2px 0;font-size:11px;color:${isAccepted ? 'var(--scp-success)' : isRejected ? 'var(--scp-danger)' : 'var(--scp-text-muted)'}`;
+                const marker = document.createElement('span');
+                marker.style.cssText = `width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0;margin-top:5px;display:inline-block`;
+                const text = document.createElement('span');
+                const m2 = stripped.match(/(?:ACCEPTED|REJECTED|DISMISSED[^:]*): (.+)/);
+                text.textContent = m2 ? m2[1] : stripped;
+                dot.appendChild(marker);
+                dot.appendChild(text);
+                detailsBody.appendChild(dot);
+            }
+            details.appendChild(detailsBody);
+            contentEl.appendChild(details);
+        }
+    }
+
     function appendLBHistoryEl(msg, afterMsgId = null) {
         const c = document.getElementById('scp-messages');
         if (!c) return;
@@ -1059,14 +2661,19 @@ Format requirement (Strictly adhere to this JSON structure):
 
         const avatar = document.createElement('div');
         avatar.className = 'scp-msg-avatar scp-msg-avatar-lb';
-        avatar.innerHTML = I.book;
+        
+        if (msg.isCharEditHistory) {
+            avatar.innerHTML = '<i class="fa-solid fa-user-pen" style="font-size:14px; padding-left:1px;"></i>';
+        } else {
+            avatar.innerHTML = I.book;
+        }
 
         const body = document.createElement('div');
         body.className = 'scp-msg-body';
 
-        const content = document.createElement('div');
-        content.className = 'scp-msg-content scp-lb-history-content';
-        content.innerHTML = renderMarkdown(msg.content);
+        const contentEl = document.createElement('div');
+        contentEl.className = 'scp-msg-content scp-lb-history-content';
+        renderLBHistoryContent(msg, contentEl);
 
         const meta = document.createElement('div');
         meta.className = 'scp-msg-meta';
@@ -1083,10 +2690,11 @@ Format requirement (Strictly adhere to this JSON structure):
             updateMsgCount(session);
         });
 
-        body.appendChild(content);
+        body.appendChild(contentEl);
         body.appendChild(closeBtn);
         body.appendChild(meta);
         wrap.appendChild(avatar); wrap.appendChild(body);
+        
         const anchor = afterMsgId
             ? (c.querySelector(`.scp-lb-proposal-card[data-for="${afterMsgId}"]`) || c.querySelector(`.scp-msg[data-id="${afterMsgId}"]`))
             : null;
@@ -1112,7 +2720,7 @@ Format requirement (Strictly adhere to this JSON structure):
         const _initMsg = _initSess.messages.find(m => m.id === msgEl.dataset.id);
         const _savedStates = _initMsg?.lbChangesState || {};
         const itemStates = editableChanges.map((_, i) => _savedStates[i] || 'pending');
-        const actionLabels = { add: '+ Add', edit: '✎ Edit', delete: '✕ Remove' };
+        const actionLabels = { add: '+ Add', edit: '✎ Edit', patch: '✂ Patch', delete: '✕ Remove' };
 
         const card = document.createElement('div');
         card.className = 'scp-lb-proposal-card';
@@ -1188,7 +2796,7 @@ Format requirement (Strictly adhere to this JSON structure):
             itemMeta.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-wrap:wrap';
             itemMeta.innerHTML = `
                 <span class="scp-lb-proposal-action">${escHtml(actionLabels[c.action] || c.action || '?')}</span>
-                <span class="scp-lb-proposal-name">${escHtml(c.name || c.originalName || `Entry #${c.uid || '?'}`)}</span>`;
+                <span class="scp-lb-proposal-name scp-lb-pn-target">${escHtml(c.name || c.originalName || `Entry #${c.uid || '?'}`)}</span>${c.constant ? '<span class="scp-lb-src-badge scp-lb-src-global" style="font-size:9px;padding:1px 5px" title="Constant entry">★</span>' : ''}`;
 
             const _activeBooks = getActiveLorebookNames();
             const _currentBook = editableChanges[ci].worldName || '';
@@ -1256,6 +2864,7 @@ Format requirement (Strictly adhere to this JSON structure):
                         if (name?.trim()) {
                             const n = name.trim();
                             _activeBooks.push(n);
+                            await bindNewLorebookToCharacter(n);
                             buildWorldPanelItems(_activeBooks);
                             selectBook(n);
                         }
@@ -1279,10 +2888,42 @@ Format requirement (Strictly adhere to this JSON structure):
 
             const _validateBookEntry = async (bookName) => {
                 worldTrigger.classList.add('loading');
-                const resolved = await resolveLBChangeTarget({ ...editableChanges[ci], worldName: bookName });
+                const checkChange = { ...editableChanges[ci], worldName: bookName };
+                if (bookName !== editableChanges[ci].worldName) {
+                    delete checkChange.uid;
+                }
+                
+                const resolved = await resolveLBChangeTarget(checkChange, true);
                 worldTrigger.classList.remove('loading');
 
                 const found = !!resolved.origEntry;
+
+                if (found) {
+                    const orig = resolved.origEntry;
+                    const n = orig.comment || `Entry #${orig.uid}`;
+                    editableChanges[ci].originalName = n;
+                    if (!editableChanges[ci].name) editableChanges[ci].name = n;
+                    
+                    const nameEl = item.querySelector('.scp-lb-pn-target');
+                    if (nameEl) nameEl.textContent = n;
+
+                    const nameInput = item.querySelector('.scp-lb-name-input');
+                    if (nameInput && !nameInput.value) nameInput.value = n;
+
+                    if (editableChanges[ci].triggers === null) {
+                        const origKeys = orig.key || [];
+                        editableChanges[ci].triggers = [...origKeys];
+                        
+                        const tEl = item.querySelector('.scp-lb-proposal-triggers');
+                        if (tEl) tEl.textContent = origKeys.length ? `Keys: ${origKeys.join(', ')}` : 'Keys: none';
+                        
+                        const tInput = item.querySelector('.scp-lb-trig-input');
+                        if (tInput && !tInput.value) {
+                            tInput.value = origKeys.join(', ');
+                            tInput.placeholder = '';
+                        }
+                    }
+                }
 
                 if (found && resolved.bookName && resolved.bookName !== bookName) {
                     editableChanges[ci].worldName = resolved.bookName;
@@ -1317,7 +2958,7 @@ Format requirement (Strictly adhere to this JSON structure):
                     el.classList.toggle('active', el.dataset.value === name);
                 });
                 closeWorldPanel();
-                if (c.action === 'edit' || c.action === 'delete') await _validateBookEntry(name);
+                if (c.action === 'edit' || c.action === 'delete' || c.action === 'patch') await _validateBookEntry(name);
             };
 
             worldTrigger.addEventListener('click', e => {
@@ -1330,7 +2971,6 @@ Format requirement (Strictly adhere to this JSON structure):
                 if (!isOpen) openWorldPanel();
             });
 
-            // If AI-proposed book isn't active, add it to the list
             const _allBooks = [..._activeBooks];
             if (_currentBook && !_activeBooks.includes(_currentBook)) _allBooks.unshift(_currentBook);
 
@@ -1351,21 +2991,19 @@ Format requirement (Strictly adhere to this JSON structure):
                 itemBtns.appendChild(editToggleBtn);
             }
 
-            // Diff btn
-            if (c.action === 'edit' && c.content) {
+            // Diff btn - for edit AND patch actions
+            if (c.action === 'edit' || c.action === 'patch') {
                 const diffBtn = document.createElement('button');
                 diffBtn.className = 'scp-lb-proposal-diff-btn';
                 diffBtn.title = 'View diff'; diffBtn.textContent = '⬚';
                 diffBtn.addEventListener('click', async e => {
                     e.stopPropagation();
                     const change = editableChanges[ci];
-                    const { origEntry, bookName } = await resolveLBChangeTarget(change);
-
+                    const { origEntry } = await resolveLBChangeTarget(change);
                     if (!origEntry) {
-                        console.warn(`[${EXT_DISPLAY}] Diff: Original entry not found for "${change.name}" in "${change.worldName}"`);
                         toastr.warning('Could not find original entry to compare against.', EXT_DISPLAY);
+                        return;
                     }
-
                     openDiffModal(change, origEntry);
                 });
                 itemBtns.appendChild(diffBtn);
@@ -1396,9 +3034,7 @@ Format requirement (Strictly adhere to this JSON structure):
                     item.classList.add('scp-lb-item-applied');
                     itemBtns.querySelectorAll('button').forEach(b => { b.disabled = true; });
                     _wiCache = {};
-                    persistState();
-                    updateCountBadge();
-                    updateFooterBtns();
+                    persistState(); updateCountBadge(); updateFooterBtns(); 
                     checkAllResolved();
                 } catch (err) {
                     toastr.error(`Failed: ${err.message}`, EXT_DISPLAY);
@@ -1406,7 +3042,6 @@ Format requirement (Strictly adhere to this JSON structure):
                 }
             });
 
-            // Per-item Reject btn
             const rejectItemBtn = document.createElement('button');
             rejectItemBtn.className = 'scp-lb-proposal-item-reject';
             rejectItemBtn.title = 'Reject this change'; rejectItemBtn.textContent = '✕';
@@ -1419,10 +3054,7 @@ Format requirement (Strictly adhere to this JSON structure):
                 itemBtns.querySelectorAll('button').forEach(b => { b.disabled = true; });
 
                 logLBHistoryChanges([editableChanges[ci]], 'Rejected', card.dataset.for);
-
-                persistState();
-                updateCountBadge();
-                updateFooterBtns();
+                persistState(); updateCountBadge(); updateFooterBtns(); 
                 checkAllResolved();
             });
 
@@ -1456,10 +3088,16 @@ Format requirement (Strictly adhere to this JSON structure):
                 }
                 item.appendChild(previewEl);
             }
-            if (c.triggers?.length) {
+            if (c.triggers !== null && c.triggers?.length) {
                 triggersEl = document.createElement('div');
                 triggersEl.className = 'scp-lb-proposal-triggers';
                 triggersEl.textContent = 'Keys: ' + c.triggers.join(', ');
+                item.appendChild(triggersEl);
+            } else if (c.triggers === null) {
+                triggersEl = document.createElement('div');
+                triggersEl.className = 'scp-lb-proposal-triggers';
+                triggersEl.style.opacity = '0.5';
+                triggersEl.textContent = 'Keys: keep original';
                 item.appendChild(triggersEl);
             }
 
@@ -1478,24 +3116,86 @@ Format requirement (Strictly adhere to this JSON structure):
                 };
 
                 const nameInput = document.createElement('input');
-                nameInput.type = 'text'; nameInput.className = 'scp-lb-pe-input';
+                nameInput.type = 'text'; nameInput.className = 'scp-lb-pe-input scp-lb-name-input';
                 nameInput.value = c.name || '';
                 nameInput.addEventListener('input', () => { editableChanges[ci].name = nameInput.value; });
                 editPanel.appendChild(mkRow('Name', nameInput));
 
                 const trigInput = document.createElement('input');
-                trigInput.type = 'text'; trigInput.className = 'scp-lb-pe-input';
-                trigInput.value = (c.triggers || []).join(', ');
+                trigInput.type = 'text'; trigInput.className = 'scp-lb-pe-input scp-lb-trig-input';
+                trigInput.placeholder = 'Keywords (comma separated)';
+                trigInput.value = Array.isArray(c.triggers) ? c.triggers.join(', ') : '';
                 trigInput.addEventListener('input', () => {
-                    editableChanges[ci].triggers = trigInput.value.split(',').map(t => t.trim()).filter(Boolean);
+                    const val = trigInput.value.trim();
+                    editableChanges[ci].triggers = val === '' ? [] : val.split(',').map(t => t.trim()).filter(Boolean);
                 });
-                editPanel.appendChild(mkRow('Keys <span style="opacity:.6;text-transform:none;letter-spacing:0">(comma-separated)</span>', trigInput));
+                editPanel.appendChild(mkRow('Keys', trigInput));
 
-                const contentTa = document.createElement('textarea');
-                contentTa.className = 'scp-lb-pe-textarea';
-                contentTa.value = c.content || '';
-                contentTa.addEventListener('input', () => { editableChanges[ci].content = contentTa.value; });
-                editPanel.appendChild(mkRow('Content', contentTa));
+                if (c.action === 'patch') {
+                    // Patch mode
+                    const rebuildPatches = () => {
+                        const existing = editPanel.querySelector('.scp-lb-patches-wrap');
+                        if (existing) existing.remove();
+                        const patchWrap = document.createElement('div');
+                        patchWrap.className = 'scp-lb-patches-wrap';
+                        patchWrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:4px';
+                        (editableChanges[ci].patches || []).forEach((patch, pi) => {
+                            const pHdr = document.createElement('div');
+                            pHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:2px';
+                            pHdr.innerHTML = `<span style="font-size:10px;font-weight:700;color:var(--scp-accent);text-transform:uppercase;letter-spacing:.04em">Patch ${pi+1}</span>`;
+                            if ((editableChanges[ci].patches || []).length > 1) {
+                                const delP = document.createElement('button');
+                                delP.style.cssText = 'background:none;border:none;color:var(--scp-danger);cursor:pointer;font-size:11px;padding:0;font-family:var(--scp-font)';
+                                delP.textContent = '✕ Remove';
+                                delP.addEventListener('click', () => { editableChanges[ci].patches.splice(pi, 1); rebuildPatches(); });
+                                pHdr.appendChild(delP);
+                            }
+                            const searchTa = document.createElement('textarea');
+                            searchTa.className = 'scp-lb-pe-textarea'; searchTa.rows = 2; searchTa.value = patch.search || '';
+                            searchTa.placeholder = 'first unique words || last unique words';
+                            searchTa.addEventListener('input', () => { editableChanges[ci].patches[pi].search = searchTa.value; });
+                            const replaceTa = document.createElement('textarea');
+                            replaceTa.className = 'scp-lb-pe-textarea'; replaceTa.rows = 3; replaceTa.value = patch.replace || '';
+                            replaceTa.placeholder = 'replacement text';
+                            replaceTa.addEventListener('input', () => { editableChanges[ci].patches[pi].replace = replaceTa.value; });
+                            patchWrap.appendChild(pHdr);
+                            patchWrap.appendChild(mkRow('Search (range)', searchTa));
+                            patchWrap.appendChild(mkRow('Replace', replaceTa));
+                            if (pi < (editableChanges[ci].patches || []).length - 1) {
+                                const sep = document.createElement('div');
+                                sep.style.cssText = 'height:1px;background:rgba(255,255,255,.07);margin:4px 0';
+                                patchWrap.appendChild(sep);
+                            }
+                        });
+                        const addPBtn = document.createElement('button');
+                        addPBtn.className = 'scp-action-btn'; addPBtn.style.marginTop = '4px';
+                        addPBtn.innerHTML = `${I.plus}<span>Add Patch</span>`;
+                        addPBtn.addEventListener('click', () => {
+                            if (!editableChanges[ci].patches) editableChanges[ci].patches = [];
+                            editableChanges[ci].patches.push({ search: '', replace: '' });
+                            rebuildPatches();
+                        });
+                        patchWrap.appendChild(addPBtn);
+                        editPanel.appendChild(patchWrap);
+                    };
+                    rebuildPatches();
+                } else {
+                    const contentTa = document.createElement('textarea');
+                    contentTa.className = 'scp-lb-pe-textarea';
+                    contentTa.value = c.content || '';
+                    contentTa.addEventListener('input', () => { editableChanges[ci].content = contentTa.value; });
+                    editPanel.appendChild(mkRow('Content', contentTa));
+                }
+
+                // Constant checkbox
+                const constWrap = document.createElement('label');
+                constWrap.className = 'scp-sp-check'; constWrap.style.marginTop = '6px';
+                const constCb = document.createElement('input');
+                constCb.type = 'checkbox'; constCb.checked = !!c.constant;
+                constCb.addEventListener('change', () => { editableChanges[ci].constant = constCb.checked; });
+                constWrap.appendChild(constCb);
+                constWrap.appendChild(Object.assign(document.createElement('span'), { textContent: 'Constant (always inject)' }));
+                editPanel.appendChild(constWrap);
 
                 item.appendChild(editPanel);
 
@@ -1514,13 +3214,11 @@ Format requirement (Strictly adhere to this JSON structure):
             list.appendChild(item);
             itemEls.push(item);
 
-            // Run initial validation immediately for edit/delete so Apply is never incorrectly enabled
-            if ((c.action === 'edit' || c.action === 'delete') && itemStates[ci] === 'pending') {
+            if ((c.action === 'edit' || c.action === 'delete' || c.action === 'patch') && itemStates[ci] === 'pending') {
                 _validateBookEntry(_selectedBook).catch(() => {});
             }
         });
 
-        // Restore persisted visual states
         itemEls.forEach((el, i) => {
             if (itemStates[i] === 'applied') {
                 el.classList.add('scp-lb-item-applied');
@@ -1560,8 +3258,8 @@ Format requirement (Strictly adhere to this JSON structure):
                 await applyLBChanges(pending, card.dataset.for);
                 itemStates.forEach((s, i) => { if (s === 'pending') { itemStates[i] = 'applied'; itemEls[i].classList.add('scp-lb-item-applied'); itemEls[i].querySelectorAll('button').forEach(b => { b.disabled = true; }); } });
                 _wiCache = {};
-                persistState();
-                updateCountBadge(); updateFooterBtns(); checkAllResolved();
+                persistState(); updateCountBadge(); updateFooterBtns(); 
+                checkAllResolved();
             } catch (e) {
                 toastr.error(`Failed: ${e.message}`, EXT_DISPLAY);
                 applyAllBtn.disabled = false; applyAllBtn.textContent = 'Apply All';
@@ -1569,7 +3267,7 @@ Format requirement (Strictly adhere to this JSON structure):
         });
 
         rejectAllBtn.addEventListener('click', () => {
-            const rejectedChanges =[];
+            const rejectedChanges = [];
             itemStates.forEach((s, i) => {
                 if (s === 'pending') {
                     itemStates[i] = 'rejected';
@@ -1578,11 +3276,9 @@ Format requirement (Strictly adhere to this JSON structure):
                     rejectedChanges.push(editableChanges[i]);
                 }
             });
-            if (rejectedChanges.length > 0) {
-                logLBHistoryChanges(rejectedChanges, 'Rejected', card.dataset.for);
-            }
-            persistState();
-            updateCountBadge(); updateFooterBtns(); checkAllResolved();
+            if (rejectedChanges.length > 0) logLBHistoryChanges(rejectedChanges, 'Rejected', card.dataset.for);
+            persistState(); updateCountBadge(); updateFooterBtns(); 
+            checkAllResolved();
         });
 
         footer.appendChild(applyAllBtn); footer.appendChild(rejectAllBtn);
@@ -1596,8 +3292,6 @@ Format requirement (Strictly adhere to this JSON structure):
         applyCustomTheme(getSettings().customTheme || THEME_PRESETS.default);
         overlay.style.display = 'flex';
         const s = getSettings();
-        document.getElementById('scp-lb-auto-kw-toggle')?.classList.toggle('active', !!s.lorebookAutoKeyword);
-        document.getElementById('scp-lb-ai-toggle')?.classList.toggle('active', !!s.lorebookAIManageEnabled);
         if (document.getElementById('scp-lb-search')) document.getElementById('scp-lb-search').value = _lbSearchQuery;
         _wiCache = {};
         await buildLorebookContextBlock(s).catch(() => {});
@@ -1753,7 +3447,6 @@ Format requirement (Strictly adhere to this JSON structure):
         container.innerHTML = '';
         container.appendChild(frag);
 
-        // Update footer ctx info
         const ctxEl = document.getElementById('scp-lb-footer-ctx');
         if (ctxEl) {
             ctxEl.textContent = activeEntryUids.size
@@ -1951,25 +3644,6 @@ Format requirement (Strictly adhere to this JSON structure):
         let _diffMouseDown = null;
         diffModal?.addEventListener('mousedown', e => { _diffMouseDown = e.target; });
         diffModal?.addEventListener('click', e => { if (e.target === diffModal && _diffMouseDown === diffModal) diffModal.style.display = 'none'; });
-        document.getElementById('scp-lb-auto-kw-toggle')?.addEventListener('click', async () => {
-            const s = getSettings(); 
-            s.lorebookAutoKeyword = !s.lorebookAutoKeyword; 
-            saveSettings();
-            document.getElementById('scp-lb-auto-kw-toggle').classList.toggle('active', s.lorebookAutoKeyword);
-            updateLBFooterInfo();
-            
-            await buildLorebookContextBlock(s);
-            
-            if (_lbActiveBook) {
-                await renderEntryList(_lbActiveBook, _lbSearchQuery);
-            }
-            
-            updateMsgCount(getCurrentSession());
-        });
-        document.getElementById('scp-lb-ai-toggle')?.addEventListener('click', () => {
-            const s = getSettings(); s.lorebookAIManageEnabled = !s.lorebookAIManageEnabled; saveSettings();
-            document.getElementById('scp-lb-ai-toggle').classList.toggle('active', s.lorebookAIManageEnabled);
-        });
         document.getElementById('scp-lb-refresh')?.addEventListener('click', async () => {
             _wiCache = {};
             await refreshLorebookList();
@@ -2031,7 +3705,6 @@ Format requirement (Strictly adhere to this JSON structure):
                 saveSettings();
                 ['scp-lb-inj-default', 'scp-lb-inj-force-on', 'scp-lb-inj-force-off'].forEach(bid => document.getElementById(bid)?.classList.remove('active'));
                 document.getElementById(id)?.classList.add('active');
-                // Re-show detail to refresh hint
                 showEntryDetail(_lbEntryDetailEntry, _lbEntryDetailBook);
                 updateMsgCount(getCurrentSession());
             });
@@ -2100,8 +3773,23 @@ Format requirement (Strictly adhere to this JSON structure):
             changelogAutoShow: true,
             lastSeenVersion: '',
             starredMessages: {},
-            forceStreaming: false,
+            forceStreaming: 'auto',
             applyRegexToContext: true,
+            charEditAIEnabled: true,
+            charEditPrompt: '',
+            charEditFields: {
+                description: true,
+                personality: true,
+                scenario: true,
+                first_mes: true,
+                mes_example: true,
+                alternate_greetings: false,
+                authors_note: true,
+            },
+            completionSound: 'none',
+            completionSoundVolume: 80,
+            wobbleWindow: true,
+            altGreetingIndices: [],
         };
         for (const [k, v] of Object.entries(defaults)) {
             if (s[k] === undefined) s[k] = v;
@@ -2113,7 +3801,38 @@ Format requirement (Strictly adhere to this JSON structure):
         SillyTavern.getContext().saveSettingsDebounced();
     }
 
-    // ─── Statistics Engine ───────────────────────────────────────────────────────
+    // ─── Dirty State Tracking (item 1) ──────────────────────────────────────────
+
+    let _configDirty = false;
+    let _themeDirty = false;
+
+    function _markDirty(type) {
+        if (type === 'config') _configDirty = isConfigProfileDirty();
+        if (type === 'theme') _themeDirty = isThemeDirty();
+        _updateDirtyDots();
+    }
+
+    function _clearDirty(type) {
+        if (type === 'config') _configDirty = false;
+        if (type === 'theme') _themeDirty = false;
+        _updateDirtyDots();
+    }
+
+    function _updateDirtyDots() {
+        const configDot = '<span class="scp-save-dirty-dot"></span>';
+        ['scp-profile-save', 'scp-sp-profile-save'].forEach(id => {
+            const btn = document.getElementById(id); if (!btn) return;
+            btn.querySelectorAll('.scp-save-dirty-dot').forEach(d => d.remove());
+            if (_configDirty) btn.insertAdjacentHTML('beforeend', configDot);
+        });
+        ['scp-theme-save'].forEach(id => {
+            const btn = document.getElementById(id); if (!btn) return;
+            btn.querySelectorAll('.scp-save-dirty-dot').forEach(d => d.remove());
+            if (_themeDirty) btn.insertAdjacentHTML('beforeend', configDot);
+        });
+    }
+
+
 
     // Metric index map
     const _SM = { msg:0, regen:1, sess:2, tokIn:3, tokOut:4, qp:5, lb:6, edit:7 };
@@ -2363,8 +4082,9 @@ Format requirement (Strictly adhere to this JSON structure):
         const py = v => PT + cH - (v / maxVal) * cH;
 
         const points = buckets.map((_, i) => [px(i), py(vals[i])]);
-        const linePath = points.map((p, i) => `${i===0?'M':'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
-        const areaPath = linePath + ` L${points[points.length-1][0].toFixed(1)},${(PT+cH).toFixed(1)} L${PL},${(PT+cH).toFixed(1)} Z`;
+
+        const buildLinePath = (pts) => pts.map((p, i) => `${i===0?'M':'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(' ');
+        const buildAreaPath = (pts) => buildLinePath(pts) + ` L${pts[pts.length-1][0].toFixed(2)},${(PT+cH).toFixed(2)} L${PL},${(PT+cH).toFixed(2)} Z`;
 
         const yTicks = [0, 0.5, 1].map(f => ({ y: py(maxVal*f), lbl: _fmtNum(Math.round(maxVal*f)) }));
         const xStep = Math.max(1, Math.ceil(buckets.length / 9));
@@ -2375,8 +4095,8 @@ Format requirement (Strictly adhere to this JSON structure):
             return `<text x="${px(i).toFixed(1)}" y="${H-3}" text-anchor="middle" class="scp-stats-axis-label">${escHtml(b.label)}</text>`;
         }).join('');
 
-        const dots = points.map((p, i) => vals[i] > 0
-            ? `<circle class="scp-stats-dot" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${meta.color}" data-i="${i}"/>`
+        const dotsHTML = points.map((p, i) => vals[i] > 0
+            ? `<circle class="scp-stats-dot" cx="${p[0].toFixed(2)}" cy="${p[1].toFixed(2)}" r="3" fill="${meta.color}" data-i="${i}"/>`
             : '').join('');
 
         const hoverCols = buckets.map((b, i) => {
@@ -2385,7 +4105,105 @@ Format requirement (Strictly adhere to this JSON structure):
             return `<rect class="scp-stats-hcol" x="${x.toFixed(1)}" y="${PT}" width="${colW.toFixed(1)}" height="${cH}" fill="transparent" data-i="${i}" data-v="${vals[i]}" data-l="${escHtml(b.label)}"/>`;
         }).join('');
 
-        container.innerHTML = `
+        const existing = container.querySelector('.scp-stats-chart-inner');
+        const prevLine = existing?.querySelector('.scp-stats-line-path');
+        const prevArea = existing?.querySelector('.scp-stats-area-path');
+
+        const linePath = buildLinePath(points);
+        const areaPath = buildAreaPath(points);
+
+        if (prevLine && prevArea) {
+            const svgEl2 = existing.querySelector('.scp-stats-svg');
+            const defs = svgEl2?.querySelector('defs');
+            if (defs) {
+                defs.innerHTML = `<linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="${meta.color}" stop-opacity="0.22"/>
+                    <stop offset="100%" stop-color="${meta.color}" stop-opacity="0.01"/>
+                </linearGradient>`;
+                prevArea.setAttribute('fill', `url(#${gradId})`);
+            }
+            prevLine.style.stroke = meta.color;
+
+            const parsePoints = (pathStr) => {
+                const matches = pathStr.match(/[ML]([\d.]+),([\d.]+)/g) || [];
+                return matches.map(m => { const [x, y] = m.slice(1).split(',').map(Number); return [x, y]; });
+            };
+            const oldPts = parsePoints(prevLine.getAttribute('d') || '');
+            const newPts = points;
+
+            const oldDotEls = existing.querySelectorAll('.scp-stats-dot');
+            oldDotEls.forEach(d => d.remove());
+
+            const dotGroup = existing.querySelector('.scp-stats-xlabels');
+            points.forEach((p, i) => {
+                if (vals[i] <= 0) return;
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('class', 'scp-stats-dot');
+                circle.setAttribute('cx', p[0].toFixed(2));
+                
+                const startY = oldPts[i] ? oldPts[i][1] : (PT + cH);
+                circle.setAttribute('cy', startY.toString()); 
+                
+                circle.setAttribute('r', '3');
+                circle.setAttribute('fill', meta.color);
+                circle.setAttribute('data-i', i);
+                circle.style.opacity = oldPts[i] ? '1' : '0';
+                
+                if (dotGroup) svgEl2.insertBefore(circle, dotGroup);
+                else svgEl2.appendChild(circle);
+            });
+
+            const DURATION = 480;
+            const start = performance.now();
+
+            const lerp = (a, b, t) => a + (b - a) * t;
+            const ease = t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const newDotEls = existing.querySelectorAll('.scp-stats-dot');
+                    newDotEls.forEach((d) => {
+                        const di = parseInt(d.getAttribute('data-i') || '0');
+                        d.style.transition = `cy 0.4s ease-out, opacity 0.3s ease-out`;
+                        d.setAttribute('cy', newPts[di][1].toFixed(2));
+                        d.style.opacity = '1';
+                    });
+                });
+            });
+
+            const animFrame = (now) => {
+                const t = ease(Math.min(1, (now - start) / DURATION));
+                const interpolated = newPts.map((np, i) => {
+                    const op = oldPts[i] || [np[0], PT + cH];
+                    return [lerp(op[0], np[0], t), lerp(op[1], np[1], t)];
+                });
+                prevLine.setAttribute('d', buildLinePath(interpolated));
+                prevArea.setAttribute('d', buildAreaPath(interpolated));
+                if (t < 1) requestAnimationFrame(animFrame);
+            };
+            requestAnimationFrame(animFrame);
+
+            const labelsEl = existing.querySelector('.scp-stats-xlabels');
+            if (labelsEl) labelsEl.innerHTML = xLabels;
+            
+            const existingSvg = existing.querySelector('.scp-stats-svg');
+            if (existingSvg) {
+                existingSvg.querySelectorAll('line[x1]').forEach(l => l.remove());
+                existingSvg.querySelectorAll('text.scp-stats-axis-label').forEach(t => t.remove());
+                yTicks.forEach(({ y, lbl }) => {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', PL); line.setAttribute('y1', y.toFixed(1));
+                    line.setAttribute('x2', W - PR); line.setAttribute('y2', y.toFixed(1));
+                    line.setAttribute('stroke', 'rgba(255,255,255,0.06)'); line.setAttribute('stroke-width', '1');
+                    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    text.setAttribute('x', PL - 4); text.setAttribute('y', (y + 4).toFixed(1));
+                    text.setAttribute('text-anchor', 'end'); text.setAttribute('class', 'scp-stats-axis-label');
+                    text.textContent = lbl;
+                    existingSvg.insertBefore(line, existingSvg.firstChild);
+                    existingSvg.insertBefore(text, existingSvg.firstChild);
+                });
+            }
+        } else {
+            container.innerHTML = `
 <div class="scp-stats-chart-inner">
   <svg class="scp-stats-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
     <defs>
@@ -2395,18 +4213,41 @@ Format requirement (Strictly adhere to this JSON structure):
       </linearGradient>
     </defs>
     ${yTicks.map(t => `<line x1="${PL}" y1="${t.y.toFixed(1)}" x2="${W-PR}" y2="${t.y.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/><text x="${PL-4}" y="${(t.y+4).toFixed(1)}" text-anchor="end" class="scp-stats-axis-label">${t.lbl}</text>`).join('')}
-    <path d="${areaPath}" fill="url(#${gradId})"/>
-    <path d="${linePath}" fill="none" stroke="${meta.color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-    ${dots}
-    ${xLabels}
+    <path class="scp-stats-area-path" d="${areaPath}" fill="url(#${gradId})"/>
+    <path class="scp-stats-line-path" d="${linePath}" fill="none" stroke="${meta.color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="transition:stroke 0.35s ease"/>
+    ${dotsHTML}
+    <g class="scp-stats-xlabels">${xLabels}</g>
     ${hoverCols}
   </svg>
   <div class="scp-stats-tooltip" id="scp-stats-tt" style="display:none"></div>
 </div>`;
 
+            const svgPaths = container.querySelectorAll('.scp-stats-line-path, .scp-stats-area-path');
+            svgPaths.forEach(p => { p.style.opacity = '0'; p.style.transition = 'opacity 0.4s ease'; });
+            requestAnimationFrame(() => svgPaths.forEach(p => { p.style.opacity = '1'; }));
+
+            const dots = container.querySelectorAll('.scp-stats-dot');
+            dots.forEach((d) => {
+                const finalCy = parseFloat(d.getAttribute('cy'));
+                d.setAttribute('cy', (PT + cH).toString());
+                d.style.opacity = '0';
+                setTimeout(() => {
+                    d.style.transition = `cy 0.4s ease-out, opacity 0.3s ease-out`;
+                    d.setAttribute('cy', finalCy.toFixed(2));
+                    d.style.opacity = '1';
+                }, 20);
+            });
+        }
+
         const svgEl = container.querySelector('.scp-stats-svg');
-        const tt = container.querySelector('#scp-stats-tt');
+        const tt = container.querySelector('#scp-stats-tt') || container.querySelector('.scp-stats-tooltip');
         if (!svgEl || !tt) return;
+
+        const oldHoverCols = svgEl.querySelectorAll('.scp-stats-hcol');
+        oldHoverCols.forEach(r => r.remove());
+        const hoverFrag = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        hoverFrag.innerHTML = hoverCols;
+        svgEl.appendChild(hoverFrag);
 
         let _lastI = -1;
         svgEl.addEventListener('pointermove', e => {
@@ -2448,9 +4289,8 @@ Format requirement (Strictly adhere to this JSON structure):
     const SESSION_OVERRIDE_KEYS = [
         'contextDepth','localHistoryLimit','maxTokens',
         'connectionSource','connectionProfileId','systemPrompt',
-        'includeSystemPrompt','includeAuthorsNote',
-        'includeCharacterCard','includeUserPersonality','reasoningTrimStrings',
-        'applyRegexToContext',
+        'includeSystemPrompt','includeUserPersonality','reasoningTrimStrings',
+        'applyRegexToContext','forceStreaming',
     ];
 
     function getSessionOverrides() {
@@ -2468,7 +4308,7 @@ Format requirement (Strictly adhere to this JSON structure):
             if (!sess.overrides) sess.overrides = {};
             if (value === undefined || value === null) delete sess.overrides[key];
             else sess.overrides[key] = value;
-            saveSettings();
+            saveSessionsToMetadata();
             updateSessionOverrideIndicator();
         } catch(_) {}
     }
@@ -2478,7 +4318,7 @@ Format requirement (Strictly adhere to this JSON structure):
             const sess = getCurrentSession();
             if (!sess) return;
             sess.overrides = {};
-            saveSettings();
+            saveSessionsToMetadata();
             updateSessionOverrideIndicator();
         } catch(_) {}
     }
@@ -2503,7 +4343,6 @@ Format requirement (Strictly adhere to this JSON structure):
             const count = Object.keys(ov).length;
             info.textContent = count ? `${count} session override${count !== 1 ? 's' : ''} active` : '';
         }
-        // Dim the main depth slider when session override is active for contextDepth
         const ov = getSessionOverrides();
         const depthSlider = document.getElementById('scp-depth-slider');
         const depthVal = document.getElementById('scp-depth-val');
@@ -2524,7 +4363,7 @@ Format requirement (Strictly adhere to this JSON structure):
         });
     }
 
-    // ─── Custom Dialog (replaces browser prompt/confirm/alert) ──────────────────
+    // ─── Custom Dialog ───────────────────────────────────────────────────────────
 
     function escHtml(str) {
         return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -2568,7 +4407,6 @@ Format requirement (Strictly adhere to this JSON structure):
         const hexVal = parsed ? _rgbToHex(parsed.r, parsed.g, parsed.b) : '#7c6dfa';
         const alphaVal = parsed ? Math.round(parsed.a * 100) : 100;
 
-        // Temporarily hide settings overlay so user can see the copilot window
         const settingsOverlay = anchorEl.closest('#scp-settings-overlay');
         if (settingsOverlay) {
             settingsOverlay.style.opacity = '0';
@@ -2761,99 +4599,150 @@ Format requirement (Strictly adhere to this JSON structure):
 
     function getBindingKey() {
         const ctx = SillyTavern.getContext();
-        const charId = String(ctx.characterId ?? 'global');
+        let charId = 'global';
+        if (ctx.characterId !== undefined && ctx.characterId !== null) {
+            charId = String(ctx.characterId);
+        } else if (typeof window.this_chid !== 'undefined' && window.this_chid !== null) {
+            charId = String(window.this_chid);
+        }
+
         let chatId = 'default';
         try {
-            if (typeof ctx.getCurrentChatId === 'function') {
+            if (typeof window.chat_file_name === 'string' && window.chat_file_name) {
+                chatId = String(window.chat_file_name);
+            } else if (typeof ctx.getCurrentChatId === 'function') {
                 const r = ctx.getCurrentChatId(); if (r) chatId = String(r);
-            } else if (ctx.chatId) { chatId = String(ctx.chatId);
-            } else if (ctx.chat?.length) {
-                const first = ctx.chat[0];
-                chatId = first.send_date ? String(first.send_date) : `len_${ctx.chat.length}`;
+            }
+            
+            if (chatId === 'default' || !chatId) {
+                if (ctx.chatId) chatId = String(ctx.chatId);
+                else if (typeof window.chat_id !== 'undefined' && window.chat_id !== null) chatId = String(window.chat_id);
             }
         } catch (_) {}
+        
         return { charId, chatId };
     }
 
-    function getChatBucket(charId, chatId) {
-        const s = getSettings();
-        if (!s.sessions[charId]) s.sessions[charId] = {};
-        if (!s.sessions[charId][chatId]) s.sessions[charId][chatId] = { activeSessionId: null, sessions: [] };
-        return s.sessions[charId][chatId];
+    function saveSessionsToMetadata() {
+        const ctx = SillyTavern.getContext();
+        if (typeof ctx.saveMetadata === 'function') ctx.saveMetadata();
+    }
+
+    function getChatBucket() {
+        const ctx = SillyTavern.getContext();
+        if (!ctx.chatMetadata) ctx.chatMetadata = {};
+        
+        if (!ctx.chatMetadata.st_copilot) {
+            ctx.chatMetadata.st_copilot = { activeSessionId: null, sessions: [] };
+            
+            const { charId, chatId } = getBindingKey();
+            const s = getSettings();
+            
+            if (s.sessions && s.sessions[charId]) {
+                if (s.sessions[charId][chatId] && s.sessions[charId][chatId].sessions?.length > 0) {
+                    ctx.chatMetadata.st_copilot.sessions = [...s.sessions[charId][chatId].sessions];
+                    ctx.chatMetadata.st_copilot.activeSessionId = s.sessions[charId][chatId].activeSessionId;
+                    delete s.sessions[charId][chatId];
+                    saveSettings();
+                } 
+                else if (s.sessions[charId]['unified'] && s.sessions[charId]['unified'].sessions?.length > 0) {
+                    ctx.chatMetadata.st_copilot.sessions = [...s.sessions[charId]['unified'].sessions];
+                    ctx.chatMetadata.st_copilot.activeSessionId = s.sessions[charId]['unified'].activeSessionId;
+                    delete s.sessions[charId]['unified'];
+                    saveSettings();
+                }
+            }
+        }
+        return ctx.chatMetadata.st_copilot;
     }
 
     function genId(prefix) { return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`; }
 
-    function createSession(charId, chatId, name, isTemporary = false) {
-        const bucket = getChatBucket(charId, chatId);
+    function createSession(name, isTemporary = false, recordStats = true) {
+        const bucket = getChatBucket();
         const id = genId('sess');
         const sess = { id, name: name || `Session ${bucket.sessions.length + 1}`, created: Date.now(), messages: [], isTemporary };
         
-        const prev = bucket.sessions.find(s => s.id === bucket.activeSessionId);
-        if (prev && prev.isTemporary) {
-            bucket.sessions = bucket.sessions.filter(s => s.id !== prev.id);
+        if (recordStats) {
+            const prev = bucket.sessions.find(s => s.id === bucket.activeSessionId);
+            if (prev && prev.isTemporary) {
+                bucket.sessions = bucket.sessions.filter(s => s.id !== prev.id);
+            }
         }
 
         bucket.sessions.push(sess);
         bucket.activeSessionId = id;
-        recordStat(_SM.sess);
-        saveSettings();
+        if (recordStats) recordStat(_SM.sess);
+        saveSessionsToMetadata();
         return sess;
     }
 
-    function getActiveSession(charId, chatId) {
-        const bucket = getChatBucket(charId, chatId);
-        if (!bucket.sessions.length || !bucket.activeSessionId) return createSession(charId, chatId);
-        return bucket.sessions.find(s => s.id === bucket.activeSessionId) || createSession(charId, chatId);
+    function getActiveSession() {
+        const bucket = getChatBucket();
+        if (!bucket.sessions.length || !bucket.activeSessionId) return createSession(undefined, false, false);
+        return bucket.sessions.find(s => s.id === bucket.activeSessionId) || createSession(undefined, false, false);
     }
 
-    function setActiveSession(charId, chatId, sessionId) {
-        const bucket = getChatBucket(charId, chatId);
+    function setActiveSession(sessionId) {
+        const bucket = getChatBucket();
         if (!bucket.sessions.find(s => s.id === sessionId)) return;
         const prev = bucket.sessions.find(s => s.id === bucket.activeSessionId);
         if (prev && prev.isTemporary && prev.id !== sessionId) {
             bucket.sessions = bucket.sessions.filter(s => s.id !== prev.id);
         }
         bucket.activeSessionId = sessionId;
-        saveSettings();
+        saveSessionsToMetadata();
     }
 
-    function deleteCurrentSession(charId, chatId) {
-        const bucket = getChatBucket(charId, chatId);
-        if (!bucket.sessions.length) return createSession(charId, chatId);
+    function deleteCurrentSession() {
+        const bucket = getChatBucket();
+        if (!bucket.sessions.length) return createSession();
         bucket.sessions = bucket.sessions.filter(s => s.id !== bucket.activeSessionId);
         bucket.activeSessionId = bucket.sessions.length ? bucket.sessions[bucket.sessions.length - 1].id : null;
-        saveSettings();
-        return getActiveSession(charId, chatId);
+        saveSessionsToMetadata();
+        return getActiveSession();
+    }
+
+    function getCurrentSession() {
+        return getActiveSession();
     }
 
     function addMessage(session, role, content, extra = {}) {
         const msg = { id: genId('msg'), role, content, timestamp: Date.now(), ...extra };
-        session.messages.push(msg); saveSettings(); return msg;
+        session.messages.push(msg); 
+        if (session.messages.length > 400) session.messages = session.messages.slice(-400); // Ограничение раздувания
+        saveSessionsToMetadata(); 
+        return msg;
     }
+
     function insertMessageAfter(session, afterMsgId, role, content, extra = {}) {
         const msg = { id: genId('msg'), role, content, timestamp: Date.now(), ...extra };
         const idx = afterMsgId ? session.messages.findIndex(m => m.id === afterMsgId) : -1;
         if (idx !== -1) session.messages.splice(idx + 1, 0, msg);
         else session.messages.push(msg);
-        saveSettings();
+        if (session.messages.length > 400) session.messages = session.messages.slice(-400);
+        saveSessionsToMetadata();
         return msg;
     }
+
     function updateMessage(session, msgId, newContent) {
         const msg = session.messages.find(m => m.id === msgId);
-        if (msg) { msg.content = newContent; saveSettings(); }
+        if (msg) { msg.content = newContent; saveSessionsToMetadata(); }
     }
+
     function truncateAfter(session, msgId) {
         const idx = session.messages.findIndex(m => m.id === msgId);
-        if (idx !== -1) { session.messages.splice(idx + 1); saveSettings(); }
+        if (idx !== -1) { session.messages.splice(idx + 1); saveSessionsToMetadata(); }
     }
+
     function deleteMsg(session, msgId) {
         const idx = session.messages.findIndex(m => m.id === msgId);
-        if (idx !== -1) { session.messages.splice(idx, 1); saveSettings(); }
+        if (idx !== -1) { session.messages.splice(idx, 1); saveSessionsToMetadata(); }
     }
+
     function truncateFrom(session, msgId) {
         const idx = session.messages.findIndex(m => m.id === msgId);
-        if (idx !== -1) { session.messages.splice(idx); saveSettings(); }
+        if (idx !== -1) { session.messages.splice(idx); saveSessionsToMetadata(); }
     }
 
     // ─── ST Context Helpers ─────────────────────────────────────────────────────
@@ -2988,18 +4877,15 @@ Format requirement (Strictly adhere to this JSON structure):
         if (!text) return text;
         try {
             const ctx = SillyTavern.getContext();
-            // Primary: use ST's own substituteParams (available in context on newer ST)
             if (typeof ctx.substituteParams === 'function') {
                 return ctx.substituteParams(text);
             }
-            // Fallback: window-level export (older ST versions)
             if (typeof window.substituteParams === 'function') {
                 return window.substituteParams(text, ctx.name1, ctx.name2);
             }
         } catch (e) {
             console.warn(`[${EXT_DISPLAY}] Macro expansion error:`, e);
         }
-        // Manual fallback for the most common macros
         try {
             const ctx = SillyTavern.getContext();
             const char = ctx.characters?.[ctx.characterId];
@@ -3082,6 +4968,7 @@ Format requirement (Strictly adhere to this JSON structure):
     async function buildSystemContent(settings) {
         const parts = [settings.systemPrompt || DEFAULT_SYSTEM_PROMPT];
         const charInfo = getCharInfo();
+        const ctx = SillyTavern.getContext();
 
         if (settings.includeSystemPrompt) {
             const sp = getSystemPromptText();
@@ -3091,32 +4978,50 @@ Format requirement (Strictly adhere to this JSON structure):
         const lbBlock = await buildLorebookContextBlock(settings);
         if (lbBlock) parts.push(lbBlock);
 
-        if (settings.includeCharacterCard && charInfo) {
-            let block = `Name: ${charInfo.name}`;
-            if (charInfo.description) block += `\nDescription:\n${charInfo.description}`;
-            if (charInfo.personality) block += `\nPersonality:\n${charInfo.personality}`;
-            if (charInfo.scenario) block += `\nScenario:\n${charInfo.scenario}`;
-            
-            if (charInfo.character_note) block += `\nCharacter's Note:\n${charInfo.character_note}`;
-            
-            if (charInfo.mes_example) block += `\nExamples of dialogue:\n${charInfo.mes_example}`;
-            parts.push(`\n\n<character_information>\n${block}\n</character_information>`);
+        {
+            const editXml = buildCharacterContextBlock(settings);
+            let inner = `Name: ${charInfo ? charInfo.name : (ctx.name2 || 'Character')}\n`;
+            if (editXml) inner += '\n' + editXml;
+            parts.push(`\n\n<character_information>\n${inner}\n</character_information>`);
         }
 
-        if (settings.includeUserPersonality) {
-            const p = getUserPersona();
-            if (p) parts.push(`\n\n<{{user}}_persona>\n${p}\n</{{user}}_persona>`);
-        }
-
-        if (settings.includeAuthorsNote) {
-            const an = getAuthorsNote();
-            if (an) parts.push(`\n\n<author_notes>\n${an}\n</author_notes>`);
+        {
+            const userName = ctx.name1 || 'User';
+            const personaContent = settings.includeUserPersonality ? getUserPersona() : '';
+            const inner = personaContent ? `Name: ${userName}\n${personaContent}` : `Name: ${userName}`;
+            parts.push(`\n\n<${userName}_persona>\n${inner}\n</${userName}_persona>`);
         }
 
         const aiInstructions = buildLBAIInstructions(settings);
         if (aiInstructions) parts.push(aiInstructions);
 
+        const charEditDirective = buildCharEditAIInstructions(settings);
+        if (charEditDirective) parts.push(charEditDirective);
+
         return parts.join('\n');
+    }
+
+    function _buildAiContextForHistoryMsg(msg) {
+        try {
+            const lines = msg.appliedLines || [];
+            const entries = lines.map(line => {
+                const plain = line.replace(/\*\*/g, '').replace(/`/g, '');
+                const statusMatch = plain.match(/^[✓✕·]\s+(ACCEPTED|REJECTED|DISMISSED[^:]*)/);
+                const status = statusMatch ? statusMatch[1] : 'UNKNOWN';
+                const restMatch = plain.match(/(?:ACCEPTED|REJECTED|DISMISSED[^:]*): (.+)/);
+                const detail = restMatch ? restMatch[1] : plain;
+                return { status, detail };
+            });
+            const obj = {
+                type: 'system_notification',
+                category: msg.isCharEditHistory ? 'character_card_changes' : 'lorebook_changes',
+                entries,
+            };
+            const jsonStr = JSON.stringify(obj);
+            return `${jsonStr}\n\n[System Note: Your generated code has been deleted to save tokens. This message indicates the user's actions and decisions regarding your proposed changes.]`;
+        } catch (_) {
+            return msg.content;
+        }
     }
 
     async function assembleMessages(session, settings, pendingUserText) {
@@ -3142,7 +5047,13 @@ Format requirement (Strictly adhere to this JSON structure):
             }
         }
         const limit = Math.max(1, parseInt(settings.localHistoryLimit) || 50);
-        for (const m of session.messages.slice(-limit)) messages.push({ role: m.role, content: m.content });
+        for (const m of session.messages.slice(-limit)) {
+            let content = m.content;
+            if (m.isLBHistory || m.isCharEditHistory) {
+                content = _buildAiContextForHistoryMsg(m);
+            }
+            messages.push({ role: m.role, content });
+        }
         if (pendingUserText) messages.push({ role: 'user', content: pendingUserText });
         return messages;
     }
@@ -3204,7 +5115,7 @@ Format requirement (Strictly adhere to this JSON structure):
         minus: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
         x: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
         plus: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-        bot: `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><circle cx="8.5" cy="16" r="1" fill="currentColor"/><circle cx="15.5" cy="16" r="1" fill="currentColor"/></svg>`,
+        bot: `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7" /><ellipse cx="12" cy="12" rx="11" ry="3" transform="rotate(-25 12 12)" /><circle cx="21.5" cy="7.5" r="1.5" fill="currentColor" stroke="none" /></svg>`,
         user: `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
         stop: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>`,
         book: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
@@ -3256,7 +5167,6 @@ Format requirement (Strictly adhere to this JSON structure):
             bar.appendChild(btn);
         }
 
-        // Use CSS class for smooth animated show/hide
         if (visible) {
             bar.classList.add('scp-qp-bar--open');
         } else {
@@ -3425,7 +5335,7 @@ Format requirement (Strictly adhere to this JSON structure):
         if (!s.promptPresets) s.promptPresets = {};
 
         let _activeName = '';
-        let _activeSource = ''; // 'profile' | 'custom'
+        let _activeSource = '';
 
         const bar = document.createElement('div');
         bar.className = 'scp-preset-mgr-bar';
@@ -3492,12 +5402,10 @@ Format requirement (Strictly adhere to this JSON structure):
 
         const saveBtn = mkBtn('floppy-disk', 'Save preset', '', async () => {
             if (_activeName && _activeSource === 'custom') {
-                // Overwrite existing custom preset in place
                 s.promptPresets[_activeName] = getTextFn();
                 saveSettings();
                 toastr.success(`Saved preset "${escHtml(_activeName)}"`, EXT_DISPLAY);
             } else {
-                // Profile presets or no selection: create new
                 const name = await showCustomDialog({ type: 'prompt', title: 'Save Prompt Preset', message: 'Preset name:', placeholder: 'My Preset' });
                 if (!name?.trim()) return;
                 s.promptPresets[name.trim()] = getTextFn();
@@ -3782,7 +5690,7 @@ Format requirement (Strictly adhere to this JSON structure):
         try {
             const sess = getCurrentSession();
             sess.pickedChatIndices = [...indices].sort((a, b) => a - b);
-            saveSettings();
+            saveSessionsToMetadata();
             updatePickBtnState();
             updateMsgCount(sess);
         } catch(_) {}
@@ -3980,7 +5888,6 @@ Format requirement (Strictly adhere to this JSON structure):
         iconEl = document.getElementById(ICON_ID);
         modalEl = document.getElementById(MODAL_ID);
 
-        // Ensure dock icon is a direct child of body so display:none on windowEl doesn't cascade to it
         if (iconEl && iconEl.parentElement !== document.body) {
             document.body.appendChild(iconEl);
         }
@@ -4306,10 +6213,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         let displayText = msg.content;
         if (!isUser) {
             if (msg.reasoning !== undefined) {
-                // New path: reasoning stored separately
                 reasoning = msg.reasoning || null;
             } else {
-                // Backward compat: parse <think> from old saved messages
                 const d = getDisplayContent(msg.content, getSettings());
                 reasoning = d.reasoning;
                 displayText = d.content;
@@ -4363,7 +6268,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             starBtn.title = nowStarred ? 'Unstar' : 'Star message';
             starBtn.classList.toggle('starred', nowStarred);
             wrap.classList.toggle('scp-msg-starred', nowStarred);
-            // Refresh favorites panel if open
             if (document.getElementById('scp-fav-panel')?.style.display !== 'none') renderFavoritesPanel();
         });
         actions.appendChild(starBtn);
@@ -4388,7 +6292,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             c.innerHTML = `
                 <div class="scp-empty-state">
                     <div class="scp-empty-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><circle cx="8.5" cy="16" r="1" fill="currentColor"/><circle cx="15.5" cy="16" r="1" fill="currentColor"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7" /><ellipse cx="12" cy="12" rx="11" ry="3" transform="rotate(-25 12 12)" /><circle cx="21.5" cy="7.5" r="1.5" fill="currentColor" stroke="none" /></svg>
                     </div>
                     <div class="scp-empty-title">New Session</div>
                     <div class="scp-empty-sub">Ask anything about your roleplay — continuity checks, character analysis, writing feedback, worldbuilding, and more.</div>
@@ -4403,15 +6307,24 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 const el = createMsgEl(msg, handleCopy, handleEdit, handleDelete, handleMessageRegen);
                 c.appendChild(el);
                 if (msg.role === 'assistant') {
-                    const changes = parseLBChangesFromText(msg.content);
-                    if (changes?.length) {
+                    const lbChanges = parseLBChangesFromText(msg.content);
+                    const charChanges = parseCharChangesFromText(msg.content);
+                    const charCreation = parseCharCreationFromText(msg.content);
+                    const needsStrip = lbChanges?.length || charChanges?.length || charCreation;
+                    if (needsStrip) {
                         const contentEl = el.querySelector('.scp-msg-content');
                         if (contentEl) {
-                            const { content } = getDisplayContent(stripLBChangesBlock(msg.content), getSettings());
+                            let stripped = msg.content;
+                            if (lbChanges?.length) stripped = stripLBChangesBlock(stripped);
+                            if (charChanges?.length) stripped = stripCharChangesBlock(stripped);
+                            if (charCreation) stripped = stripCharCreationBlock(stripped);
+                            const { content } = getDisplayContent(stripped, getSettings());
                             contentEl.innerHTML = renderMarkdown(content);
                             postProcessHTMLBlocks(contentEl);
                         }
-                        renderProposalCard(changes, el);
+                        if (lbChanges?.length) renderProposalCard(lbChanges, el);
+                        if (charChanges?.length) renderCharProposalCard(charChanges, el);
+                        if (charCreation) renderCharCreationCard(charCreation, el);
                     }
                 }
             }
@@ -4425,9 +6338,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (!c) return;
         c.querySelector('.scp-empty-state')?.remove();
 
-        // Remove stale proposal card if this assistant message is being replaced
         if (msg.role === 'assistant') {
             document.querySelectorAll('.scp-lb-proposal-card').forEach(card => {
+                const prevSib = card.previousElementSibling;
+                if (!prevSib || !prevSib.dataset.id) card.remove();
+            });
+            document.querySelectorAll('.scp-char-proposal-card').forEach(card => {
+                const prevSib = card.previousElementSibling;
+                if (!prevSib || !prevSib.dataset.id) card.remove();
+            });
+            document.querySelectorAll('.scp-char-creation-card').forEach(card => {
                 const prevSib = card.previousElementSibling;
                 if (!prevSib || !prevSib.dataset.id) card.remove();
             });
@@ -4435,19 +6355,29 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         const el = createMsgEl(msg, handleCopy, handleEdit, handleDelete, handleMessageRegen);
         c.appendChild(el);
+        clearTimeout(_tokenCalcTid);
         updateMsgCount(getCurrentSession());
         scrollToBottom();
 
         if (msg.role === 'assistant') {
-            const changes = parseLBChangesFromText(msg.content);
-            if (changes?.length) {
+            const lbChanges = parseLBChangesFromText(msg.content);
+            const charChanges = parseCharChangesFromText(msg.content);
+            const charCreation = parseCharCreationFromText(msg.content);
+            const needsStrip = lbChanges?.length || charChanges?.length || charCreation;
+            if (needsStrip) {
                 const contentEl = el.querySelector('.scp-msg-content');
                 if (contentEl) {
-                    const { content } = getDisplayContent(stripLBChangesBlock(msg.content), getSettings());
+                    let stripped = msg.content;
+                    if (lbChanges?.length) stripped = stripLBChangesBlock(stripped);
+                    if (charChanges?.length) stripped = stripCharChangesBlock(stripped);
+                    if (charCreation) stripped = stripCharCreationBlock(stripped);
+                    const { content } = getDisplayContent(stripped, getSettings());
                     contentEl.innerHTML = renderMarkdown(content);
                     postProcessHTMLBlocks(contentEl);
                 }
-                renderProposalCard(changes, el);
+                if (lbChanges?.length) renderProposalCard(lbChanges, el);
+                if (charChanges?.length) renderCharProposalCard(charChanges, el);
+                if (charCreation) renderCharCreationCard(charCreation, el);
             }
         }
 
@@ -4464,6 +6394,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const el = document.querySelector(`.scp-msg[data-id="${msgId}"]`);
         if (!el) return;
         document.querySelector(`.scp-lb-proposal-card[data-for="${msgId}"]`)?.remove();
+        document.querySelector(`.scp-char-proposal-card[data-for="${msgId}"]`)?.remove();
+        document.querySelector(`.scp-char-creation-card[data-for="${msgId}"]`)?.remove();
         el.remove();
     }
 
@@ -4474,10 +6406,18 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             if (el.dataset.id === msgId) found = true;
             if (found) {
                 document.querySelector(`.scp-lb-proposal-card[data-for="${el.dataset.id}"]`)?.remove();
+                document.querySelector(`.scp-char-proposal-card[data-for="${el.dataset.id}"]`)?.remove();
+                document.querySelector(`.scp-char-creation-card[data-for="${el.dataset.id}"]`)?.remove();
                 el.remove();
             }
         }
         c.querySelectorAll('.scp-lb-proposal-card').forEach(card => {
+            if (!card.previousElementSibling) card.remove();
+        });
+        c.querySelectorAll('.scp-char-proposal-card').forEach(card => {
+            if (!card.previousElementSibling) card.remove();
+        });
+        c.querySelectorAll('.scp-char-creation-card').forEach(card => {
             if (!card.previousElementSibling) card.remove();
         });
     }
@@ -4488,6 +6428,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         for (const el of [...c.querySelectorAll('.scp-msg')]) {
             if (found) {
                 document.querySelector(`.scp-lb-proposal-card[data-for="${el.dataset.id}"]`)?.remove();
+                document.querySelector(`.scp-char-proposal-card[data-for="${el.dataset.id}"]`)?.remove();
+                document.querySelector(`.scp-char-creation-card[data-for="${el.dataset.id}"]`)?.remove();
                 el.remove();
             }
             if (el.dataset.id === msgId) found = true;
@@ -4611,22 +6553,32 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             nc.className = 'scp-msg-content';
             let displayString = textToRender;
 
-            if (msg.role === 'assistant') {
-                const changes = parseLBChangesFromText(textToRender);
-                if (changes?.length) {
-                    displayString = stripLBChangesBlock(textToRender);
-                    renderProposalCard(changes, wrapEl);
-                } else {
-                    document.querySelector(`.scp-lb-proposal-card[data-for="${msg.id}"]`)?.remove();
-                }
-                const d = getDisplayContent(displayString, getSettings());
-                displayString = d.content;
-            }
+            const lbChanges = parseLBChangesFromText(textToRender);
+            const charChanges = parseCharChangesFromText(textToRender);
+            const charCreation = parseCharCreationFromText(textToRender);
+            let stripped = textToRender;
+            
+            if (lbChanges?.length) { 
+                stripped = stripLBChangesBlock(stripped); 
+                renderProposalCard(lbChanges, wrapEl); 
+            } else document.querySelector(`.scp-lb-proposal-card[data-for="${msg.id}"]`)?.remove();
+            
+            if (charChanges?.length) { 
+                stripped = stripCharChangesBlock(stripped); 
+                renderCharProposalCard(charChanges, wrapEl); 
+            } else document.querySelector(`.scp-char-proposal-card[data-for="${msg.id}"]`)?.remove();
+            
+            if (charCreation) { 
+                stripped = stripCharCreationBlock(stripped); 
+                renderCharCreationCard(charCreation, wrapEl); 
+            } else document.querySelector(`.scp-char-creation-card[data-for="${msg.id}"]`)?.remove();
+            
+            displayString = getDisplayContent(stripped, getSettings()).content;
 
             nc.innerHTML = renderMarkdown(displayString);
             postProcessHTMLBlocks(nc);
-            ta.replaceWith(nc); 
-            row.remove(); 
+            ta.replaceWith(nc);
+            row.remove();
             wrapEl.classList.remove('is-editing');
         };
 
@@ -4726,7 +6678,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             removeMsgEl(msg.id);
         }
         updateMsgCount(session);
-        // Show empty state if no messages left
         if (!session.messages.length) renderSession(session);
     }
 
@@ -4912,7 +6863,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             cursorEl = null;
         };
 
-        // Called by callGenerate on every chunk. text/reasoning come separately.
         const onChunk = (text, reasoning, reasoningMs, reasoningDone) => {
             isStreaming = true;
             streamAccumText = text;
@@ -4932,7 +6882,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 const body = streamMsgEl.querySelector('.scp-msg-body');
                 streamContentEl = streamMsgEl.querySelector('.scp-msg-content');
 
-                // Pre-create reasoning block (hidden until reasoning arrives)
                 streamReasoningBlockEl = document.createElement('details');
                 streamReasoningBlockEl.className = 'scp-reasoning-block';
                 streamReasoningBlockEl.style.display = 'none';
@@ -4976,16 +6925,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 recordStat(_SM.msg);
             }
 
-            const fullMessages = await assembleMessages(session, settings, userText);
+            const fullMessages = await assembleMessages(session, settings, null);
             const fullPromptText = fullMessages.map(m => m.content).join('\n');
 
-            const result = await callGenerate(session, settings, userText, onChunk);
+            const result = await callGenerate(session, settings, null, onChunk);
 
             cleanupCursor();
 
             if (result === null) {
                 if (streamMsgId && isStreaming && streamAccumText) {
-                    // Abort mid-stream: commit whatever was accumulated
                     const msg = session.messages.find(m => m.id === streamMsgId);
                     if (msg) { msg.content = streamAccumText; msg.reasoning = streamAccumReasoning || null; saveSettings(); }
                     if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(streamAccumText); postProcessHTMLBlocks(streamContentEl); }
@@ -5005,22 +6953,31 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 return;
             }
 
-            const { text: fullText, reasoning: fullReasoning } = result;
+            const { text: rawFullText, reasoning: fullReasoning } = result;
+            const fullText = normalizeCharNamesInBlock(rawFullText);
 
             if (isStreaming && streamMsgId) {
                 const msg = session.messages.find(m => m.id === streamMsgId);
                 if (msg) { msg.content = fullText; msg.reasoning = fullReasoning || null; }
                 saveSettings();
 
-                const changes = parseLBChangesFromText(fullText);
-                if (changes?.length) {
-                    if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(stripLBChangesBlock(fullText)); postProcessHTMLBlocks(streamContentEl); }
-                    renderProposalCard(changes, streamMsgEl);
+                const lbChanges = parseLBChangesFromText(fullText);
+                const charChanges = parseCharChangesFromText(fullText);
+                const charCreation = parseCharCreationFromText(fullText);
+                const needsStrip = lbChanges?.length || charChanges?.length || charCreation;
+                if (needsStrip) {
+                    let stripped = fullText;
+                    if (lbChanges?.length) stripped = stripLBChangesBlock(stripped);
+                    if (charChanges?.length) stripped = stripCharChangesBlock(stripped);
+                    if (charCreation) stripped = stripCharCreationBlock(stripped);
+                    if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(stripped); postProcessHTMLBlocks(streamContentEl); }
+                    if (lbChanges?.length) renderProposalCard(lbChanges, streamMsgEl);
+                    if (charChanges?.length) renderCharProposalCard(charChanges, streamMsgEl);
+                    if (charCreation) renderCharCreationCard(charCreation, streamMsgEl);
                 } else {
                     if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(fullText); postProcessHTMLBlocks(streamContentEl); }
                 }
 
-                // Finalize reasoning block
                 if (fullReasoning && streamReasoningBlockEl) {
                     streamReasoningBlockEl.style.display = '';
                     streamReasoningContentEl.innerHTML = renderMarkdown(fullReasoning);
@@ -5034,15 +6991,386 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
             estimateTokens(fullPromptText).then(n => { if (n > 0) recordStat(_SM.tokIn, n); });
             if (fullText) recordStat(_SM.tokOut, Math.ceil(fullText.length / 3.5));
+            playCompletionSound();
 
         } catch (err) {
             cleanupCursor();
             console.error(`[${EXT_DISPLAY}]`, err);
-            toastr.error(`Generation failed: ${err.message}`, EXT_DISPLAY);
+            
+            let fullError = err.stack || err.message || String(err);
+            if (typeof err === 'object' && !err.stack && !err.message) {
+                try { fullError = JSON.stringify(err, null, 2); } catch(e) {}
+            }
+            
+            showCustomDialog({
+                type: 'alert',
+                title: 'Generation Error',
+                message: `An error occurred during generation:<br><br><textarea style="width:100%; height:160px; background:rgba(0,0,0,0.5); color:#ff5c5c; border:1px solid rgba(255,255,255,0.2); padding:8px; border-radius:4px; font-family:monospace; resize:vertical; font-size:12px;" readonly onclick="this.select()">${escHtml(fullError)}</textarea>`
+            });
         } finally {
             _generating = false;
             setGeneratingState(false);
         }
+    }
+
+    // ─── Completion Sound ────────────────────────────────────────────────────────
+
+    const _SOUND_PRESETS = {
+        none:    { label: 'None' },
+        chime:   { label: 'Chime' },
+        bell:    { label: 'Bell' },
+        soft:    { label: 'Soft Ping' },
+        digital: { label: 'Digital Blip' },
+        pop:     { label: 'Pop' },
+    };
+
+    function _synthSound(type, volume = 80) {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const masterGain = ctx.createGain();
+            masterGain.gain.value = Math.max(0, Math.min(1, volume / 100));
+            masterGain.connect(ctx.destination);
+            const now = ctx.currentTime;
+
+            if (type === 'chime') {
+                [523.25, 659.25, 783.99].forEach((freq, i) => {
+                    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+                    const og = ctx.createGain();
+                    o.connect(og); og.connect(masterGain);
+                    og.gain.setValueAtTime(0, now + i * 0.12);
+                    og.gain.linearRampToValueAtTime(0.18, now + i * 0.12 + 0.02);
+                    og.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.5);
+                    o.start(now + i * 0.12); o.stop(now + i * 0.12 + 0.5);
+                });
+            } else if (type === 'bell') {
+                const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 880;
+                const og = ctx.createGain();
+                o.connect(og); og.connect(masterGain);
+                og.gain.setValueAtTime(0.25, now);
+                og.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+                o.start(now); o.stop(now + 1.2);
+            } else if (type === 'soft') {
+                const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 660;
+                const og = ctx.createGain();
+                o.connect(og); og.connect(masterGain);
+                og.gain.setValueAtTime(0, now);
+                og.gain.linearRampToValueAtTime(0.15, now + 0.05);
+                og.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                o.start(now); o.stop(now + 0.4);
+            } else if (type === 'digital') {
+                [440, 880].forEach((freq, i) => {
+                    const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = freq;
+                    const og = ctx.createGain();
+                    o.connect(og); og.connect(masterGain);
+                    og.gain.setValueAtTime(0.08, now + i * 0.07);
+                    og.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.12);
+                    o.start(now + i * 0.07); o.stop(now + i * 0.07 + 0.12);
+                });
+            } else if (type === 'pop') {
+                const o = ctx.createOscillator(); o.type = 'sine';
+                o.frequency.setValueAtTime(600, now);
+                o.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+                const og = ctx.createGain();
+                o.connect(og); og.connect(masterGain);
+                og.gain.setValueAtTime(0.22, now);
+                og.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                o.start(now); o.stop(now + 0.15);
+            }
+            setTimeout(() => ctx.close(), 2000);
+        } catch (_) {}
+    }
+
+    function playCompletionSound() {
+        const s = getSettings();
+        const soundType = s.completionSound || 'none';
+        const vol = s.completionSoundVolume ?? 80;
+        if (soundType === 'none') return;
+
+        if (soundType.startsWith('custom_') && s.customSounds && s.customSounds[soundType]) {
+            try {
+                const audio = new Audio(s.customSounds[soundType].data);
+                audio.volume = vol / 100;
+                audio.play().catch(() => {});
+            } catch (_) {}
+            return;
+        }
+
+        if (soundType === 'custom' && s.completionSoundData) {
+            try {
+                const audio = new Audio(s.completionSoundData);
+                audio.volume = vol / 100;
+                audio.play().catch(() => {});
+            } catch (_) {}
+            return;
+        }
+        
+        if (_SOUND_PRESETS[soundType] && soundType !== 'none') {
+            _synthSound(soundType, vol);
+        }
+    }
+
+    function buildSoundSettingsUI(container) {
+        if (!container) return;
+        container.innerHTML = '';
+        const s = getSettings();
+        if (!s.customSounds) s.customSounds = {};
+
+        if (s.completionSoundData && !s.customSounds['custom_legacy']) {
+            s.customSounds['custom_legacy'] = {
+                name: s.completionSoundFileName || 'Legacy Custom Sound',
+                data: s.completionSoundData
+            };
+            if (s.completionSound === 'custom') {
+                s.completionSound = 'custom_legacy';
+            }
+            delete s.completionSoundData;
+            delete s.completionSoundFileName;
+            saveSettings();
+        }
+
+        const isSP = container.id === 'scp-sp-sound-settings';
+
+        const typeRow = document.createElement('div');
+        typeRow.className = isSP ? 'scp-sp-field' : '';
+        if (!isSP) typeRow.style.marginTop = '10px';
+        
+        const typeLbl = document.createElement(isSP ? 'label' : 'b');
+        typeLbl.className = isSP ? 'scp-sp-label' : '';
+        if (!isSP) typeLbl.style.fontSize = '12px';
+        typeLbl.textContent = 'Completion Sound';
+        
+        const typeWrap = document.createElement('div');
+        typeWrap.style.cssText = 'display:flex;gap:6px;align-items:center';
+        if (!isSP) typeWrap.style.marginTop = '6px';
+        
+        const typeSel = document.createElement('select');
+        typeSel.className = isSP ? 'scp-sp-select text_pole' : 'text_pole';
+        typeSel.style.flex = '1';
+        
+        const renderDropdown = () => {
+            typeSel.innerHTML = '';
+            
+            const groupPreset = document.createElement('optgroup');
+            groupPreset.label = 'Presets';
+            for (const [key, preset] of Object.entries(_SOUND_PRESETS)) {
+                const opt = document.createElement('option');
+                opt.value = key; opt.textContent = preset.label;
+                groupPreset.appendChild(opt);
+            }
+            typeSel.appendChild(groupPreset);
+            
+            if (Object.keys(s.customSounds).length > 0) {
+                const groupCustom = document.createElement('optgroup');
+                groupCustom.label = 'Custom Sounds';
+                for (const [key, snd] of Object.entries(s.customSounds)) {
+                    const opt = document.createElement('option');
+                    opt.value = key; opt.textContent = snd.name;
+                    groupCustom.appendChild(opt);
+                }
+                typeSel.appendChild(groupCustom);
+            }
+            
+            typeSel.value = s.completionSound || 'none';
+            if (!typeSel.value) {
+                typeSel.value = 'none';
+                s.completionSound = 'none';
+                saveSettings();
+            }
+        };
+        renderDropdown();
+
+        const testBtn = document.createElement('button');
+        testBtn.className = isSP ? 'scp-action-btn' : 'menu_button interactable';
+        testBtn.innerHTML = `<i class="fa-solid fa-play"></i><span>Test</span>`;
+        if (!isSP) testBtn.style.flex = '0 0 auto';
+        testBtn.addEventListener('click', () => playCompletionSound());
+        
+        typeWrap.appendChild(typeSel);
+        typeWrap.appendChild(testBtn);
+        typeRow.appendChild(typeLbl);
+        typeRow.appendChild(typeWrap);
+        container.appendChild(typeRow);
+
+        const customActionsWrap = document.createElement('div');
+        customActionsWrap.style.cssText = isSP ? 'display:flex;gap:6px;margin-top:6px' : 'display:flex;gap:6px;margin-top:6px;align-items:center';
+        
+        const uploadBtn = document.createElement('button');
+        uploadBtn.className = isSP ? 'scp-action-btn' : 'menu_button interactable';
+        uploadBtn.innerHTML = `<i class="fa-solid fa-upload"></i><span>Upload Custom</span>`;
+        if (!isSP) uploadBtn.style.flex = '1';
+
+        uploadBtn.addEventListener('click', () => {
+            const inp = document.createElement('input');
+            inp.type = 'file'; inp.accept = 'audio/*';
+            inp.onchange = () => {
+                const file = inp.files?.[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const s2 = getSettings();
+                    if (!s2.customSounds) s2.customSounds = {};
+                    const id = 'custom_' + Date.now();
+                    s2.customSounds[id] = {
+                        name: file.name,
+                        data: reader.result
+                    };
+                    s2.completionSound = id;
+                    saveSettings();
+                    renderDropdown();
+                    updateCustomActions();
+                    
+                    const otherContainers = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(c => c && c !== container);
+                    otherContainers.forEach(c => buildSoundSettingsUI(c));
+                    
+                    toastr.success('Sound uploaded.', EXT_DISPLAY);
+                };
+                reader.readAsDataURL(file);
+            };
+            inp.click();
+        });
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = isSP ? 'scp-action-btn scp-sp-danger-btn' : 'menu_button interactable';
+        deleteBtn.innerHTML = `<i class="fa-solid fa-trash"></i><span>Delete</span>`;
+        if (!isSP) deleteBtn.style.flex = '1';
+
+        deleteBtn.addEventListener('click', async () => {
+            const val = typeSel.value;
+            if (val.startsWith('custom_')) {
+                const ok = await showCustomDialog({ type: 'confirm', title: 'Delete Sound', message: 'Delete this custom sound?' });
+                if (!ok) return;
+                const s2 = getSettings();
+                delete s2.customSounds[val];
+                s2.completionSound = 'none';
+                saveSettings();
+                renderDropdown();
+                updateCustomActions();
+                
+                const otherContainers = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(c => c && c !== container);
+                otherContainers.forEach(c => buildSoundSettingsUI(c));
+            }
+        });
+        
+        customActionsWrap.appendChild(uploadBtn);
+        customActionsWrap.appendChild(deleteBtn);
+        container.appendChild(customActionsWrap);
+
+        const updateCustomActions = () => {
+            deleteBtn.style.display = typeSel.value.startsWith('custom_') ? '' : 'none';
+        };
+        updateCustomActions();
+
+        typeSel.addEventListener('change', () => {
+            getSettings().completionSound = typeSel.value;
+            saveSettings();
+            updateCustomActions();
+            const otherContainers = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(c => c && c !== container);
+            otherContainers.forEach(c => buildSoundSettingsUI(c));
+        });
+
+        const volRow = document.createElement('div');
+        volRow.className = isSP ? 'scp-sp-field' : '';
+        volRow.style.marginTop = isSP ? '6px' : '10px';
+
+        const volLbl = document.createElement(isSP ? 'label' : 'b');
+        volLbl.className = isSP ? 'scp-sp-label' : '';
+        if (!isSP) volLbl.style.fontSize = '12px';
+        volLbl.textContent = 'Volume';
+
+        const volWrap = document.createElement('div');
+        volWrap.className = isSP ? 'scp-sp-row' : '';
+        if (!isSP) {
+            volWrap.style.display = 'flex';
+            volWrap.style.alignItems = 'center';
+            volWrap.style.gap = '10px';
+            volWrap.style.marginTop = '6px';
+        }
+
+        const volSlider = document.createElement('input');
+        volSlider.type = 'range'; 
+        volSlider.className = isSP ? 'scp-slider scp-sp-vol-slider' : 'neo-range-slider scp-sp-vol-slider';
+        volSlider.style.flex = '1'; volSlider.min = '0'; volSlider.max = '100';
+        volSlider.value = s.completionSoundVolume ?? 80;
+
+        const volVal = document.createElement('span');
+        volVal.className = 'scp-sp-vol-val';
+        volVal.style.cssText = isSP 
+            ? 'min-width:32px;text-align:right;font-size:11px;color:var(--scp-accent)' 
+            : 'min-width:34px;text-align:right;font-size:12px;color:var(--SmartThemeQuoteColor,#a99bfb)';
+        volVal.textContent = `${volSlider.value}%`;
+        
+        volSlider.addEventListener('input', () => { volVal.textContent = `${volSlider.value}%`; });
+        volSlider.addEventListener('change', () => { 
+            getSettings().completionSoundVolume = parseInt(volSlider.value); 
+            saveSettings(); 
+            const otherContainers2 = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(c => c && c !== container);
+            otherContainers2.forEach(c => buildSoundSettingsUI(c));
+        });
+        
+        volWrap.appendChild(volSlider); volWrap.appendChild(volVal);
+        volRow.appendChild(volLbl); volRow.appendChild(volWrap);
+        container.appendChild(volRow);
+    }
+
+    // ─── Session Import / Export ──────────────────────────────────────────────────
+
+    function exportCurrentSession() {
+        try {
+            const sess = getCurrentSession();
+            const { charId, chatId } = getBindingKey();
+            const ctx = SillyTavern.getContext();
+            const charName = ctx.characters?.[ctx.characterId]?.name || 'unknown';
+            const exportData = {
+                version: 1,
+                exported: new Date().toISOString(),
+                charName,
+                session: JSON.parse(JSON.stringify(sess)),
+            };
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const safeName = sess.name.replace(/[^a-z0-9]/gi, '_').slice(0, 40) || 'session';
+            a.download = `st-copilot-session-${safeName}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toastr.success('Session exported.', EXT_DISPLAY);
+        } catch (e) {
+            toastr.error(`Export failed: ${e.message}`, EXT_DISPLAY);
+        }
+    }
+
+    function importSession() {
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = '.json';
+        inp.onchange = async () => {
+            const file = inp.files?.[0]; if (!file) return;
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                if (!data.session || !data.session.id || !Array.isArray(data.session.messages)) {
+                    toastr.error('Invalid session file.', EXT_DISPLAY); return;
+                }
+                const ok = await showCustomDialog({
+                    type: 'confirm',
+                    title: 'Import Session',
+                    message: `Import session "${data.session.name || 'unnamed'}"${data.charName ? ` (from ${data.charName})` : ''}? It will be added to the current chat metadata.`,
+                });
+                if (!ok) return;
+                const bucket = getChatBucket();
+                const imported = { ...data.session, id: genId('sess'), name: `${data.session.name || 'Imported'} (imported)` };
+                imported.isTemporary = false;
+                bucket.sessions.push(imported);
+                bucket.activeSessionId = imported.id;
+                saveSessionsToMetadata();
+                closeSessPanel();
+                refreshSessionDropdown();
+                renderSession(getCurrentSession());
+                toastr.success(`Session "${escHtml(imported.name)}" imported.`, EXT_DISPLAY);
+            } catch (e) {
+                toastr.error(`Import failed: ${e.message}`, EXT_DISPLAY);
+            }
+        };
+        inp.click();
     }
 
     function setGeneratingState(on) {
@@ -5058,7 +7386,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const input = $('scp-input'); if (!input) return;
         const rawText = input.value.trim();
         if (!rawText || _generating) return;
-        const text = expandMacros(rawText);  // expand {{user}}, {{char}}, etc.
+        const text = expandMacros(rawText);
         input.value = ''; autoResize(input);
         runGenerate(getCurrentSession(), text, true);
     }
@@ -5096,39 +7424,151 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     }
 
     function makeDraggable(handle, target) {
-        // ... Оставляем старый код для окна (windowEl) ...
         let active = false, ox = 0, oy = 0, sl = 0, st = 0;
-        let _rafId = null, _px = 0, _py = 0;
+        let _rafId = null;
+        let _anchorX = 0, _anchorY = 0;
 
-        const flush = () => {
-            target.style.left = `${Math.max(0, _px)}px`;
-            target.style.top = `${Math.max(0, _py)}px`;
-            target.style.right = 'auto'; target.style.bottom = 'auto';
-            _rafId = null;
+        let tx = 0, ty = 0;
+        let cx = 0, cy = 0;
+        let vx = 0, vy = 0;
+
+        let rotX = 0, rotY = 0, rotZ = 0, skewX = 0, skewY = 0;
+        let vRotX = 0, vRotY = 0, vRotZ = 0, vSkewX = 0, vSkewY = 0;
+
+        let isWobbly = true;
+
+        const tick = () => {
+            if (!active && 
+                Math.abs(vx) < 0.1 && Math.abs(vy) < 0.1 &&
+                Math.abs(vRotX) < 0.1 && Math.abs(vRotY) < 0.1 && Math.abs(vRotZ) < 0.1 &&
+                Math.abs(rotX) < 0.1 && Math.abs(rotY) < 0.1 && Math.abs(rotZ) < 0.1 &&
+                Math.abs(tx - cx) < 0.5 && Math.abs(ty - cy) < 0.5) {
+                
+                target.style.transform = '';
+                target.style.transformOrigin = '';
+                target.style.left = `${Math.max(0, tx)}px`;
+                target.style.top = `${Math.max(0, ty)}px`;
+                _rafId = null;
+                
+                vx = vy = 0;
+                rotX = rotY = rotZ = skewX = skewY = 0;
+                vRotX = vRotY = vRotZ = vSkewX = vSkewY = 0;
+                
+                saveWindowState();
+                return;
+            }
+
+            if (isWobbly) {
+                const tension = 0.28;   
+                const friction = 0.62;  
+                const aTension = 0.18;  
+                const aFriction = 0.72; 
+
+                const dx = tx - cx;
+                const dy = ty - cy;
+                
+                vx = (vx + dx * tension) * friction;
+                vy = (vy + dy * tension) * friction;
+                cx += vx;
+                cy += vy;
+
+                const targetRotY = dx * 0.12 + vx * 0.02; 
+                const targetRotX = -(dy * 0.12 + vy * 0.02);
+                const targetRotZ = (-dx * _anchorY + dy * _anchorX) * 0.05;
+                const targetSkewX = -vx * 0.03;
+                const targetSkewY = -vy * 0.03;
+
+                vRotX = (vRotX + (targetRotX - rotX) * aTension) * aFriction;
+                vRotY = (vRotY + (targetRotY - rotY) * aTension) * aFriction;
+                vRotZ = (vRotZ + (targetRotZ - rotZ) * aTension) * aFriction;
+                vSkewX = (vSkewX + (targetSkewX - skewX) * aTension) * aFriction;
+                vSkewY = (vSkewY + (targetSkewY - skewY) * aTension) * aFriction;
+
+                rotX += vRotX;
+                rotY += vRotY;
+                rotZ += vRotZ;
+                skewX += vSkewX;
+                skewY += vSkewY;
+
+                const clamp = (val, max) => Math.max(-max, Math.min(max, val));
+                const cRotX = clamp(rotX, 15);
+                const cRotY = clamp(rotY, 15);
+                const cRotZ = clamp(rotZ, 8);
+                const cSkewX = clamp(skewX, 5);
+                const cSkewY = clamp(skewY, 5);
+
+                const speed = Math.sqrt(vx*vx + vy*vy);
+                const scaleStr = Math.max(0.98, 1 - speed * 0.0004);
+
+                target.style.left = `${cx}px`;
+                target.style.top = `${cy}px`;
+                
+                target.style.transformOrigin = `${(_anchorX * 50 + 50)}% ${(_anchorY * 50 + 50)}%`;
+                target.style.transform = `perspective(1200px) scale(${scaleStr}) rotateX(${cRotX}deg) rotateY(${cRotY}deg) rotateZ(${cRotZ}deg) skew(${cSkewX}deg, ${cSkewY}deg)`;
+            } else {
+                cx = tx; cy = ty;
+                
+                vx = vy = 0;
+                rotX = rotY = rotZ = skewX = skewY = 0;
+                vRotX = vRotY = vRotZ = vSkewX = vSkewY = 0;
+
+                target.style.transform = '';
+                target.style.left = `${Math.max(0, cx)}px`;
+                target.style.top = `${Math.max(0, cy)}px`;
+            }
+
+            _rafId = requestAnimationFrame(tick);
         };
 
         handle.addEventListener('pointerdown', e => {
             if (e.target.closest('.scp-hbtn,.scp-tbtn,select,input,button,.scp-opacity-wrap,.scp-rh,.scp-sess-dropdown,.scp-sess-wrap')) return;
+            
+            isWobbly = getSettings().wobbleWindow !== false;
+
+            if (_rafId && isWobbly) {
+                sl = cx; 
+                st = cy;
+                const w = target.offsetWidth;
+                const h = target.offsetHeight;
+                _anchorX = (e.clientX - (sl + w/2)) / (w/2);
+                _anchorY = (e.clientY - (st + h/2)) / (h/2);
+            } else {
+                const r = target.getBoundingClientRect();
+                sl = r.left; 
+                st = r.top;
+                _anchorX = (e.clientX - (r.left + r.width/2)) / (r.width/2);
+                _anchorY = (e.clientY - (r.top + r.height/2)) / (r.height/2);
+                
+                cx = sl; cy = st;
+                vx = vy = 0;
+                rotX = rotY = rotZ = skewX = skewY = 0;
+                vRotX = vRotY = vRotZ = vSkewX = vSkewY = 0;
+            }
+
+            ox = e.clientX; oy = e.clientY; 
+            tx = sl; ty = st;
+
             active = true;
-            const r = target.getBoundingClientRect();
-            ox = e.clientX; oy = e.clientY; sl = r.left; st = r.top;
             handle.setPointerCapture(e.pointerId);
             target.classList.add('scp-dragging');
             e.preventDefault();
+            
+            if (!_rafId) _rafId = requestAnimationFrame(tick);
         });
 
         handle.addEventListener('pointermove', e => {
             if (!active) return;
-            _px = sl + (e.clientX - ox); _py = st + (e.clientY - oy);
-            if (!_rafId) _rafId = requestAnimationFrame(flush);
+            tx = Math.max(0, sl + (e.clientX - ox));
+            ty = Math.max(0, st + (e.clientY - oy));
         });
 
         const onEnd = () => {
             if (!active) return;
             active = false;
-            if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; flush(); }
             target.classList.remove('scp-dragging');
-            saveWindowState();
+            if (!isWobbly) {
+                saveWindowState();
+            }
         };
 
         handle.addEventListener('pointerup', onEnd);
@@ -5137,7 +7577,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     }
 
     function makeResizable(target) {
-        // ... Оставляем код для resize окна ...
         const MIN_W = 320, MIN_H = 300;
         target.querySelectorAll('.scp-rh').forEach(h => {
             const dir = [...h.classList].find(c => /^scp-rh-\w/.test(c))?.replace('scp-rh-', '') || '';
@@ -5218,7 +7657,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 const viewportWidth = window.visualViewport ? window.visualViewport.width : window.innerWidth;
                 const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
                 
-                const x = Math.max(0, Math.min(viewportWidth - 46, e.clientX - offsetX)); // 46 = ширина иконки
+                const x = Math.max(0, Math.min(viewportWidth - 46, e.clientX - offsetX));
                 const y = Math.max(0, Math.min(viewportHeight - 46, e.clientY - offsetY));
                 
                 iconTarget.style.left = `${x}px`;
@@ -5262,11 +7701,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (!theme) return;
         const targets = [windowEl, iconEl, document.getElementById('scp-lb-overlay'), document.getElementById('scp-diff-modal'), document.getElementById('scp-settings-overlay'), document.getElementById('scp-picker-overlay')].filter(Boolean);
         for (const [key, cssVar] of Object.entries(THEME_CSS_MAP)) {
+            if (key === 'font') continue;
             if (theme[key] !== undefined && theme[key] !== '') {
                 targets.forEach(t => t.style.setProperty(cssVar, theme[key]));
             }
         }
-        if (theme.font) targets.forEach(t => t.style.setProperty('--scp-font', theme.font));
+        const fontVal = (theme.font || '').trim();
+        targets.forEach(t => fontVal
+            ? t.style.setProperty('--scp-font', fontVal)
+            : t.style.removeProperty('--scp-font'));
     }
 
     // ─── Window State ───────────────────────────────────────────────────────────
@@ -5491,74 +7934,127 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     }
 
     function refreshSessionDropdown() {
-        const { charId, chatId } = getBindingKey();
-        const bucket = getChatBucket(charId, chatId);
+        const bucket = getChatBucket();
         const nameEl = $('scp-sess-name'); const listEl = $('scp-sess-list');
         if (!nameEl || !listEl) return;
         const activeSess = bucket.sessions.find(s => s.id === bucket.activeSessionId);
         nameEl.textContent = activeSess?.name || 'No Sessions';
         listEl.innerHTML = '';
+        
         if (!bucket.sessions.length) {
             listEl.innerHTML = `<div class="scp-sess-empty-label">No sessions — create one below</div>`;
-            return;
-        }
-        for (const sess of bucket.sessions) {
-            const item = document.createElement('div');
-            item.className = `scp-sess-item${sess.id === bucket.activeSessionId ? ' active' : ''}`;
-            item.dataset.id = sess.id;
+        } else {
+            for (const sess of bucket.sessions) {
+                const item = document.createElement('div');
+                item.className = `scp-sess-item${sess.id === bucket.activeSessionId ? ' active' : ''}`;
+                item.dataset.id = sess.id;
 
-            const dot = document.createElement('span');
-            dot.className = 'scp-sess-item-dot';
+                const dot = document.createElement('span');
+                dot.className = 'scp-sess-item-dot';
 
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'scp-sess-item-name';
-            nameSpan.textContent = sess.name;
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'scp-sess-item-name';
+                nameSpan.textContent = sess.name;
 
-            const count = document.createElement('span');
-            count.className = 'scp-sess-item-count';
-            count.textContent = sess.messages.length;
+                const count = document.createElement('span');
+                count.className = 'scp-sess-item-count';
+                count.textContent = sess.messages.length;
 
-            item.appendChild(dot);
-            item.appendChild(nameSpan);
-            item.appendChild(count);
+                item.appendChild(dot);
+                item.appendChild(nameSpan);
+                item.appendChild(count);
 
-            if (sess.isTemporary) {
-                const badge = document.createElement('span');
-                badge.className = 'scp-sess-tmp-badge';
-                badge.title = 'Temporary session — will be deleted on switch';
-                badge.textContent = 'tmp';
-                item.appendChild(badge);
-            }
-
-            // Toggle tmp/permanent button (only for active session)
-            if (sess.id === bucket.activeSessionId) {
-                const tmpBtn = document.createElement('button');
-                tmpBtn.className = `scp-sess-tmp-btn${sess.isTemporary ? ' active' : ''}`;
-                tmpBtn.title = sess.isTemporary ? 'Make permanent' : 'Make temporary';
-                tmpBtn.innerHTML = '⏱';
-                tmpBtn.addEventListener('click', e => {
-                    e.stopPropagation();
-                    sess.isTemporary = !sess.isTemporary;
-                    saveSettings();
-                    refreshSessionDropdown();
-                });
-                item.appendChild(tmpBtn);
-            }
-
-            item.addEventListener('click', async () => {
-                const activeSess = bucket.sessions.find(s => s.id === bucket.activeSessionId);
-                if (activeSess && activeSess.isTemporary && activeSess.id !== sess.id) {
-                    const ok = await showCustomDialog({
-                        type: 'confirm',
-                        title: 'Delete Temporary Session?',
-                        message: 'Your current session is temporary. Switching will permanently delete it. Continue?'
-                    });
-                    if (!ok) return;
+                if (sess.isTemporary) {
+                    const badge = document.createElement('span');
+                    badge.className = 'scp-sess-tmp-badge';
+                    badge.title = 'Temporary session — will be deleted on switch';
+                    badge.textContent = 'tmp';
+                    item.appendChild(badge);
                 }
-                setActiveSession(charId, chatId, sess.id);
-                refreshSessionDropdown(); renderSession(getCurrentSession()); closeSessPanel();
+
+                if (sess.id === bucket.activeSessionId) {
+                    const tmpBtn = document.createElement('button');
+                    tmpBtn.className = `scp-sess-tmp-btn${sess.isTemporary ? ' active' : ''}`;
+                    tmpBtn.title = sess.isTemporary ? 'Make permanent' : 'Make temporary';
+                    tmpBtn.innerHTML = '⏱';
+                    tmpBtn.addEventListener('click', e => {
+                        e.stopPropagation();
+                        sess.isTemporary = !sess.isTemporary;
+                        saveSessionsToMetadata();
+                        refreshSessionDropdown();
+                    });
+                    item.appendChild(tmpBtn);
+                }
+
+                item.addEventListener('click', async () => {
+                    const activeSess = bucket.sessions.find(s => s.id === bucket.activeSessionId);
+                    if (activeSess && activeSess.isTemporary && activeSess.id !== sess.id) {
+                        const ok = await showCustomDialog({
+                            type: 'confirm',
+                            title: 'Delete Temporary Session?',
+                            message: 'Your current session is temporary. Switching will permanently delete it. Continue?'
+                        });
+                        if (!ok) return;
+                    }
+                    setActiveSession(sess.id);
+                    refreshSessionDropdown(); renderSession(getCurrentSession()); closeSessPanel();
+                });
+                listEl.appendChild(item);
+            }
+        }
+
+        const s = getSettings();
+        const orphanedSessions = [];
+        const ctx2 = SillyTavern.getContext();
+        const currentCharName = ctx2.characters?.[ctx2.characterId]?.name;
+        const { charId } = getBindingKey();
+        
+        if (charId !== 'global' && currentCharName && s.sessions[charId]) {
+            for (const chId in s.sessions[charId]) {
+                const b = s.sessions[charId][chId];
+                if (b && b.sessions && b.sessions.length > 0) {
+                    const validSessions = b.sessions.filter(sess => sess.messages && sess.messages.length > 0);
+                    if (validSessions.length > 0) {
+                        orphanedSessions.push({ chId, sessions: validSessions });
+                    }
+                }
+            }
+        }
+
+        if (orphanedSessions.length > 0) {
+            const totalOrphaned = orphanedSessions.reduce((acc, curr) => acc + curr.sessions.length, 0);
+            const recoverBtn = document.createElement('button');
+            recoverBtn.className = 'scp-action-btn scp-recover-btn';
+            recoverBtn.style.marginTop = '12px';
+            recoverBtn.style.width = '100%';
+            recoverBtn.style.justifyContent = 'center';
+            recoverBtn.style.backgroundColor = 'rgba(255, 180, 50, 0.1)';
+            recoverBtn.style.color = '#ffb432';
+            recoverBtn.style.border = '1px solid rgba(255, 180, 50, 0.3)';
+            recoverBtn.innerHTML = `<i class="fa-solid fa-life-ring"></i><span>Recover ${totalOrphaned} lost session(s)</span>`;
+            recoverBtn.title = "Click to migrate hidden/lost sessions into this chat's metadata.";
+            
+            recoverBtn.addEventListener('click', async () => {
+                const ok = await showCustomDialog({
+                    type: 'confirm',
+                    title: 'Recover Sessions',
+                    message: `Found ${totalOrphaned} session(s) belonging to this character from global storage. Move them permanently into THIS chat?`
+                });
+                if (!ok) return;
+                
+                orphanedSessions.forEach(orphan => {
+                    bucket.sessions.push(...orphan.sessions.map(sess => ({
+                        ...sess, name: sess.name.endsWith('(Recovered)') ? sess.name : sess.name + ' (Recovered)'
+                    })));
+                    delete s.sessions[charId][orphan.chId]; 
+                });
+                
+                saveSettings();
+                saveSessionsToMetadata();
+                refreshSessionDropdown();
+                toastr.success('Sessions successfully recovered and moved to chat metadata!', EXT_DISPLAY);
             });
-            listEl.appendChild(item);
+            listEl.appendChild(recoverBtn);
         }
     }
 
@@ -5610,7 +8106,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         ];
         
         for (const k of keys) {
-            if (String(s[k] || '') !== String(p[k] || '')) return true;
+            const valS = s[k] ?? false;
+            const valP = p[k] ?? false;
+            if (String(valS) !== String(valP)) return true;
         }
         
         return false;
@@ -5755,86 +8253,133 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         container.appendChild(profileRow);
 
         const sel = profileRow.querySelector('#scp-theme-profile-select');
-        for (const name of Object.keys(s.savedThemes)) {
+
+        const optGrpDefault = document.createElement('optgroup');
+        optGrpDefault.label = 'Default Presets';
+        for (const [key, preset] of Object.entries(THEME_PRESETS)) {
             const opt = document.createElement('option');
-            opt.value = name; opt.textContent = name;
-            opt.selected = name === s.activeThemeProfile;
-            sel.appendChild(opt);
+            opt.value = `__preset__${key}`;
+            opt.textContent = preset.label;
+            optGrpDefault.appendChild(opt);
+        }
+        sel.appendChild(optGrpDefault);
+
+        const userThemeKeys = Object.keys(s.savedThemes);
+        if (userThemeKeys.length) {
+            const optGrpCustom = document.createElement('optgroup');
+            optGrpCustom.label = 'Custom Themes';
+            for (const name of userThemeKeys) {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                if (name === s.activeThemeProfile) opt.selected = true;
+                optGrpCustom.appendChild(opt);
+            }
+            sel.appendChild(optGrpCustom);
+        }
+
+        if (!s.activeThemeProfile || !s.savedThemes[s.activeThemeProfile]) {
+            const matchKey = Object.keys(THEME_PRESETS).find(k =>
+                THEME_VAR_DEFS.every(d => (s.customTheme?.[d.key] || '') === (THEME_PRESETS[k][d.key] || ''))
+            );
+            if (matchKey) sel.value = `__preset__${matchKey}`;
         }
 
         sel.addEventListener('change', async () => {
             const name = sel.value;
-            
+
             if (isThemeDirty()) {
-                const ok = await showCustomDialog({ 
-                    type: 'confirm', 
-                    title: 'Unsaved Changes', 
-                    message: 'You have unsaved changes in your current theme. Are you sure you want to switch?' 
+                const ok = await showCustomDialog({
+                    type: 'confirm',
+                    title: 'Unsaved Changes',
+                    message: 'You have unsaved changes in your current theme. Are you sure you want to switch?'
                 });
                 if (!ok) {
-                    sel.value = s.activeThemeProfile || '';
+                    sel.value = s.activeThemeProfile ? s.activeThemeProfile : (Object.keys(THEME_PRESETS).find(k => `__preset__${k}` === sel.value) ? sel.value : '');
                     return;
                 }
             }
 
-            if (name && s.savedThemes[name]) {
-                s.customTheme = { ...s.savedThemes[name] };
-                s.activeThemeProfile = name;
-                saveSettings(); applyCustomTheme(s.customTheme); buildThemeEditor();
+            if (name.startsWith('__preset__')) {
+                const presetKey = name.replace('__preset__', '');
+                const s2 = getSettings();
+                s2.customTheme = { ...THEME_PRESETS[presetKey] };
+                s2.activeThemeProfile = '';
+                saveSettings(); applyCustomTheme(s2.customTheme); buildThemeEditor(containerOverride);
+            } else if (name && getSettings().savedThemes[name]) {
+                const s2 = getSettings();
+                s2.customTheme = { ...s2.savedThemes[name] };
+                s2.activeThemeProfile = name;
+                saveSettings(); applyCustomTheme(s2.customTheme); buildThemeEditor(containerOverride);
             }
         });
 
-        profileRow.querySelector('#scp-theme-save').addEventListener('click', () => {
-            const name = sel.value;
-            if (!name) return;
-            s.savedThemes[name] = { ...s.customTheme };
-            saveSettings(); toastr.success(`Theme "${name}" updated`, EXT_DISPLAY);
+        profileRow.querySelector('#scp-theme-save').addEventListener('click', async () => {
+            const val = sel.value;
+            if (val.startsWith('__preset__')) {
+                const name = await showCustomDialog({ type: 'prompt', title: 'Save as Custom Theme', message: 'Name for your custom theme:', placeholder: 'My Theme' });
+                if (!name?.trim()) return;
+                const n = name.trim();
+                const s2 = getSettings();
+                s2.savedThemes[n] = { ...s2.customTheme };
+                s2.activeThemeProfile = n;
+                saveSettings(); buildThemeEditor(containerOverride); toastr.success(`Theme "${n}" saved`, EXT_DISPLAY);
+                _clearDirty('theme');
+            } else if (val) {
+                const s2 = getSettings();
+                s2.savedThemes[val] = { ...s2.customTheme };
+                saveSettings(); toastr.success(`Theme "${val}" updated`, EXT_DISPLAY);
+                _clearDirty('theme');
+            }
         });
 
         profileRow.querySelector('#scp-theme-create').addEventListener('click', async () => {
-            const name = await showCustomDialog({ type: 'prompt', title: 'New Theme', message: 'Enter name for new theme:', placeholder: 'My New Theme' });
+            const name = await showCustomDialog({ type: 'prompt', title: 'New Theme', message: 'Enter name for new custom theme:', placeholder: 'My New Theme' });
             if (!name?.trim()) return;
             const n = name.trim();
-            s.savedThemes[n] = { ...s.customTheme };
-            s.activeThemeProfile = n;
-            saveSettings(); buildThemeEditor(); toastr.success(`Created theme "${n}"`, EXT_DISPLAY);
+            const s2 = getSettings();
+            s2.savedThemes[n] = { ...s2.customTheme };
+            s2.activeThemeProfile = n;
+            saveSettings(); buildThemeEditor(containerOverride); toastr.success(`Created theme "${n}"`, EXT_DISPLAY);
         });
 
         profileRow.querySelector('#scp-theme-rename').addEventListener('click', async () => {
-            const val = sel.value; if (!val) return;
+            const val = sel.value;
+            if (!val || val.startsWith('__preset__')) { toastr.info('Select a custom theme to rename.', EXT_DISPLAY); return; }
             const newName = await showCustomDialog({ type: 'prompt', title: 'Rename Theme', message: 'Enter new name:', defaultValue: val });
             if (!newName?.trim() || newName.trim() === val) return;
             const n = newName.trim();
-            s.savedThemes[n] = s.savedThemes[val];
-            delete s.savedThemes[val];
-            s.activeThemeProfile = n;
-            saveSettings(); buildThemeEditor(); toastr.success('Theme renamed.', EXT_DISPLAY);
+            const s2 = getSettings();
+            s2.savedThemes[n] = s2.savedThemes[val];
+            delete s2.savedThemes[val];
+            s2.activeThemeProfile = n;
+            saveSettings(); buildThemeEditor(containerOverride); toastr.success('Theme renamed.', EXT_DISPLAY);
         });
 
         profileRow.querySelector('#scp-theme-delete').addEventListener('click', async () => {
-            const val = sel.value; if (!val) return;
-            if (Object.keys(s.savedThemes).length <= 1) {
-                toastr.warning('Cannot delete the last remaining theme.', EXT_DISPLAY);
-                return;
-            }
+            const val = sel.value;
+            if (!val || val.startsWith('__preset__')) { toastr.info('Select a custom theme to delete.', EXT_DISPLAY); return; }
             const ok = await showCustomDialog({ type: 'confirm', title: 'Delete Theme', message: `Delete "${val}"?` });
             if (!ok) return;
-            delete s.savedThemes[val];
-            s.activeThemeProfile = Object.keys(s.savedThemes)[0];
-            s.customTheme = { ...s.savedThemes[s.activeThemeProfile] };
-            saveSettings(); applyCustomTheme(s.customTheme); buildThemeEditor();
+            const s2 = getSettings();
+            delete s2.savedThemes[val];
+            s2.activeThemeProfile = Object.keys(s2.savedThemes)[0] || '';
+            if (s2.activeThemeProfile) s2.customTheme = { ...s2.savedThemes[s2.activeThemeProfile] };
+            else { s2.customTheme = { ...THEME_PRESETS.default }; }
+            saveSettings(); applyCustomTheme(s2.customTheme); buildThemeEditor(containerOverride);
             toastr.success('Deleted.', EXT_DISPLAY);
         });
 
         profileRow.querySelector('#scp-theme-export').addEventListener('click', () => {
             const s2 = getSettings();
-            const name = sel.value || 'custom';
-            const payload = JSON.stringify({ name, version: 1, theme: s2.customTheme }, null, 2);
+            const val = sel.value;
+            const rawName = val.startsWith('__preset__') ? val.replace('__preset__', '') : (val || 'custom');
+            const payload = JSON.stringify({ name: rawName, version: 1, theme: s2.customTheme }, null, 2);
             const blob = new Blob([payload], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `st-copilot-theme-${name.replace(/[^a-z0-9]/gi, '_')}.json`;
+            a.download = `st-copilot-theme-${rawName.replace(/[^a-z0-9]/gi, '_')}.json`;
             a.click();
             URL.revokeObjectURL(url);
         });
@@ -5865,72 +8410,78 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             inp.click();
         });
 
-        // Preset pills
-        const presetRow = document.createElement('div');
-        presetRow.className = 'scp-theme-preset-row';
-        presetRow.innerHTML = '<div class="scp-theme-preset-label">Base preset</div><div class="scp-theme-preset-btns" id="scp-theme-preset-btns"></div>';
-        container.appendChild(presetRow);
-        const btnsEl = presetRow.querySelector('#scp-theme-preset-btns');
-        for (const [name, preset] of Object.entries(THEME_PRESETS)) {
-            const btn = document.createElement('button');
-            btn.className = 'scp-preset-pill'; btn.textContent = preset.label; btn.dataset.preset = name;
-            
-            btn.addEventListener('click', async () => {
-                if (isThemeDirty()) {
-                    const ok = await showCustomDialog({ 
-                        type: 'confirm', 
-                        title: 'Unsaved Changes', 
-                        message: 'You have unsaved changes in your current theme. Are you sure you want to switch and lose them?' 
-                    });
-                    if (!ok) return;
-                }
-
-                const s2 = getSettings();
-                s2.customTheme = { ...THEME_PRESETS[name] };
-                s2.activeThemeProfile = '';
-                saveSettings(); applyCustomTheme(s2.customTheme); buildThemeEditor();
-            });
-            
-            btnsEl.appendChild(btn);
-        }
-
-        // Variable grid
         const grid = document.createElement('div'); grid.className = 'scp-theme-var-grid';
         for (const def of THEME_VAR_DEFS) {
             const item = document.createElement('div'); item.className = 'scp-theme-var-item';
             const label = document.createElement('div'); label.className = 'scp-theme-var-label'; label.textContent = def.label;
             const wrap = document.createElement('div'); wrap.className = 'scp-theme-var-wrap';
+            const isColorKey = _COLOR_KEYS.has(def.key);
+            const isFontKey = def.key === 'font';
+
             const preview = document.createElement('div'); preview.className = 'scp-theme-var-preview';
             const curVal = s.customTheme?.[def.key] ?? '';
-            preview.style.background = curVal; preview.style.display = curVal ? '' : 'none';
-            const isColorKey = _COLOR_KEYS.has(def.key);
-            if (isColorKey) preview.classList.add('scp-color-clickable');
+            if (isColorKey) {
+                preview.style.background = curVal;
+                preview.style.display = curVal ? '' : 'none';
+                preview.classList.add('scp-color-clickable');
+            } else {
+                preview.style.display = 'none';
+            }
+
             const input = document.createElement('input'); input.type = 'text'; input.className = 'scp-theme-var-input';
             input.value = curVal; input.placeholder = def.hint; input.dataset.key = def.key;
             const cssVar = THEME_CSS_MAP[def.key];
             const getDefaultVal = () => {
                 const ss = getSettings();
                 if (ss.activeThemeProfile && ss.savedThemes?.[ss.activeThemeProfile]) return ss.savedThemes[ss.activeThemeProfile][def.key] ?? '';
+                const selEl = container.querySelector('#scp-theme-profile-select');
+                const selVal = selEl?.value || '';
+                if (selVal.startsWith('__preset__')) {
+                    const pk = selVal.replace('__preset__', '');
+                    return (THEME_PRESETS[pk] || THEME_PRESETS.default)[def.key] ?? '';
+                }
                 return THEME_PRESETS.default[def.key] ?? '';
             };
             const resetBtn = document.createElement('button');
             resetBtn.className = 'scp-theme-var-reset'; resetBtn.title = 'Reset to profile default'; resetBtn.textContent = '↺';
             const updateResetState = val => { resetBtn.disabled = !val || val === getDefaultVal(); };
             updateResetState(curVal);
+
+            let _fontDebounce = null;
             const applyVal = val => {
                 const s2 = getSettings();
                 if (!s2.customTheme) s2.customTheme = {};
                 s2.customTheme[def.key] = val;
                 saveSettings();
-                if (cssVar) [windowEl, document.getElementById('scp-lb-overlay'), document.getElementById('scp-diff-modal')]
-                    .filter(Boolean).forEach(t => t.style.setProperty(cssVar, val));
-                preview.style.background = val;
-                preview.style.display = val ? '' : 'none';
+                _markDirty('theme');
+                if (isColorKey) {
+                    if (cssVar) [windowEl, document.getElementById('scp-lb-overlay'), document.getElementById('scp-diff-modal')]
+                        .filter(Boolean).forEach(t => t.style.setProperty(cssVar, val));
+                    preview.style.background = val;
+                    preview.style.display = val ? '' : 'none';
+                } else if (isFontKey) {
+                    clearTimeout(_fontDebounce);
+                    _fontDebounce = setTimeout(() => {
+                        const fontVal = val.trim();
+                        const targets = [windowEl, document.getElementById('scp-lb-overlay'),
+                            document.getElementById('scp-diff-modal'), document.getElementById('scp-settings-overlay'),
+                            document.getElementById('scp-picker-overlay')].filter(Boolean);
+                        targets.forEach(t => fontVal
+                            ? t.style.setProperty('--scp-font', fontVal)
+                            : t.style.removeProperty('--scp-font'));
+                    }, 600);
+                } else {
+                    if (cssVar) [windowEl, document.getElementById('scp-lb-overlay'), document.getElementById('scp-diff-modal')]
+                        .filter(Boolean).forEach(t => t.style.setProperty(cssVar, val));
+                }
                 if (input.value !== val) input.value = val;
                 updateResetState(val);
             };
             input.addEventListener('input', () => applyVal(input.value));
-            resetBtn.addEventListener('click', () => { const dv = getDefaultVal(); if (dv) applyVal(dv); });
+            resetBtn.addEventListener('click', () => {
+                const dv = getDefaultVal();
+                applyVal(isFontKey ? (dv || '') : (dv || ''));
+            });
             if (isColorKey) {
                 preview.addEventListener('click', () => showColorPicker(preview, input.value || '#7c6dfa', val => applyVal(val)));
             }
@@ -6001,8 +8552,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             connectionSource: 'scp-sp-conn-source',
             connectionProfileId: 'scp-sp-conn-profile',
             includeSystemPrompt: 'scp-sp-include-sysprompt',
-            includeAuthorsNote: 'scp-sp-include-anote',
-            includeCharacterCard: 'scp-sp-include-charcard',
             includeUserPersonality: 'scp-sp-include-persona',
             applyRegexToContext: 'scp-sp-apply-regex',
             contextDepth: 'scp-sp-depth-slider'
@@ -6024,6 +8573,18 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             }
         }
 
+        if (key === 'forceStreaming') {
+            const streamVal = val === true ? 'on' : (val === false ? 'auto' : (val || 'auto'));
+            document.querySelectorAll('.scp-stream-btn').forEach(b => {
+                const active = b.dataset.stream === streamVal;
+                b.classList.toggle('active', active);
+                b.style.color = active ? 'var(--scp-accent)' : '';
+                b.style.borderColor = active ? 'var(--scp-accent-dim)' : '';
+                b.style.background = active ? 'var(--scp-accent-bg)' : '';
+            });
+            return;
+        }
+
         const ov = getSessionOverrides();
         if (key in ov) return;
 
@@ -6032,18 +8593,29 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             connectionSource: 'scp-sp-ov-conn-source',
             connectionProfileId: 'scp-sp-ov-conn-profile',
             includeSystemPrompt: 'scp-sp-ov-include-sysprompt',
-            includeAuthorsNote: 'scp-sp-ov-include-anote',
-            includeCharacterCard: 'scp-sp-ov-include-charcard',
             includeUserPersonality: 'scp-sp-ov-include-persona',
             applyRegexToContext: 'scp-sp-ov-apply-regex',
-            contextDepth: 'scp-sp-ov-depth-slider'
+            contextDepth: 'scp-sp-ov-depth-slider',
+            charField_description: 'scp-sp-ov-ce-description',
+            charField_personality: 'scp-sp-ov-ce-personality',
+            charField_scenario: 'scp-sp-ov-ce-scenario',
+            charField_first_mes: 'scp-sp-ov-ce-first-mes',
+            charField_mes_example: 'scp-sp-ov-ce-mes-example',
+            charField_authors_note: 'scp-sp-ov-ce-authors-note',
         };
 
         const ovId = ovIdMap[key];
         if (ovId) {
             const ovEl = document.getElementById(ovId);
             if (ovEl) {
-                if (ovEl.type === 'checkbox') ovEl.checked = !!eff[key];
+                if (ovEl.type === 'checkbox') {
+                    if (key.startsWith('charField_')) {
+                        const fKey = key.replace('charField_', '');
+                        ovEl.checked = !!(getSettings().charEditFields || {})[fKey];
+                    } else {
+                        ovEl.checked = !!eff[key];
+                    }
+                }
                 else ovEl.value = eff[key] ?? '';
             }
             if (key === 'connectionSource') {
@@ -6065,8 +8637,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         setC('scp-enabled', 'enabled');
         setC('scp-hotkey-enabled', 'hotkeyEnabled');
         setC('scp-include-sysprompt', 'includeSystemPrompt');
-        setC('scp-include-anote', 'includeAuthorsNote');
-        setC('scp-include-charcard', 'includeCharacterCard');
         setC('scp-include-persona', 'includeUserPersonality');
         setC('scp-apply-regex', 'applyRegexToContext');
         setC('scp-icon-persistent', 'floatingIconPersistent');
@@ -6077,7 +8647,28 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         setI('scp-depth-slider', 'contextDepth');
         setI('scp-reasoning-trim', 'reasoningTrimStrings');
         setI('scp-ghost-hotkey', 'ghostModeHotkey');
-        setC('scp-force-streaming', 'forceStreaming');
+        setC('scp-char-edit-enabled', 'charEditAIEnabled');
+
+        const fsVal = s.forceStreaming === true ? 'on' : (s.forceStreaming === false ? 'auto' : (s.forceStreaming || 'auto'));
+        document.querySelectorAll('#scp-st-stream-auto, #scp-st-stream-on, #scp-st-stream-off').forEach(b => {
+            const active = b.dataset.stream === fsVal;
+            b.classList.toggle('active', active);
+            b.style.color = active ? 'var(--SmartThemeQuoteColor,#a99bfb)' : '';
+            b.style.borderColor = active ? 'rgba(124,109,250,0.5)' : '';
+            b.style.background = active ? 'rgba(124,109,250,0.12)' : '';
+        });
+        const cePromptEl = $('scp-char-edit-prompt');
+        if (cePromptEl) cePromptEl.value = s.charEditPrompt || DEFAULT_CHAR_EDIT_DIRECTIVE.trim();
+
+        const ceFields = s.charEditFields || {};
+        const setCe = (id, k) => { const el = $(id); if (el) el.checked = ceFields[k] !== false; };
+        setCe('scp-ce-description', 'description');
+        setCe('scp-ce-personality', 'personality');
+        setCe('scp-ce-scenario', 'scenario');
+        setCe('scp-ce-first-mes', 'first_mes');
+        setCe('scp-ce-mes-example', 'mes_example');
+        setCe('scp-ce-authors-note', 'authors_note');
+        const agEl = $('scp-ce-alt-greetings'); if (agEl) agEl.checked = !!ceFields.alternate_greetings;
 
         const opSlider = $('scp-opacity-slider');
         const opVal = $('scp-opacity-val');
@@ -6109,11 +8700,17 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (wand) wand.style.display = s.enabled ? '' : 'none';
 
         if (typeof buildThemeEditor === 'function') buildThemeEditor();
+        buildSoundSettingsUI($('scp-sound-settings'));
+        refreshAltGreetingsPickers();
 
         const lbPromptEl3 = $('scp-lb-manage-prompt');
         if (lbPromptEl3) lbPromptEl3.value = s.lorebookManagePrompt || DEFAULT_LB_MANAGE_PROMPT;
         setI('scp-lb-st-scan-depth', 'lorebookSTScanDepth');
         setI('scp-lb-copilot-scan-depth', 'lorebookCopilotScanDepth');
+        const lbAiStEl2 = $('scp-lb-ai-enabled-st');
+        if (lbAiStEl2) lbAiStEl2.checked = !!s.lorebookAIManageEnabled;
+        const lbKwStEl2 = $('scp-lb-auto-kw-st');
+        if (lbKwStEl2) lbKwStEl2.checked = !!s.lorebookAutoKeyword;
     }
 
     function setupSettingsHandlers() {
@@ -6127,6 +8724,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             el.addEventListener('change', () => { 
                 getSettings()[key] = el.checked; saveSettings(); 
                 syncOverlayUI(key, el.checked);
+                _markDirty('config');
                 if (cb) cb(); 
             });
         };
@@ -6137,6 +8735,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 const v = toVal ? toVal(el.value) : el.value;
                 getSettings()[key] = v; saveSettings(); 
                 syncOverlayUI(key, v);
+                _markDirty('config');
                 if (cb) cb(); 
             });
         };
@@ -6146,6 +8745,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             el.addEventListener('change', () => { 
                 getSettings()[key] = el.value; saveSettings(); 
                 syncOverlayUI(key, el.value);
+                _markDirty('config');
                 if (cb) cb(el.value); 
             });
         };
@@ -6161,10 +8761,32 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         
         bindCheck('scp-hotkey-enabled', 'hotkeyEnabled');
         bindCheck('scp-include-sysprompt', 'includeSystemPrompt', updCtx);
-        bindCheck('scp-include-anote', 'includeAuthorsNote', updCtx);
-        bindCheck('scp-include-charcard', 'includeCharacterCard', updCtx);
         bindCheck('scp-include-persona', 'includeUserPersonality', updCtx);
         bindCheck('scp-apply-regex', 'applyRegexToContext');
+        
+        const stUpdateStreamBtns = (val) => {
+            document.querySelectorAll('#scp-st-stream-auto, #scp-st-stream-on, #scp-st-stream-off').forEach(b => {
+                const active = b.dataset.stream === val;
+                b.classList.toggle('active', active);
+                b.style.color = active ? 'var(--SmartThemeQuoteColor,#a99bfb)' : '';
+                b.style.borderColor = active ? 'rgba(124,109,250,0.5)' : '';
+                b.style.background = active ? 'rgba(124,109,250,0.12)' : '';
+            });
+        };
+        ['scp-st-stream-auto', 'scp-st-stream-on', 'scp-st-stream-off'].forEach(id => {
+            const btn = $(id); if (!btn) return;
+            btn.addEventListener('click', () => {
+                const val = btn.dataset.stream;
+                getSettings().forceStreaming = val; saveSettings();
+                stUpdateStreamBtns(val);
+                document.querySelectorAll('.scp-stream-btn:not(#scp-st-stream-auto):not(#scp-st-stream-on):not(#scp-st-stream-off)').forEach(b => {
+                    b.classList.toggle('active', b.dataset.stream === val);
+                    b.style.color = b.dataset.stream === val ? 'var(--scp-accent)' : '';
+                    b.style.borderColor = b.dataset.stream === val ? 'var(--scp-accent-dim)' : '';
+                    b.style.background = b.dataset.stream === val ? 'var(--scp-accent-bg)' : '';
+                });
+            });
+        });
         
         bindCheck('scp-icon-persistent', 'floatingIconPersistent', updateIconVisibility);
 
@@ -6205,8 +8827,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         }
         bindCheck('scp-ghost-hotkey-enabled', 'ghostModeHotkeyEnabled', setupGhostHotkey);
         bindInput('scp-ghost-hotkey', 'ghostModeHotkey', null, setupGhostHotkey);
-        bindCheck('scp-force-streaming', 'forceStreaming');
-
         const reasoningTrimEl = $('scp-reasoning-trim');
         if (reasoningTrimEl) {
             reasoningTrimEl.value = getSettings().reasoningTrimStrings || '';
@@ -6229,6 +8849,57 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             spEl.value = s.systemPrompt || DEFAULT_SYSTEM_PROMPT;
             spEl.addEventListener('input', () => { getSettings().systemPrompt = spEl.value; saveSettings(); updCtx(); });
         }
+
+        bindCheck('scp-char-edit-enabled', 'charEditAIEnabled', updCtx);
+        
+        const charEditPromptEl = $('scp-char-edit-prompt');
+        if (charEditPromptEl) {
+            charEditPromptEl.value = s.charEditPrompt || DEFAULT_CHAR_EDIT_DIRECTIVE.trim();
+            charEditPromptEl.addEventListener('input', () => {
+                const val = charEditPromptEl.value;
+                getSettings().charEditPrompt = (val.trim() === DEFAULT_CHAR_EDIT_DIRECTIVE.trim()) ? '' : val;
+                saveSettings();
+            });
+        }
+        
+        const bGCharFieldST = (id, fieldKey) => {
+            const el = $(id); if (!el) return;
+            const ceF = getSettings().charEditFields || {};
+            el.checked = ceF[fieldKey] !== false;
+            el.addEventListener('change', () => {
+                const s = getSettings();
+                if (!s.charEditFields) s.charEditFields = {};
+                s.charEditFields[fieldKey] = el.checked;
+                saveSettings(); updateMsgCount(getCurrentSession());
+                const ovEl = document.getElementById(`scp-sp-ce-${fieldKey.replace(/_/g, '-')}`);
+                if (ovEl) ovEl.checked = el.checked;
+            });
+
+            syncOverlayUI('charField_' + fieldKey, el.checked);
+        };
+        bGCharFieldST('scp-ce-description', 'description');
+        bGCharFieldST('scp-ce-personality', 'personality');
+        bGCharFieldST('scp-ce-scenario', 'scenario');
+        bGCharFieldST('scp-ce-first-mes', 'first_mes');
+        bGCharFieldST('scp-ce-mes-example', 'mes_example');
+        bGCharFieldST('scp-ce-authors-note', 'authors_note');
+        bGCharFieldST('scp-ce-alt-greetings', 'alternate_greetings');
+        $('scp-ce-alt-greetings')?.addEventListener('change', () => {
+            const picker = document.getElementById('scp-ce-alt-greetings-picker');
+            if (picker) { picker.style.display = getSettings().charEditFields?.alternate_greetings ? '' : 'none'; refreshAltGreetingsPickers(); }
+        });
+
+        $('scp-reset-char-edit-prompt')?.addEventListener('click', async () => {
+            const ok = await showCustomDialog({ type: 'confirm', title: 'Reset Char Edit Prompt', message: 'Reset to built-in default prompt?' });
+            if (!ok) return;
+            getSettings().charEditPrompt = '';
+            saveSettings();
+            const el = $('scp-char-edit-prompt');
+            if (el) el.value = DEFAULT_CHAR_EDIT_DIRECTIVE.trim();
+            const ovEl = $('scp-sp-char-edit-prompt');
+            if (ovEl) ovEl.value = DEFAULT_CHAR_EDIT_DIRECTIVE.trim();
+            toastr.success('Char edit prompt reset.', EXT_DISPLAY);
+        });
 
         $('scp-reset-prompt')?.addEventListener('click', async () => {
             const ok = await showCustomDialog({ type: 'confirm', title: 'Reset System Prompt', message: 'Reset to default? Your current prompt will be lost.' });
@@ -6286,6 +8957,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             saveProfile(name); refreshProfilesDropdown();
             if (sel) sel.value = name;
             updateBindingSection(); toastr.success(`Saved "${name}"`, EXT_DISPLAY);
+            _clearDirty('config');
         });
 
         $('scp-profile-create-new')?.addEventListener('click', async () => {
@@ -6355,16 +9027,44 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const ok = await showCustomDialog({ 
                 type: 'confirm', 
                 title: 'Clear All Sessions', 
-                message: 'Delete ALL Copilot sessions for all characters and chats? This cannot be undone.',
+                message: 'Delete ALL Copilot sessions from global storage AND clear sessions for the CURRENT chat? (Cannot clear other inactive chats). This cannot be undone.',
                 delayConfirm: 3
             });
             if (!ok) return;
-            getSettings().sessions = {}; saveSettings(); onChatChanged();
-            toastr.success('All sessions cleared.', EXT_DISPLAY);
+            getSettings().sessions = {}; saveSettings(); 
+            const ctx = SillyTavern.getContext();
+            if (ctx.chatMetadata) delete ctx.chatMetadata.st_copilot;
+            saveSessionsToMetadata();
+            onChatChanged();
+            toastr.success('Sessions cleared.', EXT_DISPLAY);
         });
 
         updateProfilesList();
         buildThemeEditor();
+
+        // LB and Auto-Keywords toggles (ST drawer)
+        const lbAiStEl = $('scp-lb-ai-enabled-st');
+        if (lbAiStEl) {
+            lbAiStEl.checked = !!getSettings().lorebookAIManageEnabled;
+            lbAiStEl.addEventListener('change', () => {
+                getSettings().lorebookAIManageEnabled = lbAiStEl.checked; saveSettings();
+                const spEl2 = document.getElementById('scp-sp-lb-ai-enabled');
+                if (spEl2) spEl2.checked = lbAiStEl.checked;
+            });
+        }
+        const lbKwStEl = $('scp-lb-auto-kw-st');
+        if (lbKwStEl) {
+            lbKwStEl.checked = !!getSettings().lorebookAutoKeyword;
+            lbKwStEl.addEventListener('change', async () => {
+                const s2 = getSettings(); s2.lorebookAutoKeyword = lbKwStEl.checked; saveSettings();
+                await buildLorebookContextBlock(s2);
+                updateLBFooterInfo();
+                if (_lbActiveBook) await renderEntryList(_lbActiveBook, _lbSearchQuery);
+                updateMsgCount(getCurrentSession());
+                const spEl2 = document.getElementById('scp-sp-lb-auto-kw');
+                if (spEl2) spEl2.checked = lbKwStEl.checked;
+            });
+        }
 
         bindInput('scp-lb-st-scan-depth', 'lorebookSTScanDepth', Number);
         bindInput('scp-lb-copilot-scan-depth', 'lorebookCopilotScanDepth', Number);
@@ -6389,7 +9089,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         applyCustomTheme(getSettings().customTheme || THEME_PRESETS.default);
         syncSPFromSettings();
         buildThemeEditor(document.getElementById('scp-sp-theme-section'));
+        _updateDirtyDots();
+        buildSoundSettingsUI(document.getElementById('scp-sp-sound-settings'));
         buildQPSettingsUI(document.getElementById('scp-sp-qp-container'));
+        refreshAltGreetingsPickers();
         buildQPSetManager(document.getElementById('scp-sp-qp-set-manager'), () => {
             buildQPSettingsUI(document.getElementById('scp-sp-qp-container'));
         });
@@ -6429,6 +9132,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         gC('scp-sp-hotkey-enabled', s.hotkeyEnabled);
         g('scp-sp-hotkey', s.hotkey);
         gC('scp-sp-icon-persistent', s.floatingIconPersistent);
+        gC('scp-sp-wobble-window', s.wobbleWindow !== false);
         gC('scp-sp-changelog-auto', s.changelogAutoShow);
 
         const spOpSlider = document.getElementById('scp-sp-opacity-slider');
@@ -6443,6 +9147,13 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         gC('scp-sp-ghost-hotkey-enabled', s.ghostModeHotkeyEnabled);
         g('scp-sp-ghost-hotkey', s.ghostModeHotkey);
         gC('scp-sp-force-streaming', s.forceStreaming);
+        const streamVal = s.forceStreaming === true ? 'on' : (s.forceStreaming === false ? 'auto' : (s.forceStreaming || 'auto'));
+        document.querySelectorAll('.scp-stream-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.stream === streamVal);
+            b.style.color = b.dataset.stream === streamVal ? 'var(--scp-accent)' : '';
+            b.style.borderColor = b.dataset.stream === streamVal ? 'var(--scp-accent-dim)' : '';
+            b.style.background = b.dataset.stream === streamVal ? 'var(--scp-accent-bg)' : '';
+        });
         g('scp-sp-conn-source', s.connectionSource ?? 'default');
         const gCp = document.getElementById('scp-sp-global-profile-group');
         if (gCp) gCp.style.display = s.connectionSource === 'profile' ? '' : 'none';
@@ -6453,8 +9164,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (spDs) spDs.value = s.contextDepth ?? 15;
         if (spDv) spDv.textContent = s.contextDepth ?? 15;
         gC('scp-sp-include-sysprompt', s.includeSystemPrompt);
-        gC('scp-sp-include-anote', s.includeAuthorsNote);
-        gC('scp-sp-include-charcard', s.includeCharacterCard);
         gC('scp-sp-include-persona', s.includeUserPersonality);
         gC('scp-sp-apply-regex', s.applyRegexToContext);
         g('scp-sp-reasoning-trim', s.reasoningTrimStrings);
@@ -6462,11 +9171,24 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         g('scp-sp-lb-manage-prompt', s.lorebookManagePrompt || DEFAULT_LB_MANAGE_PROMPT);
         g('scp-sp-lb-st-scan-depth', s.lorebookSTScanDepth);
         g('scp-sp-lb-copilot-scan-depth', s.lorebookCopilotScanDepth);
+        gC('scp-sp-lb-ai-enabled', s.lorebookAIManageEnabled);
+        gC('scp-sp-lb-auto-kw', s.lorebookAutoKeyword);
+
+        gC('scp-sp-char-edit-enabled', s.charEditAIEnabled);
+        g('scp-sp-char-edit-prompt', s.charEditPrompt || DEFAULT_CHAR_EDIT_DIRECTIVE.trim());
+        const ceFields = s.charEditFields || {};
+        gC('scp-sp-ce-description', ceFields.description !== false);
+        gC('scp-sp-ce-personality', ceFields.personality !== false);
+        gC('scp-sp-ce-scenario', ceFields.scenario !== false);
+        gC('scp-sp-ce-first-mes', ceFields.first_mes !== false);
+        gC('scp-sp-ce-mes-example', ceFields.mes_example !== false);
+        gC('scp-sp-ce-authors-note', ceFields.authors_note !== false);
+        gC('scp-sp-ce-alt-greetings', !!ceFields.alternate_greetings);
 
         refreshSPProfilesDropdown();
         updateSPConnProfileList();
 
-        // Session tab — show effective values, highlight overridden keys
+        // Session tab
         const ovDs = document.getElementById('scp-sp-ov-depth-slider');
         const ovDv = document.getElementById('scp-sp-ov-depth-val');
         if (ovDs) ovDs.value = eff.contextDepth ?? 15;
@@ -6485,10 +9207,29 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         ovi('scp-sp-ov-sysprompt', 'systemPrompt');
 
         gC('scp-sp-ov-include-sysprompt', eff.includeSystemPrompt);
-        gC('scp-sp-ov-include-anote', eff.includeAuthorsNote);
-        gC('scp-sp-ov-include-charcard', eff.includeCharacterCard);
         gC('scp-sp-ov-include-persona', eff.includeUserPersonality);
         gC('scp-sp-ov-apply-regex', eff.applyRegexToContext);
+
+        // Sync streaming override buttons
+        const ovStreamVal = eff.forceStreaming === true ? 'on' : (eff.forceStreaming === false ? 'auto' : (eff.forceStreaming || 'auto'));
+        document.querySelectorAll('.scp-ov-stream-btn').forEach(b => {
+            const active = b.dataset.stream === ovStreamVal;
+            b.classList.toggle('active', active);
+            b.style.color = active ? 'var(--scp-accent)' : '';
+            b.style.borderColor = active ? 'var(--scp-accent-dim)' : '';
+            b.style.background = active ? 'var(--scp-accent-bg)' : '';
+        });
+
+        const ovCe = (id, k) => {
+            const el = document.getElementById(id);
+            if (el) el.checked = k in ov ? !!ov[k] : !!(s.charEditFields || {})[k.replace('charField_', '')];
+        };
+        ovCe('scp-sp-ov-ce-description', 'charField_description');
+        ovCe('scp-sp-ov-ce-personality', 'charField_personality');
+        ovCe('scp-sp-ov-ce-scenario', 'charField_scenario');
+        ovCe('scp-sp-ov-ce-first-mes', 'charField_first_mes');
+        ovCe('scp-sp-ov-ce-mes-example', 'charField_mes_example');
+        ovCe('scp-sp-ov-ce-authors-note', 'charField_authors_note');
 
         updateSPOverrideIndicators();
     }
@@ -6564,34 +9305,17 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         overlay.addEventListener('mousedown', e => { _spMouseDown = e.target; });
         overlay.addEventListener('click', e => { if (e.target === overlay && _spMouseDown === overlay) closeSettingsPanel(); });
 
-        // Tab switching
         overlay.querySelectorAll('.scp-sp-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 overlay.querySelectorAll('.scp-sp-tab').forEach(t => t.classList.remove('active'));
-                overlay.querySelectorAll('.scp-sp-tab-pane').forEach(p => { p.style.display = 'none'; });
                 tab.classList.add('active');
-                const pane = document.getElementById(`scp-sp-pane-${tab.dataset.sptab}`);
-                if (pane) pane.style.display = '';
-                if (tab.dataset.sptab === 'stats') {
-                    renderStatsPane(document.getElementById('scp-sp-stats-container'));
-                }
-                if (tab.dataset.sptab === 'prompts') {
-                    buildQPSetManager(document.getElementById('scp-sp-qp-set-manager'), () => {
-                        buildQPSettingsUI(document.getElementById('scp-sp-qp-container'));
-                    });
-                    buildQPSettingsUI(document.getElementById('scp-sp-qp-container'));
-                }
-                if (tab.dataset.sptab === 'session') {
-                    buildPromptPresetManager(
-                        document.getElementById('scp-sp-prompt-preset-manager'),
-                        () => document.getElementById('scp-sp-ov-sysprompt')?.value || '',
-                        (text) => {
-                            const ta = document.getElementById('scp-sp-ov-sysprompt');
-                            if (!ta) return;
-                            ta.value = text;
-                            ta.dispatchEvent(new Event('input', { bubbles: true }));
-                        }
-                    );
+                const pane = tab.dataset.sptab;
+                overlay.querySelectorAll('.scp-sp-tab-pane').forEach(p => {
+                    p.style.display = p.id === `scp-sp-pane-${pane}` ? '' : 'none';
+                });
+                if (pane === 'stats') {
+                    const statsContainer = document.getElementById('scp-sp-stats-container');
+                    if (statsContainer) renderStatsPane(statsContainer);
                 }
             });
         });
@@ -6600,7 +9324,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         const saveGlobal = (key, val, cb) => {
             getSettings()[key] = val; saveSettings();
-            // Sync to ST drawer if open
+            _markDirty('config');
             const stEl = document.getElementById({
                 enabled:'scp-enabled', hotkeyEnabled:'scp-hotkey-enabled', hotkey:'scp-hotkey',
                 floatingIconPersistent:'scp-icon-persistent', connectionSource:'scp-conn-source',
@@ -6613,11 +9337,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 connectionProfileId:'scp-conn-profile',
                 opacity:'scp-opacity-slider', ghostModeOpacity:'scp-ghost-opacity',
                 ghostModeHotkeyEnabled:'scp-ghost-hotkey-enabled', ghostModeHotkey:'scp-ghost-hotkey',
-                forceStreaming:'scp-force-streaming',
                 applyRegexToContext:'scp-apply-regex',
+                charEditAIEnabled: 'scp-char-edit-enabled',
+                charEditPrompt: 'scp-char-edit-prompt',
+                lorebookAIManageEnabled: 'scp-lb-ai-enabled-st',
+                lorebookAutoKeyword: 'scp-lb-auto-kw-st',
             }[key]);
             if (stEl) {
                 if (stEl.type === 'checkbox') stEl.checked = !!val;
+                else if (key === 'charEditPrompt') stEl.value = val || DEFAULT_CHAR_EDIT_DIRECTIVE.trim();
                 else stEl.value = val ?? '';
                 
                 if (key === 'connectionSource') {
@@ -6657,10 +9385,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         bGInput('scp-sp-hotkey', 'hotkey', null, setupHotkey);
         
         bGCheck('scp-sp-icon-persistent', 'floatingIconPersistent', updateIconVisibility);
+        bGCheck('scp-sp-wobble-window', 'wobbleWindow');
         bGCheck('scp-sp-changelog-auto', 'changelogAutoShow');
         document.getElementById('scp-sp-open-changelog')?.addEventListener('click', () => { closeSettingsPanel(); openChangelog(); });
 
-        // Window opacity (moved from header)
+        // Window opacity
         const spOpSlider = document.getElementById('scp-sp-opacity-slider');
         const spOpVal = document.getElementById('scp-sp-opacity-val');
         if (spOpSlider) {
@@ -6676,7 +9405,23 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         // Ghost mode settings
         bGCheck('scp-sp-ghost-hotkey-enabled', 'ghostModeHotkeyEnabled', setupGhostHotkey);
         bGInput('scp-sp-ghost-hotkey', 'ghostModeHotkey', null, setupGhostHotkey);
-        bGCheck('scp-sp-force-streaming', 'forceStreaming');
+
+        // Streaming 3-state buttons
+        const updateStreamBtns = (val) => {
+            document.querySelectorAll('.scp-stream-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.stream === val);
+                b.style.color = b.dataset.stream === val ? 'var(--scp-accent)' : '';
+                b.style.borderColor = b.dataset.stream === val ? 'var(--scp-accent-dim)' : '';
+                b.style.background = b.dataset.stream === val ? 'var(--scp-accent-bg)' : '';
+            });
+        };
+        document.querySelectorAll('.scp-stream-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const val = btn.dataset.stream;
+                saveGlobal('forceStreaming', val, null);
+                updateStreamBtns(val);
+            });
+        });
 
         const spGhOp = document.getElementById('scp-sp-ghost-opacity');
         const spGhOpVal = document.getElementById('scp-sp-ghost-opacity-val');
@@ -6715,8 +9460,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         }
 
         bGCheck('scp-sp-include-sysprompt', 'includeSystemPrompt', () => updateMsgCount(getCurrentSession()));
-        bGCheck('scp-sp-include-anote', 'includeAuthorsNote', () => updateMsgCount(getCurrentSession()));
-        bGCheck('scp-sp-include-charcard', 'includeCharacterCard', () => updateMsgCount(getCurrentSession()));
         bGCheck('scp-sp-include-persona', 'includeUserPersonality', () => updateMsgCount(getCurrentSession()));
         bGCheck('scp-sp-apply-regex', 'applyRegexToContext');
         bGInput('scp-sp-reasoning-trim', 'reasoningTrimStrings');
@@ -6758,6 +9501,70 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         bGInput('scp-sp-lb-st-scan-depth', 'lorebookSTScanDepth', Number);
         bGInput('scp-sp-lb-copilot-scan-depth', 'lorebookCopilotScanDepth', Number);
 
+        // LB and Auto-Keywords toggles (settings overlay)
+        document.getElementById('scp-sp-lb-ai-enabled')?.addEventListener('change', e => {
+            saveGlobal('lorebookAIManageEnabled', e.target.checked, null);
+            const stEl = document.getElementById('scp-lb-ai-enabled-st');
+            if (stEl) stEl.checked = e.target.checked;
+        });
+        document.getElementById('scp-sp-lb-auto-kw')?.addEventListener('change', async e => {
+            saveGlobal('lorebookAutoKeyword', e.target.checked, null);
+            const s2 = getSettings();
+            await buildLorebookContextBlock(s2);
+            updateLBFooterInfo();
+            if (_lbActiveBook) await renderEntryList(_lbActiveBook, _lbSearchQuery);
+            updateMsgCount(getCurrentSession());
+            const stEl = document.getElementById('scp-lb-auto-kw-st');
+            if (stEl) stEl.checked = e.target.checked;
+        });
+
+        // Character card AI edits
+        const bGCharField = (id, fieldKey) => {
+            const el = document.getElementById(id); if (!el) return;
+            el.addEventListener('change', () => {
+                const s = getSettings();
+                if (!s.charEditFields) s.charEditFields = {};
+                s.charEditFields[fieldKey] = el.checked;
+                saveSettings(); updateMsgCount(getCurrentSession());
+                const stIdMap = {
+                    description: 'scp-ce-description', personality: 'scp-ce-personality',
+                    scenario: 'scp-ce-scenario', first_mes: 'scp-ce-first-mes',
+                    mes_example: 'scp-ce-mes-example', authors_note: 'scp-ce-authors-note',
+                    alternate_greetings: 'scp-ce-alt-greetings',
+                };
+                const stEl = document.getElementById(stIdMap[fieldKey]);
+                if (stEl) stEl.checked = el.checked;
+                
+                syncOverlayUI('charField_' + fieldKey, el.checked);
+            });
+        };
+        bGCheck('scp-sp-char-edit-enabled', 'charEditAIEnabled', () => updateMsgCount(getCurrentSession()));
+        bGCharField('scp-sp-ce-description', 'description');
+        bGCharField('scp-sp-ce-personality', 'personality');
+        bGCharField('scp-sp-ce-scenario', 'scenario');
+        bGCharField('scp-sp-ce-first-mes', 'first_mes');
+        bGCharField('scp-sp-ce-mes-example', 'mes_example');
+        bGCharField('scp-sp-ce-authors-note', 'authors_note');
+        bGCharField('scp-sp-ce-alt-greetings', 'alternate_greetings');
+        document.getElementById('scp-sp-ce-alt-greetings')?.addEventListener('change', () => {
+            const picker = document.getElementById('scp-sp-ce-alt-greetings-picker');
+            if (picker) { picker.style.display = getSettings().charEditFields?.alternate_greetings ? '' : 'none'; refreshAltGreetingsPickers(); }
+        });
+        document.getElementById('scp-sp-char-edit-prompt')?.addEventListener('input', e => {
+            const val = e.target.value;
+            getSettings().charEditPrompt = (val.trim() === DEFAULT_CHAR_EDIT_DIRECTIVE.trim()) ? '' : val;
+            saveSettings();
+        });
+        document.getElementById('scp-sp-reset-char-edit-prompt')?.addEventListener('click', async () => {
+            const ok = await showCustomDialog({ type: 'confirm', title: 'Reset Char Edit Prompt', message: 'Reset to built-in default prompt?' });
+            if (!ok) return;
+            getSettings().charEditPrompt = '';
+            saveSettings();
+            const el = document.getElementById('scp-sp-char-edit-prompt');
+            if (el) el.value = DEFAULT_CHAR_EDIT_DIRECTIVE.trim();
+            toastr.success('Char edit prompt reset to default.', EXT_DISPLAY);
+        });
+
         // Config profiles
         document.getElementById('scp-sp-profile-select')?.addEventListener('change', async () => {
             const sel = document.getElementById('scp-sp-profile-select'); if (!sel?.value) return;
@@ -6781,6 +9588,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             saveProfile(name); refreshSPProfilesDropdown(); refreshProfilesDropdown();
             if (sel) sel.value = name;
             updateSPBindingSection(); toastr.success(`Saved "${name}"`, EXT_DISPLAY);
+            _clearDirty('config');
         });
         document.getElementById('scp-sp-profile-create')?.addEventListener('click', async () => {
             const name = await showCustomDialog({ type: 'prompt', title: 'New Configuration', message: 'Name:', placeholder: 'New Config' });
@@ -6829,24 +9637,38 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         });
 
         document.getElementById('scp-sp-clear-sessions')?.addEventListener('click', async () => {
-            const ok = await showCustomDialog({ type: 'confirm', title: 'Clear All Sessions', message: 'Delete ALL Copilot sessions for all characters? This cannot be undone.', delayConfirm: 3 });
+            const ok = await showCustomDialog({ 
+                type: 'confirm', 
+                title: 'Clear All Sessions', 
+                message: 'Delete ALL Copilot sessions from global storage AND clear sessions for the CURRENT chat? (Cannot clear other inactive chats). This cannot be undone.',
+                delayConfirm: 3
+            });
             if (!ok) return;
-            getSettings().sessions = {}; saveSettings(); onChatChanged();
-            toastr.success('All sessions cleared.', EXT_DISPLAY);
+            getSettings().sessions = {}; saveSettings(); 
+            const ctx = SillyTavern.getContext();
+            if (ctx.chatMetadata) delete ctx.chatMetadata.st_copilot;
+            saveSessionsToMetadata();
+            onChatChanged();
+            toastr.success('Sessions cleared.', EXT_DISPLAY);
         });
 
         // ── SESSION OVERRIDES ──
 
-        // Auto-clear override if new value === global value
         const syncOvClear = (key, newVal) => {
-            const globalVal = getSettings()[key];
+            let globalVal = getSettings()[key];
+            if (key.startsWith('charField_')) {
+                const fKey = key.replace('charField_', '');
+                globalVal = (getSettings().charEditFields || {})[fKey] !== false;
+            }
             const isDefault = (newVal === undefined || newVal === null || newVal === '')
                 ? true
                 : (typeof globalVal === 'boolean'
                     ? newVal === globalVal
                     : String(newVal) === String(globalVal));
+            
             if (isDefault) setSessionOverride(key, undefined);
             else setSessionOverride(key, newVal);
+            
             updateSPOverrideIndicators();
             updateMsgCount(getCurrentSession());
         };
@@ -6889,17 +9711,34 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (ovPrompt) ovPrompt.addEventListener('input', () => syncOvClear('systemPrompt', ovPrompt.value || undefined));
 
         bindOvCheck('scp-sp-ov-include-sysprompt', 'includeSystemPrompt');
-        bindOvCheck('scp-sp-ov-include-anote', 'includeAuthorsNote');
-        bindOvCheck('scp-sp-ov-include-charcard', 'includeCharacterCard');
         bindOvCheck('scp-sp-ov-include-persona', 'includeUserPersonality');
         bindOvCheck('scp-sp-ov-apply-regex', 'applyRegexToContext');
 
-        // Clear individual override buttons
+        document.querySelectorAll('.scp-ov-stream-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const val = btn.dataset.stream;
+                syncOvClear('forceStreaming', val);
+                document.querySelectorAll('.scp-ov-stream-btn').forEach(b => {
+                    const active = b.dataset.stream === val;
+                    b.classList.toggle('active', active);
+                    b.style.color = active ? 'var(--scp-accent)' : '';
+                    b.style.borderColor = active ? 'var(--scp-accent-dim)' : '';
+                    b.style.background = active ? 'var(--scp-accent-bg)' : '';
+                });
+            });
+        });
+        
+        bindOvCheck('scp-sp-ov-ce-description', 'charField_description');
+        bindOvCheck('scp-sp-ov-ce-personality', 'charField_personality');
+        bindOvCheck('scp-sp-ov-ce-scenario', 'charField_scenario');
+        bindOvCheck('scp-sp-ov-ce-first-mes', 'charField_first_mes');
+        bindOvCheck('scp-sp-ov-ce-mes-example', 'charField_mes_example');
+        bindOvCheck('scp-sp-ov-ce-authors-note', 'charField_authors_note');
+
         overlay.querySelectorAll('.scp-sp-ov-clear[data-ovkey]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const key = btn.dataset.ovkey;
                 setSessionOverride(key, undefined);
-                // Re-sync that specific field from effective settings
                 const eff = getEffectiveSettings();
                 const ov = getSessionOverrides();
                 const elMap = {
@@ -6911,15 +9750,27 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     connectionSource: ['scp-sp-ov-conn-source'],
                     connectionProfileId: ['scp-sp-ov-conn-profile'],
                     includeSystemPrompt: ['scp-sp-ov-include-sysprompt'],
-                    includeAuthorsNote: ['scp-sp-ov-include-anote'],
-                    includeCharacterCard: ['scp-sp-ov-include-charcard'],
                     includeUserPersonality: ['scp-sp-ov-include-persona'],
                     applyRegexToContext: ['scp-sp-ov-apply-regex'],
+                    charField_description: ['scp-sp-ov-ce-description'],
+                    charField_personality: ['scp-sp-ov-ce-personality'],
+                    charField_scenario: ['scp-sp-ov-ce-scenario'],
+                    charField_first_mes: ['scp-sp-ov-ce-first-mes'],
+                    charField_mes_example: ['scp-sp-ov-ce-mes-example'],
+                    charField_authors_note: ['scp-sp-ov-ce-authors-note'],
                 };
                 (elMap[key] || []).forEach(id => {
                     const el = document.getElementById(id); if (!el) return;
                     if (id.includes('depth-val')) { el.textContent = eff.contextDepth ?? 15; return; }
-                    if (el.type === 'checkbox') el.checked = !!eff[key];
+                    
+                    if (el.type === 'checkbox') {
+                        if (key.startsWith('charField_')) {
+                            const fKey = key.replace('charField_', '');
+                            el.checked = (getSettings().charEditFields || {})[fKey] !== false;
+                        } else {
+                            el.checked = !!eff[key];
+                        }
+                    }
                     else if (el.type === 'range') el.value = eff[key] ?? 15;
                     else if (id === 'scp-sp-ov-conn-source') {
                         el.value = eff.connectionSource ?? 'default';
@@ -6931,6 +9782,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     }
                     else el.value = (key in ov ? ov[key] : '') ?? '';
                 });
+                if (key === 'forceStreaming') {
+                    const streamVal = eff.forceStreaming === true ? 'on' : (eff.forceStreaming === false ? 'auto' : (eff.forceStreaming || 'auto'));
+                    document.querySelectorAll('.scp-ov-stream-btn').forEach(b => {
+                        const active = b.dataset.stream === streamVal;
+                        b.classList.toggle('active', active);
+                        b.style.color = active ? 'var(--scp-accent)' : '';
+                        b.style.borderColor = active ? 'var(--scp-accent-dim)' : '';
+                        b.style.background = active ? 'var(--scp-accent-bg)' : '';
+                    });
+                }
                 updateSPOverrideIndicators();
                 updateMsgCount(getCurrentSession());
             });
@@ -7019,8 +9880,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         });
         $('scp-new-sess-btn')?.addEventListener('click', async () => {
             closeSessPanel();
-            const { charId, chatId } = getBindingKey();
-            const bucket = getChatBucket(charId, chatId);
+            const bucket = getChatBucket();
 
             const activeSess = bucket.sessions.find(s => s.id === bucket.activeSessionId);
             if (activeSess && activeSess.isTemporary) {
@@ -7035,7 +9895,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const defaultName = `Session ${bucket.sessions.length + 1}`;
             const result = await showSessionDialog({ defaultName });
             if (result === null) return;
-            createSession(charId, chatId, result.name.trim() || defaultName, result.isTemporary);
+            createSession(result.name.trim() || defaultName, result.isTemporary);
             refreshSessionDropdown(); renderSession(getCurrentSession());
         });
 
@@ -7043,18 +9903,20 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const sess = getCurrentSession();
             const newName = await showCustomDialog({ type: 'prompt', title: 'Rename Session', message: 'New session name:', defaultValue: sess.name });
             if (!newName?.trim()) return;
-            sess.name = newName.trim(); saveSettings(); refreshSessionDropdown();
+            sess.name = newName.trim(); saveSessionsToMetadata(); refreshSessionDropdown();
         });
 
         $('scp-del-sess-btn')?.addEventListener('click', async () => {
-            const { charId, chatId } = getBindingKey();
-            const bucket = getChatBucket(charId, chatId);
+            const bucket = getChatBucket();
             if (!bucket.sessions.length) return;
             const ok = await showCustomDialog({ type: 'confirm', title: 'Delete Session', message: 'Delete this session and all its messages? This cannot be undone.' });
             if (!ok) return;
-            const newSess = deleteCurrentSession(charId, chatId);
+            const newSess = deleteCurrentSession();
             refreshSessionDropdown(); renderSession(newSess);
         });
+
+        $('scp-export-sess-btn')?.addEventListener('click', () => { closeSessPanel(); exportCurrentSession(); });
+        $('scp-import-sess-btn')?.addEventListener('click', () => { closeSessPanel(); importSession(); });
 
         // Depth slider
         const depthSlider = $('scp-depth-slider');
@@ -7112,13 +9974,12 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             saveSettings(); renderQuickPromptsBar();
         });
 
-        // Desktop horizontal scroll for QP bar (wheel → scrollLeft)
+        // Desktop horizontal scroll for QP bar
         const qpBar = $('scp-qp-bar');
         if (qpBar) {
             qpBar.addEventListener('wheel', e => {
-                if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return; // already horizontal native scroll
+                if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
                 e.preventDefault();
-                // Normalize: deltaMode 0=px, 1=line(~20px), 2=page
                 const delta = e.deltaMode === 1 ? e.deltaY * 20 : e.deltaMode === 2 ? e.deltaY * 200 : e.deltaY;
                 qpBar.scrollLeft += delta;
             }, { passive: false });
@@ -7168,7 +10029,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const inputEl = $('scp-input');
         if (inputEl) {
             inputEl.addEventListener('input', () => autoResize(inputEl));
-            inputEl.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } });
+            inputEl.addEventListener('keydown', e => { 
+                if (e.key === 'Enter' && !e.shiftKey) { 
+                    const isMobile = window.innerWidth <= 900 || ('ontouchstart' in window);
+                    if (!isMobile) {
+                        e.preventDefault(); 
+                        handleSend(); 
+                    }
+                } 
+            });
         }
         $('scp-send-btn')?.addEventListener('click', handleSend);
 
@@ -7208,6 +10077,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         updateDepthSlidersMax();
         renderQuickPromptsBar();
         updatePickBtnState();
+        refreshAltGreetingsPickers();
     }
 
     // ─── Wand Button ─────────────────────────────────────────────────────────────
@@ -7426,7 +10296,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const found = profiles.find(p =>
                 p.id === settings.connectionProfileId || p.name === settings.connectionProfileId
             );
-            if (found) profileId = found.id;
+            if (found) {
+                profileId = found.id;
+            } else {
+                throw new Error(`Connection profile "${settings.connectionProfileId}" not found in Connection Manager.\nAvailable profiles: ${profiles.map(p => p.name).join(', ') || 'None'}`);
+            }
         }
 
         const service = ctx.ConnectionManagerRequestService;
@@ -7435,7 +10309,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         }
 
         const stStreamToggle = document.getElementById('stream_toggle');
-        const useStream = settings.forceStreaming || !!(stStreamToggle?.checked);
+        const streamSetting = settings.forceStreaming;
+        let useStream;
+        if (streamSetting === 'on' || streamSetting === true) {
+            useStream = true;
+        } else if (streamSetting === 'off') {
+            useStream = false;
+        } else {
+            useStream = !!(stStreamToggle?.checked);
+        }
 
         let asyncGeneratorFn;
         try {
@@ -7524,7 +10406,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 if (html) container.insertAdjacentHTML('beforeend', html);
             } catch (e) {}
         }
-        restoreWindowState(); attachWindowListeners(); setupSettingsHandlers(); setupLorebookManagerListeners(); setupSettingsPanelListeners(); setupChatPickerListeners(); setupChangelogListeners();
+        restoreWindowState(); attachWindowListeners(); setupSettingsHandlers(); updateSettingsUI(); setupLorebookManagerListeners(); setupSettingsPanelListeners(); setupChatPickerListeners(); setupChangelogListeners();
         
         const s = getSettings();
         

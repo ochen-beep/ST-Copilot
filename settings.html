@@ -45,6 +45,12 @@
 
                 <!-- ── Ghost Mode ──────────────────────────────── -->
                 <div class="scp-settings-flat-section">
+                    <div class="scp-settings-flat-title"><i class="fa-solid fa-volume-high"></i> Completion Sound</div>
+                    <div id="scp-sound-settings"></div>
+                </div>
+
+                <!-- ── Ghost Mode (original) ──────────────────── -->
+                <div class="scp-settings-flat-section">
                     <div class="scp-settings-flat-title"><i class="fa-solid fa-ghost"></i> Ghost Mode</div>
                     <label style="font-size:11px; color:#888; display:block; margin-bottom:8px">
                         Makes the window transparent and lets clicks through.
@@ -102,10 +108,14 @@
                         </div>
                         <label style="margin-top:10px; font-size:11px; color:#888; display:block; margin-bottom:4px">Max Response Tokens</label>
                         <input id="scp-max-tokens" type="number" class="text_pole" placeholder="2048" min="64" max="32768" />
-                        <label class="checkbox_label" style="margin-top:10px">
-                            <input id="scp-force-streaming" type="checkbox" />
-                            <span>Force Streaming <span style="font-size:10px;opacity:.6">(ignore ST's stream toggle)</span></span>
-                        </label>
+                        <div style="margin-top:10px">
+                            <label style="font-size:11px; color:#888; display:block; margin-bottom:6px">Streaming Mode</label>
+                            <div style="display:flex;gap:4px">
+                                <button class="scp-action-btn scp-stream-btn" data-stream="auto" id="scp-st-stream-auto">Auto</button>
+                                <button class="scp-action-btn scp-stream-btn" data-stream="on" id="scp-st-stream-on">Force On</button>
+                                <button class="scp-action-btn scp-stream-btn" data-stream="off" id="scp-st-stream-off">Force Off</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -118,10 +128,20 @@
                     <div class="inline-drawer-content">
                         <div style="display:flex; flex-direction:column; gap:4px">
                             <label class="checkbox_label"><input id="scp-include-sysprompt" type="checkbox" /><span>Include ST System Prompt</span></label>
-                            <label class="checkbox_label"><input id="scp-include-anote" type="checkbox" /><span>Include Author's Note</span></label>
-                            <label class="checkbox_label"><input id="scp-include-charcard" type="checkbox" /><span>Include Character Card</span></label>
                             <label class="checkbox_label"><input id="scp-include-persona" type="checkbox" /><span>Include User Persona</span></label>
                             <label class="checkbox_label"><input id="scp-apply-regex" type="checkbox" /><span>Apply Regex Scripts to context</span></label>
+                        </div>
+                        <div style="margin-top:14px; border-top:1px solid rgba(255,255,255,.06); padding-top:12px; display:flex; flex-direction:column; gap:4px">
+                            <b style="font-size:12px; margin-bottom:2px">Character fields sent to AI context:</b>
+                            <label style="font-size:11px; color:#888; display:block; margin-bottom:4px">Controls what card data the AI receives, and populates <code style="font-size:10px;background:rgba(0,0,0,.3);padding:1px 4px;border-radius:3px">{{char_edit_fields}}</code> macro.</label>
+                            <label class="checkbox_label"><input id="scp-ce-description" type="checkbox" /><span>Description</span></label>
+                            <label class="checkbox_label"><input id="scp-ce-personality" type="checkbox" /><span>Personality</span></label>
+                            <label class="checkbox_label"><input id="scp-ce-scenario" type="checkbox" /><span>Scenario</span></label>
+                            <label class="checkbox_label"><input id="scp-ce-first-mes" type="checkbox" /><span>First Message</span></label>
+                            <label class="checkbox_label"><input id="scp-ce-mes-example" type="checkbox" /><span>Example Dialogue</span></label>
+                            <label class="checkbox_label"><input id="scp-ce-authors-note" type="checkbox" /><span>Author's Note</span></label>
+                            <label class="checkbox_label"><input id="scp-ce-alt-greetings" type="checkbox" /><span>Alternate Greetings <span style="font-size:10px;opacity:.6">(off by default)</span></span></label>
+                            <div id="scp-ce-alt-greetings-picker" style="display:none;margin-top:4px"></div>
                         </div>
                         <label style="margin-top:10px; font-size:11px; color:#888; display:block; margin-bottom:4px">Session History Depth Limit</label>
                         <input id="scp-history-limit" type="number" class="text_pole" placeholder="50" min="1" max="500" />
@@ -149,6 +169,30 @@
                     </div>
                 </div>
 
+                <!-- ── Character Card AI Edits ────────────────── -->
+                <div class="inline-drawer scp-settings-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b><i class="fa-solid fa-user-pen" style="margin-right:6px"></i>Character Card AI Edits</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <label class="checkbox_label">
+                            <input id="scp-char-edit-enabled" type="checkbox" />
+                            <span>Enable AI character card editing</span>
+                        </label>
+                        <div style="margin-top:10px">
+                            <label style="font-size:11px; color:#888; display:block; margin-bottom:4px">
+                                AI Edit Prompt
+                                <span style="font-size:10px; opacity:.65"> — macros: <code style="font-size:10px;background:rgba(0,0,0,.3);padding:1px 4px;border-radius:3px">{{char_edit_fields}}, {{char_edit_format}}, {{char_create_format}}</code></span>
+                            </label>
+                            <textarea id="scp-char-edit-prompt" class="text_pole autoSetHeight" rows="5" style="font-size:12px; margin-top:4px; font-family:monospace"></textarea>
+                            <button id="scp-reset-char-edit-prompt" class="menu_button interactable" style="margin-top:6px; align-self:flex-start">
+                                <i class="fa-solid fa-arrow-rotate-left"></i> Reset to Default
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ── Lorebook ──────────────────────────────────── -->
                 <div class="inline-drawer scp-settings-drawer">
                     <div class="inline-drawer-toggle inline-drawer-header">
@@ -156,9 +200,19 @@
                         <div class="inline-drawer-icon fa-solid fa-circle-down down"></div>
                     </div>
                     <div class="inline-drawer-content">
+                        <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
+                            <label class="checkbox_label">
+                                <input id="scp-lb-ai-enabled-st" type="checkbox" />
+                                <span>Enable AI Lorebook Editing</span>
+                            </label>
+                            <label class="checkbox_label">
+                                <input id="scp-lb-auto-kw-st" type="checkbox" />
+                                <span>Auto-Keywords</span>
+                            </label>
+                        </div>
                         <label style="font-size:11px; color:#888; display:block; margin-bottom:4px">
                             AI Edit Prompt
-                            <span style="font-size:10px; opacity:.65"> — use macros <code style="font-size:10px;background:rgba(0,0,0,.3);padding:1px 4px;border-radius:3px">{{lorebook_output}}, {{active_lorebooks}}</code></span>
+                            <span style="font-size:10px; opacity:.65"> — macros <code style="font-size:10px;background:rgba(0,0,0,.3);padding:1px 4px;border-radius:3px">{{lorebook_output}}, {{active_lorebooks}}</code></span>
                         </label>
                         <textarea id="scp-lb-manage-prompt" class="text_pole autoSetHeight" rows="5" style="font-size:12px; margin-top:4px; font-family:monospace"></textarea>
                         <button id="scp-reset-lb-prompt" class="menu_button interactable" style="margin-top:6px; align-self:flex-start">
