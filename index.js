@@ -7,8 +7,119 @@
     const ICON_ID = 'scp-dock-icon';
     const MODAL_ID = 'scp-ctx-modal';
     const ICON_STORAGE_KEY = 'scp-icon-position';
+    // ─── Debug Logger ────────────────────────────────────────────────────────────
+
+    const _DBG = { log: [], MAX: 3000, sessionStart: new Date().toISOString(), _snapshot: null, _diffTid: null };
+    const _DBG_SKIP = new Set(['customTheme','savedThemes','sessions','starredMessages','stats','quickPromptSets','customSounds','completionSoundData','quickPrompts','profiles','promptPresets','altGreetingIndices']);
+
+    function _dbgStrip(s) {
+        const r = {};
+        for (const [k, v] of Object.entries(s)) { if (!_DBG_SKIP.has(k)) r[k] = v; }
+        return r;
+    }
+
+    function _dbgAdd(type, payload) {
+        _DBG.log.push({ ts: Date.now(), type, payload });
+        if (_DBG.log.length > _DBG.MAX) _DBG.log.splice(0, _DBG.log.length - _DBG.MAX);
+    }
+
+    function _dbgSnapshotSettings() {
+        try {
+            const s = _dbgStrip(getSettings());
+            _DBG._snapshot = JSON.parse(JSON.stringify(s));
+            _dbgAdd('SETTINGS_SNAPSHOT', s);
+        } catch(_) {}
+    }
+
+    function _dbgDiffSettings() {
+        clearTimeout(_DBG._diffTid);
+        _DBG._diffTid = setTimeout(() => {
+            if (!_DBG._snapshot) return;
+            try {
+                const cur = _dbgStrip(getSettings());
+                const diff = {};
+                const keys = new Set([...Object.keys(cur), ...Object.keys(_DBG._snapshot)]);
+                for (const k of keys) {
+                    if (JSON.stringify(cur[k]) !== JSON.stringify(_DBG._snapshot[k])) {
+                        diff[k] = { prev: _DBG._snapshot[k], now: cur[k] };
+                    }
+                }
+                if (Object.keys(diff).length) {
+                    _dbgAdd('SETTINGS_CHANGED', diff);
+                    _DBG._snapshot = JSON.parse(JSON.stringify(cur));
+                }
+            } catch(_) {}
+        }, 1500);
+    }
+
+    function _dbgSetupGlobalErrorHandlers() {
+        const origErr = console.error;
+        console.error = function(...a) {
+            origErr.apply(console, a);
+            try {
+                _dbgAdd('CONSOLE_ERROR', a.map(x =>
+                    x instanceof Error ? (x.stack || x.message) :
+                    (typeof x === 'object' ? JSON.stringify(x) : String(x))
+                ).join(' '));
+            } catch(_) {}
+        };
+        window.addEventListener('error', e => {
+            _dbgAdd('WINDOW_ERROR', { msg: e.message, src: e.filename, line: e.lineno, col: e.colno, stack: e.error?.stack });
+        });
+        window.addEventListener('unhandledrejection', e => {
+            _dbgAdd('UNHANDLED_REJECTION', { msg: String(e.reason), stack: e.reason?.stack });
+        });
+    }
+
+    function dbgDownload() {
+        const ctx = SillyTavern.getContext();
+        const cm = ctx.extensionSettings?.connectionManager || {};
+        const cmProfiles = cm.profiles || [];
+        
+        const activeId = cm.selectedProfile;
+        const activeProfileName = cmProfiles.find(p => p.id === activeId)?.name || activeId || 'default';
+
+        const stEnv = {
+            mainApi: ctx.api_server || document.getElementById('main_api')?.value || 'unknown',
+            characterId: ctx.characterId,
+            chatId: ctx.chatId,
+            activeConnectionProfile: activeProfileName,
+            connectionProfiles: cmProfiles.map(p => ({
+                id: p.id,
+                name: p.name,
+                type: p.type,
+            }))
+        };
+
+        const lines = [
+            '=== ST-Copilot Debug Log ===',
+            `Version: ${extVersion} | Session Start: ${_DBG.sessionStart} | Downloaded: ${new Date().toISOString()}`,
+            `Entries: ${_DBG.log.length} / ${_DBG.MAX} max`,
+            '='.repeat(70),
+            '=== SillyTavern Global Environment ===',
+            JSON.stringify(stEnv, null, 2),
+            '='.repeat(70), ''
+        ];
+        for (const e of _DBG.log) {
+            const d = new Date(e.ts);
+            const t = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}.${String(d.getMilliseconds()).padStart(3,'0')}`;
+            lines.push(`[${t}] ── ${e.type}`);
+            lines.push(typeof e.payload === 'string' ? e.payload : JSON.stringify(e.payload, null, 2));
+            lines.push('');
+        }
+        const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `st-copilot-debug-${Date.now()}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toastr.success('Debug log downloaded.', EXT_DISPLAY);
+    }
+
     let ST_WorldInfo = null;
     let ST_Utils = null;
+    let extVersion = '?';
 
     let __extPath = 'third-party/ST-Copilot';
     if (document.currentScript && document.currentScript.src) {
@@ -186,6 +297,17 @@ Tag as \`character-creation\`. Structure:
 
     // ─── Changelog Data ──────────────────────────────────────────────────────────
     const CHANGELOG = [
+    {
+        version: '2.5.1',
+        date: '5/22/2026',
+        announce: true,
+        notes: [
+            '<strong>Continue Message</strong> — Added a "Continue" button to extend the last Copilot generation.',
+            '<strong>Debug Export</strong> — Introduced a downloadable debug log in settings for easier troubleshooting (refreshes on page load).',
+            '<strong>Smooth Streaming</strong> — Fixed chat scrolling behavior, allowing users to scroll up during active message streaming.',
+            '<strong>Bug Fixes</strong> — Potential fix for the "profile not found" error and minor stability improvements.'
+        ],
+    },
     {
         version: '2.5.0',
         date: '5/20/2026',
@@ -702,6 +824,15 @@ Tag as \`character-creation\`. Structure:
         return results;
     }
 
+    function getEntryOverrideKey(bookName, entry) {
+        let entryName = (entry.comment || entry.name || '').trim();
+        if (!entryName && entry.key && entry.key.length) {
+            entryName = entry.key.join('_').slice(0, 40);
+        }
+        entryName = entryName.replace(/[\r\n]+/g, ' ').trim();
+        return entryName ? `${bookName}_${entryName}` : `${bookName}_${entry.uid}`;
+    }
+
     async function buildLorebookContextBlock(settings) {
         _lastActiveEntries = [];
         const selectedBooks = settings.lorebookSelectedBooks || [];
@@ -766,11 +897,22 @@ Tag as \`character-creation\`. Structure:
         }
 
         const toInject = {};
+        let overridesChanged = false;
+
         for (const[bookName, data] of Object.entries(loadedBooks)) {
             for (const entry of wiEntriesToArray(data)) {
                 if (!entry.content) continue;
-                const overKey = `${bookName}_${entry.uid}`;
-                const override = overrides[overKey];
+                
+                const oldKey = `${bookName}_${entry.uid}`;
+                const newKey = getEntryOverrideKey(bookName, entry);
+                
+                if (oldKey !== newKey && overrides[oldKey] !== undefined) {
+                    overrides[newKey] = overrides[oldKey];
+                    delete overrides[oldKey];
+                    overridesChanged = true;
+                }
+                
+                const override = overrides[newKey];
                 
                 if (override === false) continue;
                 
@@ -784,6 +926,8 @@ Tag as \`character-creation\`. Structure:
                 }
             }
         }
+
+        if (overridesChanged) saveSettings();
 
         if (!Object.keys(toInject).length) return '';
 
@@ -3414,7 +3558,7 @@ Tag as \`character-creation\`. Structure:
 
         const frag = document.createDocumentFragment();
         for (const entry of filtered) {
-            const overKey = `${bookName}_${entry.uid}`;
+            const overKey = getEntryOverrideKey(bookName, entry);
             const override = overrides[overKey];
             const isDisabled = !!entry.disable;
             const isInCtx = activeEntryUids.has(entry.uid);
@@ -3458,7 +3602,7 @@ Tag as \`character-creation\`. Structure:
     function cycleEntryOverride(bookName, entry, rowEl) {
         const s = getSettings();
         if (!s.lorebookEntryOverrides) s.lorebookEntryOverrides = {};
-        const key = `${bookName}_${entry.uid}`;
+        const key = getEntryOverrideKey(bookName, entry);
         const current = s.lorebookEntryOverrides[key];
         const isConstantEntry = !!entry.constant && !entry.disable;
         let next;
@@ -3523,7 +3667,7 @@ Tag as \`character-creation\`. Structure:
         }
 
         const s = getSettings();
-        const override = (s.lorebookEntryOverrides || {})[`${bookName}_${entry.uid}`];
+        const override = (s.lorebookEntryOverrides || {})[getEntryOverrideKey(bookName, entry)];
         ['scp-lb-inj-default', 'scp-lb-inj-force-on', 'scp-lb-inj-force-off'].forEach(id => document.getElementById(id)?.classList.remove('active'));
         if (override === true) document.getElementById('scp-lb-inj-force-on')?.classList.add('active');
         else if (override === false) document.getElementById('scp-lb-inj-force-off')?.classList.add('active');
@@ -3660,14 +3804,14 @@ Tag as \`character-creation\`. Structure:
         document.getElementById('scp-lb-enable-all')?.addEventListener('click', () => {
             if (!_lbActiveBook || !_wiCache[_lbActiveBook]) return;
             const s = getSettings();
-            Object.values(_wiCache[_lbActiveBook].entries).forEach(e => { s.lorebookEntryOverrides[`${_lbActiveBook}_${e.uid}`] = true; });
+            Object.values(_wiCache[_lbActiveBook].entries).forEach(e => { s.lorebookEntryOverrides[getEntryOverrideKey(_lbActiveBook, e)] = true; });
             saveSettings(); renderEntryList(_lbActiveBook, _lbSearchQuery);
             updateMsgCount(getCurrentSession());
         });
         document.getElementById('scp-lb-disable-all')?.addEventListener('click', () => {
             if (!_lbActiveBook || !_wiCache[_lbActiveBook]) return;
             const s = getSettings();
-            Object.values(_wiCache[_lbActiveBook].entries).forEach(e => { s.lorebookEntryOverrides[`${_lbActiveBook}_${e.uid}`] = false; });
+            Object.values(_wiCache[_lbActiveBook].entries).forEach(e => { s.lorebookEntryOverrides[getEntryOverrideKey(_lbActiveBook, e)] = false; });
             saveSettings(); renderEntryList(_lbActiveBook, _lbSearchQuery);
             updateMsgCount(getCurrentSession());
         });
@@ -3676,7 +3820,7 @@ Tag as \`character-creation\`. Structure:
             const ok = await showCustomDialog({ type: 'confirm', title: 'Reset Overrides', message: `Reset all copilot injection overrides for "${_lbActiveBook}"?` });
             if (!ok) return;
             const s = getSettings();
-            if (_wiCache[_lbActiveBook]) Object.values(_wiCache[_lbActiveBook].entries).forEach(e => { delete s.lorebookEntryOverrides[`${_lbActiveBook}_${e.uid}`]; });
+            if (_wiCache[_lbActiveBook]) Object.values(_wiCache[_lbActiveBook].entries).forEach(e => { delete s.lorebookEntryOverrides[getEntryOverrideKey(_lbActiveBook, e)]; });
             saveSettings(); renderEntryList(_lbActiveBook, _lbSearchQuery);
             updateMsgCount(getCurrentSession());
         });
@@ -3699,9 +3843,10 @@ Tag as \`character-creation\`. Structure:
                 const val = document.getElementById(id)?.dataset.val;
                 const s = getSettings();
                 if (!s.lorebookEntryOverrides) s.lorebookEntryOverrides = {};
-                const key = `${_lbEntryDetailBook}_${_lbEntryDetailEntry.uid}`;
+                const key = getEntryOverrideKey(_lbEntryDetailBook, _lbEntryDetailEntry);
                 if (val === 'default') delete s.lorebookEntryOverrides[key];
                 else s.lorebookEntryOverrides[key] = val === 'true';
+                
                 saveSettings();
                 ['scp-lb-inj-default', 'scp-lb-inj-force-on', 'scp-lb-inj-force-off'].forEach(bid => document.getElementById(bid)?.classList.remove('active'));
                 document.getElementById(id)?.classList.add('active');
@@ -3799,6 +3944,7 @@ Tag as \`character-creation\`. Structure:
 
     function saveSettings() {
         SillyTavern.getContext().saveSettingsDebounced();
+        _dbgDiffSettings();
     }
 
     // ─── Dirty State Tracking (item 1) ──────────────────────────────────────────
@@ -4484,7 +4630,7 @@ Tag as \`character-creation\`. Structure:
         setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
     }
 
-    function showCustomDialog({ type = 'alert', title = '', message = '', defaultValue = '', placeholder = '', delayConfirm = 0 }) {
+    function showCustomDialog({ type = 'alert', title = '', message = '', htmlMessage = '', defaultValue = '', placeholder = '', delayConfirm = 0 }) {
         return new Promise(resolve => {
             const overlay = document.createElement('div');
             overlay.className = 'scp-dialog-overlay';
@@ -4493,7 +4639,7 @@ Tag as \`character-creation\`. Structure:
             overlay.innerHTML = `
                 <div class="scp-dialog-box">
                     ${title ? `<div class="scp-dialog-title">${escHtml(title)}</div>` : ''}
-                    ${message ? `<div class="scp-dialog-msg">${escHtml(message)}</div>` : ''}
+                    ${message ? `<div class="scp-dialog-msg">${escHtml(message)}</div>` : (htmlMessage ? `<div class="scp-dialog-msg">${htmlMessage}</div>` : '')}
                     ${isPrompt ? `<input type="text" class="scp-dialog-input" value="${escHtml(defaultValue)}" placeholder="${escHtml(placeholder)}">` : ''}
                     <div class="scp-dialog-btns">
                         ${(isPrompt || isConfirm) ? `<button class="scp-dialog-btn scp-dialog-cancel">Cancel</button>` : ''}
@@ -4674,6 +4820,7 @@ Tag as \`character-creation\`. Structure:
         bucket.activeSessionId = id;
         if (recordStats) recordStat(_SM.sess);
         saveSessionsToMetadata();
+        _dbgAdd('SESSION_CREATED', { id: sess.id, name: sess.name, isTemporary });
         return sess;
     }
 
@@ -4692,14 +4839,17 @@ Tag as \`character-creation\`. Structure:
         }
         bucket.activeSessionId = sessionId;
         saveSessionsToMetadata();
+        _dbgAdd('SESSION_SWITCHED', { id: sessionId });
     }
 
     function deleteCurrentSession() {
         const bucket = getChatBucket();
         if (!bucket.sessions.length) return createSession();
+        const deletedId = bucket.activeSessionId;
         bucket.sessions = bucket.sessions.filter(s => s.id !== bucket.activeSessionId);
         bucket.activeSessionId = bucket.sessions.length ? bucket.sessions[bucket.sessions.length - 1].id : null;
         saveSessionsToMetadata();
+        _dbgAdd('SESSION_DELETED', { id: deletedId });
         return getActiveSession();
     }
 
@@ -5128,6 +5278,7 @@ Tag as \`character-creation\`. Structure:
         pick: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="9" y2="10" stroke-width="3" stroke-linecap="round"/><line x1="12" y1="10" x2="12" y2="10" stroke-width="3" stroke-linecap="round"/><line x1="15" y1="10" x2="15" y2="10" stroke-width="3" stroke-linecap="round"/></svg>`,
         star: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
         starFill: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+        continueArrow: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>`,
     };
 
     // ─── Quick Prompts ───────────────────────────────────────────────────────────
@@ -6273,12 +6424,47 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         actions.appendChild(starBtn);
         if (isStarred) wrap.classList.add('scp-msg-starred');
 
+        if (!isUser) {
+            const continueBtn = makeBtn(I.continueArrow, 'Continue response', 'scp-msg-btn-continue', () => runContinue(getCurrentSession(), msg.id));
+            actions.appendChild(continueBtn);
+        }
+
         body.appendChild(content); body.appendChild(actions); body.appendChild(meta);
         wrap.appendChild(avatar); wrap.appendChild(body);
         return wrap;
     }
 
-    function scrollToBottom() { const c = $('scp-messages'); if (c) c.scrollTop = c.scrollHeight; }
+    let _userScrolledUp = false;
+
+    function scrollToBottom() {
+        const c = $('scp-messages');
+        if (!c) return;
+        _userScrolledUp = false;
+        c.scrollTop = c.scrollHeight;
+    }
+
+    function smartScrollToBottom() {
+        if (_userScrolledUp) return;
+        const c = $('scp-messages');
+        if (c) c.scrollTop = c.scrollHeight;
+    }
+
+    function setupMessagesScrollTracking() {
+        const c = $('scp-messages');
+        if (!c) return;
+        c.addEventListener('scroll', () => {
+            _userScrolledUp = c.scrollHeight - c.scrollTop - c.clientHeight > 80;
+        }, { passive: true });
+    }
+
+    function _refreshContinueBtns() {
+        const c = $('scp-messages');
+        if (!c) return;
+        c.querySelectorAll('.scp-msg-last-assistant').forEach(el => el.classList.remove('scp-msg-last-assistant'));
+        if (_generating) return;
+        const all = [...c.querySelectorAll('.scp-msg-assistant')];
+        if (all.length) all[all.length - 1].classList.add('scp-msg-last-assistant');
+    }
 
     function renderSession(session) {
         clearSearchHighlights();
@@ -6331,6 +6517,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         }
         updateMsgCount(session);
         scrollToBottom();
+        _refreshContinueBtns();
     }
 
     function appendMsgEl(msg) {
@@ -6358,6 +6545,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         clearTimeout(_tokenCalcTid);
         updateMsgCount(getCurrentSession());
         scrollToBottom();
+        _refreshContinueBtns();
 
         if (msg.role === 'assistant') {
             const lbChanges = parseLBChangesFromText(msg.content);
@@ -6397,6 +6585,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         document.querySelector(`.scp-char-proposal-card[data-for="${msgId}"]`)?.remove();
         document.querySelector(`.scp-char-creation-card[data-for="${msgId}"]`)?.remove();
         el.remove();
+        _refreshContinueBtns();
     }
 
     function removeMsgElAndBelow(msgId) {
@@ -6420,6 +6609,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         c.querySelectorAll('.scp-char-creation-card').forEach(card => {
             if (!card.previousElementSibling) card.remove();
         });
+        _refreshContinueBtns();
     }
 
     function removeMsgElAfter(msgId) {
@@ -6434,6 +6624,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             }
             if (el.dataset.id === msgId) found = true;
         }
+        _refreshContinueBtns();
     }
 
     let _tokenCalcTid = null;
@@ -6916,7 +7107,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 streamContentEl.innerHTML = renderMarkdown(text);
                 if (text) streamContentEl.appendChild(cursorEl);
             }
-            scrollToBottom();
+            smartScrollToBottom();
         };
 
         try {
@@ -6927,6 +7118,20 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
             const fullMessages = await assembleMessages(session, settings, null);
             const fullPromptText = fullMessages.map(m => m.content).join('\n');
+            
+            const tokensIn = await estimateTokens(fullPromptText);
+            
+            _dbgAdd('GEN_START', {
+                src: settings.connectionSource,
+                profile: settings.connectionProfileId || null,
+                maxTokens: settings.maxTokens,
+                streaming: settings.forceStreaming,
+                ctxDepth: settings.contextDepth,
+                histLimit: settings.localHistoryLimit,
+                hasOverrides: hasSessionOverrides(),
+                overrides: hasSessionOverrides() ? getSessionOverrides() : null,
+                tokensIn
+            });
 
             const result = await callGenerate(session, settings, null, onChunk);
 
@@ -6989,23 +7194,194 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 appendMsgEl(addMessage(session, 'assistant', fullText, { reasoning: fullReasoning || null }));
             }
 
-            estimateTokens(fullPromptText).then(n => { if (n > 0) recordStat(_SM.tokIn, n); });
-            if (fullText) recordStat(_SM.tokOut, Math.ceil(fullText.length / 3.5));
+            if (tokensIn > 0) recordStat(_SM.tokIn, tokensIn);
+            
+            const tokensOut = await estimateTokens(fullText);
+            if (tokensOut > 0) recordStat(_SM.tokOut, tokensOut);
+
             playCompletionSound();
+            _dbgAdd('GEN_DONE', { chars: fullText?.length || 0, hasReasoning: !!fullReasoning, tokensOut });
 
         } catch (err) {
             cleanupCursor();
+            _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack });
             console.error(`[${EXT_DISPLAY}]`, err);
             
+            let errorSummary = err.message || String(err);
             let fullError = err.stack || err.message || String(err);
+            
             if (typeof err === 'object' && !err.stack && !err.message) {
-                try { fullError = JSON.stringify(err, null, 2); } catch(e) {}
+                try { 
+                    errorSummary = "API or Network Error";
+                    fullError = JSON.stringify(err, null, 2); 
+                } catch(e) {}
             }
             
             showCustomDialog({
                 type: 'alert',
                 title: 'Generation Error',
-                message: `An error occurred during generation:<br><br><textarea style="width:100%; height:160px; background:rgba(0,0,0,0.5); color:#ff5c5c; border:1px solid rgba(255,255,255,0.2); padding:8px; border-radius:4px; font-family:monospace; resize:vertical; font-size:12px;" readonly onclick="this.select()">${escHtml(fullError)}</textarea>`
+                htmlMessage: `
+                    <div style="color:var(--scp-danger); margin-bottom: 10px; font-weight: 600; font-size: 14px; word-break: break-word; line-height: 1.4;">
+                        ${escHtml(errorSummary)}
+                    </div>
+                    <div style="font-size: 11px; margin-bottom: 4px; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.5px;">Technical Details / Stack Trace</div>
+                    <textarea style="width:100%; height:130px; background:rgba(0,0,0,0.4); color:var(--scp-text-muted); border:1px solid rgba(255,255,255,0.15); padding:8px; border-radius:6px; font-family:var(--scp-font, monospace); resize:vertical; font-size:11px;" readonly onclick="this.select()">${escHtml(fullError)}</textarea>
+                `
+            });
+        } finally {
+            _generating = false;
+            setGeneratingState(false);
+        }
+    }
+
+    // ─── Continue Generation ─────────────────────────────────────────────────────
+
+    function _joinContinuation(existing, continuation) {
+        if (!continuation) return existing;
+        const trimmed = existing.trimEnd();
+        // If existing ends with punctuation/word char, add a space before continuation
+        const needsSpace = /[\w.,!?;:'")\]}>]$/.test(trimmed);
+        return trimmed + (needsSpace ? ' ' : '') + continuation;
+    }
+
+    async function runContinue(session, targetMsgId) {
+        if (_generating) return;
+        const targetMsg = session.messages.find(m => m.id === targetMsgId);
+        if (!targetMsg || targetMsg.role !== 'assistant') return;
+
+        _generating = true;
+        const settings = getEffectiveSettings();
+        setGeneratingState(true);
+
+        const CONTINUE_PROMPT = 'Continue your response exactly from where you left off. Do not repeat any previously written text.';
+
+        let streamContentEl = null;
+        let cursorEl = null;
+        let isStreaming = false;
+        let streamAccumContinuation = '';
+        const originalContent = targetMsg.content;
+
+        const targetEl = document.querySelector(`.scp-msg[data-id="${targetMsgId}"]`);
+        if (targetEl) streamContentEl = targetEl.querySelector('.scp-msg-content');
+
+        const cleanupCursor = () => {
+            if (cursorEl && cursorEl.parentNode) cursorEl.remove();
+            cursorEl = null;
+        };
+
+        const onChunk = (text) => {
+            isStreaming = true;
+            streamAccumContinuation = text;
+            if (!cursorEl) {
+                cursorEl = document.createElement('span');
+                cursorEl.className = 'scp-stream-cursor';
+                const bar = document.getElementById('scp-thinking-bar');
+                const thinkingText = document.getElementById('scp-thinking-text');
+                if (bar) bar.style.display = 'flex';
+                if (thinkingText) thinkingText.textContent = 'Streaming…';
+            }
+            const combined = _joinContinuation(originalContent, text);
+            const { content: disp } = getDisplayContent(combined, settings);
+            if (streamContentEl) {
+                streamContentEl.innerHTML = renderMarkdown(disp);
+                streamContentEl.appendChild(cursorEl);
+            }
+            smartScrollToBottom();
+        };
+
+        const _applyFinalContinuation = (fullCombined) => {
+            const lbChanges = parseLBChangesFromText(fullCombined);
+            const charChanges = parseCharChangesFromText(fullCombined);
+            const charCreation = parseCharCreationFromText(fullCombined);
+            const needsStrip = lbChanges?.length || charChanges?.length || charCreation;
+
+            if (needsStrip) {
+                let stripped = fullCombined;
+                if (lbChanges?.length) stripped = stripLBChangesBlock(stripped);
+                if (charChanges?.length) stripped = stripCharChangesBlock(stripped);
+                if (charCreation) stripped = stripCharCreationBlock(stripped);
+                const { content: disp } = getDisplayContent(stripped, settings);
+                if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(disp); postProcessHTMLBlocks(streamContentEl); }
+                const msgEl = document.querySelector(`.scp-msg[data-id="${targetMsgId}"]`);
+                if (msgEl) {
+                    if (lbChanges?.length) renderProposalCard(lbChanges, msgEl);
+                    if (charChanges?.length) renderCharProposalCard(charChanges, msgEl);
+                    if (charCreation) renderCharCreationCard(charCreation, msgEl);
+                }
+            } else {
+                const { content: disp } = getDisplayContent(fullCombined, settings);
+                if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(disp); postProcessHTMLBlocks(streamContentEl); }
+            }
+        };
+
+        try {
+            const fullMessages = await assembleMessages(session, settings, CONTINUE_PROMPT);
+            const fullPromptText = fullMessages.map(m => m.content).join('\n');
+            
+            const tokensIn = await estimateTokens(fullPromptText);
+
+            _dbgAdd('CONTINUE_START', {
+                src: settings.connectionSource,
+                profile: settings.connectionProfileId || null,
+                maxTokens: settings.maxTokens,
+                streaming: settings.forceStreaming,
+                ctxDepth: settings.contextDepth,
+                tokensIn
+            });
+
+            const result = await callGenerate(session, settings, CONTINUE_PROMPT, onChunk);
+            cleanupCursor();
+
+            if (result === null) {
+                if (isStreaming && streamAccumContinuation) {
+                    const combined = _joinContinuation(originalContent, streamAccumContinuation);
+                    targetMsg.content = combined;
+                    saveSessionsToMetadata();
+                    _applyFinalContinuation(combined);
+                }
+                return;
+            }
+
+            const { text: continuation } = result;
+            const combined = _joinContinuation(originalContent, continuation);
+            targetMsg.content = combined;
+            saveSessionsToMetadata();
+            _applyFinalContinuation(combined);
+
+            if (tokensIn > 0) recordStat(_SM.tokIn, tokensIn);
+            
+            const tokensOut = await estimateTokens(continuation);
+            if (tokensOut > 0) recordStat(_SM.tokOut, tokensOut);
+
+            updateMsgCount(session);
+            playCompletionSound();
+            _dbgAdd('CONTINUE_DONE', { chars: continuation?.length || 0, tokensOut });
+
+        } catch (err) {
+            cleanupCursor();
+            _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack });
+            console.error(`[${EXT_DISPLAY}]`, err);
+            
+            let errorSummary = err.message || String(err);
+            let fullError = err.stack || err.message || String(err);
+            
+            if (typeof err === 'object' && !err.stack && !err.message) {
+                try { 
+                    errorSummary = "API or Network Error";
+                    fullError = JSON.stringify(err, null, 2); 
+                } catch(e) {}
+            }
+
+            showCustomDialog({
+                type: 'alert',
+                title: 'Generation Error',
+                htmlMessage: `
+                    <div style="color:var(--scp-danger); margin-bottom: 10px; font-weight: 600; font-size: 14px; word-break: break-word; line-height: 1.4;">
+                        ${escHtml(errorSummary)}
+                    </div>
+                    <div style="font-size: 11px; margin-bottom: 4px; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.5px;">Technical Details / Stack Trace</div>
+                    <textarea style="width:100%; height:130px; background:rgba(0,0,0,0.4); color:var(--scp-text-muted); border:1px solid rgba(255,255,255,0.15); padding:8px; border-radius:6px; font-family:var(--scp-font, monospace); resize:vertical; font-size:11px;" readonly onclick="this.select()">${escHtml(fullError)}</textarea>
+                `
             });
         } finally {
             _generating = false;
@@ -7380,6 +7756,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (sendBtn) sendBtn.disabled = on;
         if (input) input.disabled = on;
         if (regenBtn) regenBtn.disabled = on;
+        if (!on) _refreshContinueBtns();
     }
 
     function handleSend() {
@@ -7845,6 +8222,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         s.windowVisible = true; 
         s.minimized = false;
         windowEl.style.display = 'flex';
+        _userScrolledUp = false;
         saveSettings(); 
         updateIconVisibility();
         scrollToBottom();
@@ -9023,6 +9401,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         });
 
         $('scp-open-window')?.addEventListener('click', showWindow);
+        $('scp-download-debug')?.addEventListener('click', dbgDownload);
         $('scp-clear-sessions')?.addEventListener('click', async () => {
             const ok = await showCustomDialog({ 
                 type: 'confirm', 
@@ -9636,6 +10015,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             saveSettings(); updateSPBindingSection(); updateBindingSection();
         });
 
+        document.getElementById('scp-sp-download-debug')?.addEventListener('click', dbgDownload);
         document.getElementById('scp-sp-clear-sessions')?.addEventListener('click', async () => {
             const ok = await showCustomDialog({ 
                 type: 'confirm', 
@@ -9813,6 +10193,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     function attachWindowListeners() {
         makeDraggable($('scp-drag-handle'), windowEl);
         makeResizable(windowEl);
+        setupMessagesScrollTracking();
 
         window.addEventListener('resize', () => {
             if (windowEl && windowEl.style.display !== 'none') {
@@ -9901,9 +10282,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         $('scp-rename-sess-btn')?.addEventListener('click', async () => {
             const sess = getCurrentSession();
+            const oldName = sess.name;
             const newName = await showCustomDialog({ type: 'prompt', title: 'Rename Session', message: 'New session name:', defaultValue: sess.name });
-            if (!newName?.trim()) return;
+            if (!newName?.trim() || newName.trim() === oldName) return;
             sess.name = newName.trim(); saveSessionsToMetadata(); refreshSessionDropdown();
+            _dbgAdd('SESSION_RENAMED', { id: sess.id, oldName, newName: sess.name });
         });
 
         $('scp-del-sess-btn')?.addEventListener('click', async () => {
@@ -10289,7 +10672,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const abort = new AbortController();
         _abortController = abort;
 
-        let profileId = ctx.extensionSettings?.connectionManager?.selectedProfile ?? null;
+        let profileId = ctx.extensionSettings?.connectionManager?.selectedProfile || null;
 
         if (settings.connectionSource === 'profile' && settings.connectionProfileId) {
             const profiles = ctx.extensionSettings?.connectionManager?.profiles || [];
@@ -10394,9 +10777,26 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
     // ─── Init ────────────────────────────────────────────────────────────────────
 
+    async function loadManifestVersion() {
+        try {
+            const res = await fetch(`/scripts/extensions/${__extPath}/manifest.json`);
+            if (res.ok) {
+                const manifest = await res.json();
+                extVersion = manifest.version || CHANGELOG[0]?.version || '?';
+            } else {
+                extVersion = CHANGELOG[0]?.version || '?';
+            }
+        } catch (_) {
+            extVersion = CHANGELOG[0]?.version || '?';
+        }
+    }
+
+
     async function init() {
+        _dbgSetupGlobalErrorHandlers();
         try { ST_WorldInfo = await import('/scripts/world-info.js'); } catch(e) { console.warn('ST-Copilot: Could not import world-info.js'); }
         try { ST_Utils = await import('/scripts/utils.js'); } catch(e) { console.warn('ST-Copilot: Could not import utils.js'); }
+        await loadManifestVersion();
         getSettings(); await injectUI();
         const ctx = SillyTavern.getContext();
         const container = document.getElementById('extensions_settings') || document.getElementById('extensions_settings2');
@@ -10442,6 +10842,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         
         setupHotkey(); setupGhostHotkey(); addWandButton();
         checkChangelogAutoShow();
+        _dbgSnapshotSettings();
 
         window.addEventListener('message', e => {
             if (!e.data || typeof e.data !== 'object') return;

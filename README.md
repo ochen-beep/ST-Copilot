@@ -124,6 +124,12 @@ A fully integrated, highly detailed theme editor.
 
 ## 📜 Changelog History
 
+### V2.5.1
+*   **Continue Button:** Added a dedicated button to continue the last Copilot message.
+*   **Debug File Support:** You can now save a full debug log from the settings menu to help with troubleshooting. *Note: Export the log before refreshing the page, as it clears on reload.*
+*   **Streaming Scroll Fix:** Users can now scroll up to read previous messages without being snapped back to the bottom while the AI is streaming.
+*   **Fixes:** Implemented a potential fix for the "profile not found" error.
+
 ### V2.5.0
 *   **Massive Token Optimization:** Completely overhauled the "Proposed Changes" system. Instead of rewriting entire text blocks, it now uses a smart search-and-replace method, reducing token consumption by over 80%! *(Huge thanks to @Steel-skull on GitHub!)*
 *   **Character Card Creator & Editor:** You can now create characters entirely from scratch or edit existing card fields (Description, Personality, Scenario, First Message, Alternate Greetings, and more) directly inside the extension.
@@ -146,7 +152,7 @@ A fully integrated, highly detailed theme editor.
 *   Fixed message numbering in the Chat Context Picker (now 0 to N) to properly match ST's native numbering.
 
 <details>
-<summary><b>Previous Updates (v1.7.0 - v1.9.0)</b></summary>
+<summary><b>Previous Updates (v1.7.0 - v2.0.0)</b></summary>
 
 ###  V2.0.0: Massive Update
 The **V2.0.0** update is now live. While this update heavily improves how Copilot handles your lore and context, it also brings a massive wave of highly requested QoL improvements.
