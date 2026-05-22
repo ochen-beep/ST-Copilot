@@ -73,21 +73,35 @@
 
     function dbgDownload() {
         const ctx = SillyTavern.getContext();
-        const cm = ctx.extensionSettings?.connectionManager || {};
-        const cmProfiles = cm.profiles || [];
         
-        const activeId = cm.selectedProfile;
-        const activeProfileName = cmProfiles.find(p => p.id === activeId)?.name || activeId || 'default';
+        let activeId = null;
+        const nativeSel = document.getElementById('connection_profile');
+        if (nativeSel && typeof nativeSel.value === 'string') {
+            activeId = nativeSel.value;
+        }
+
+        let profiles = [];
+        if (ctx.ConnectionManagerRequestService && typeof ctx.ConnectionManagerRequestService.getSupportedProfiles === 'function') {
+            profiles = ctx.ConnectionManagerRequestService.getSupportedProfiles();
+        } else {
+            profiles = ctx.extensionSettings?.connectionManager?.profiles || [];
+        }
+
+        let activeProfileName = 'default';
+        if (activeId && activeId !== 'default' && activeId !== 'gui') {
+            const found = profiles.find(p => p.id === activeId);
+            activeProfileName = found ? found.name : activeId;
+        }
 
         const stEnv = {
             mainApi: ctx.api_server || document.getElementById('main_api')?.value || 'unknown',
             characterId: ctx.characterId,
             chatId: ctx.chatId,
             activeConnectionProfile: activeProfileName,
-            connectionProfiles: cmProfiles.map(p => ({
+            connectionProfiles: profiles.map(p => ({
                 id: p.id,
                 name: p.name,
-                type: p.type,
+                type: p.type || p.api || 'unknown',
             }))
         };
 
@@ -8881,14 +8895,22 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     async function updateProfilesList() {
         const profSel = $('scp-conn-profile'); if (!profSel) return;
         const ctx = SillyTavern.getContext();
-        let profiles =[];
-        try {
-            if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
-                const result = await ctx.executeSlashCommandsWithOptions('/profile-list');
-                if (result && result.pipe) profiles = JSON.parse(result.pipe);
+        let profiles = [];
+
+        if (ctx.ConnectionManagerRequestService && typeof ctx.ConnectionManagerRequestService.getSupportedProfiles === 'function') {
+            profiles = ctx.ConnectionManagerRequestService.getSupportedProfiles();
+        } else {
+            try {
+                if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
+                    const result = await ctx.executeSlashCommandsWithOptions('/profile-list');
+                    if (result && result.pipe) {
+                        const names = JSON.parse(result.pipe);
+                        profiles = names.map(n => ({ id: n, name: n }));
+                    }
+                }
+            } catch (e) {
+                console.warn(`[${EXT_DISPLAY}] Failed to fetch profiles`, e);
             }
-        } catch (e) {
-            console.warn(`[${EXT_DISPLAY}] Failed to fetch profiles via slash command`, e);
         }
 
         const s = getSettings(); 
@@ -8898,8 +8920,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (profiles && profiles.length > 0) {
             profiles.forEach(p => {
                 const newOpt = document.createElement('option');
-                newOpt.value = p;
-                newOpt.textContent = p;
+                newOpt.value = p.id;
+                newOpt.textContent = p.name;
                 profSel.appendChild(newOpt);
             });
         } else {
@@ -8909,7 +8931,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     if (opt.value && opt.value !== 'default' && opt.value !== 'gui') {
                         const newOpt = document.createElement('option');
                         const profileName = opt.textContent.trim();
-                        newOpt.value = profileName;
+                        newOpt.value = opt.value;
                         newOpt.textContent = profileName;
                         profSel.appendChild(newOpt);
                     }
@@ -9614,31 +9636,48 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     }
 
     async function updateSPConnProfileList() {
-        const selIds =['scp-sp-conn-profile', 'scp-sp-ov-conn-profile'];
+        const selIds = ['scp-sp-conn-profile', 'scp-sp-ov-conn-profile'];
         const s = getSettings();
         const eff = getEffectiveSettings();
         const ctx = SillyTavern.getContext();
         let profiles = [];
-        try {
-            if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
-                const result = await ctx.executeSlashCommandsWithOptions('/profile-list');
-                if (result?.pipe) profiles = JSON.parse(result.pipe);
-            }
-        } catch (_) {}
+
+        if (ctx.ConnectionManagerRequestService && typeof ctx.ConnectionManagerRequestService.getSupportedProfiles === 'function') {
+            profiles = ctx.ConnectionManagerRequestService.getSupportedProfiles();
+        } else {
+            try {
+                if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
+                    const result = await ctx.executeSlashCommandsWithOptions('/profile-list');
+                    if (result?.pipe) {
+                        const names = JSON.parse(result.pipe);
+                        profiles = names.map(n => ({ id: n, name: n }));
+                    }
+                }
+            } catch (_) {}
+        }
+
         if (!profiles.length) {
             const nativeSel = document.getElementById('connection_profile');
             if (nativeSel?.options) {
                 for (const opt of Array.from(nativeSel.options)) {
-                    if (opt.value && opt.value !== 'default' && opt.value !== 'gui') profiles.push(opt.textContent.trim());
+                    if (opt.value && opt.value !== 'default' && opt.value !== 'gui') {
+                        profiles.push({ id: opt.value, name: opt.textContent.trim() });
+                    }
                 }
             }
         }
+
         selIds.forEach(sid => {
             const sel = document.getElementById(sid); if (!sel) return;
             const isOverride = sid === 'scp-sp-ov-conn-profile';
             const targetVal = isOverride ? (eff.connectionProfileId || '') : (s.connectionProfileId || '');
             sel.innerHTML = '<option value="">-- Select Profile --</option>';
-            profiles.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = p; sel.appendChild(o); });
+            profiles.forEach(p => { 
+                const o = document.createElement('option'); 
+                o.value = p.id; 
+                o.textContent = p.name; 
+                sel.appendChild(o); 
+            });
             if (Array.from(sel.options).some(o => o.value === targetVal)) sel.value = targetVal;
         });
     }
@@ -10672,10 +10711,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const abort = new AbortController();
         _abortController = abort;
 
-        let profileId = ctx.extensionSettings?.connectionManager?.selectedProfile || null;
+        let profileId = null;
+        let profiles = [];
+        if (ctx.ConnectionManagerRequestService && typeof ctx.ConnectionManagerRequestService.getSupportedProfiles === 'function') {
+            profiles = ctx.ConnectionManagerRequestService.getSupportedProfiles();
+        } else {
+            profiles = ctx.extensionSettings?.connectionManager?.profiles || [];
+        }
 
         if (settings.connectionSource === 'profile' && settings.connectionProfileId) {
-            const profiles = ctx.extensionSettings?.connectionManager?.profiles || [];
             const found = profiles.find(p =>
                 p.id === settings.connectionProfileId || p.name === settings.connectionProfileId
             );
@@ -10683,6 +10727,30 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 profileId = found.id;
             } else {
                 throw new Error(`Connection profile "${settings.connectionProfileId}" not found in Connection Manager.\nAvailable profiles: ${profiles.map(p => p.name).join(', ') || 'None'}`);
+            }
+        } else {
+            const nativeSel = document.getElementById('connection_profile');
+            if (nativeSel && nativeSel.value && nativeSel.value !== 'default' && nativeSel.value !== 'gui') {
+                profileId = nativeSel.value;
+            } else if (typeof window.connection_profile === 'string' && window.connection_profile !== 'default' && window.connection_profile !== 'gui') {
+                profileId = window.connection_profile;
+            } else {
+                try {
+                    const currentResult = await ctx.executeSlashCommandsWithOptions('/profile');
+                    const activeName = currentResult?.pipe?.trim();
+                    if (activeName) {
+                        const found = profiles.find(p => p.name === activeName || p.id === activeName);
+                        if (found) profileId = found.id;
+                    }
+                } catch(e) {}
+            }
+            
+            if (!profileId && profiles.length > 0) {
+                profileId = profiles[0].id;
+            }
+            
+            if (!profileId) {
+                throw new Error('Profile not found. Please select a valid profile in SillyTavern Connection Manager.');
             }
         }
 
