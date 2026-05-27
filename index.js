@@ -4747,16 +4747,13 @@ replacement text
         const isExcluded = (s.lorebookExcludedBooks || []).includes(name);
 
         if (!isSelected && !isExcluded) {
-            // default → selected
             s.lorebookSelectedBooks.push(name);
             s.lorebookExcludedBooks = (s.lorebookExcludedBooks || []).filter(b => b !== name);
         } else if (isSelected) {
-            // selected → excluded
             s.lorebookSelectedBooks = s.lorebookSelectedBooks.filter(b => b !== name);
             if (!s.lorebookExcludedBooks) s.lorebookExcludedBooks = [];
             s.lorebookExcludedBooks.push(name);
         } else {
-            // excluded → default
             s.lorebookExcludedBooks = s.lorebookExcludedBooks.filter(b => b !== name);
         }
         saveSettings();
@@ -5235,7 +5232,6 @@ replacement text
             btn.querySelectorAll('.scp-save-dirty-dot').forEach(d => d.remove());
             if (_configDirty) btn.insertAdjacentHTML('beforeend', configDot);
         });
-        // query ALL theme-save buttons (may exist in multiple containers)
         document.querySelectorAll('#scp-theme-save').forEach(btn => {
             btn.querySelectorAll('.scp-save-dirty-dot').forEach(d => d.remove());
             if (_themeDirty) btn.insertAdjacentHTML('beforeend', configDot);
@@ -5582,7 +5578,7 @@ replacement text
                 dotEls.forEach((d) => {
                     if (d) {
                         const idx = parseInt(d.getAttribute('data-i') || '0');
-                        d.style.transition = 'none'; // Отключаем CSS-конфликты
+                        d.style.transition = 'none';
                         d.setAttribute('cy', interpolated[idx][1].toFixed(2));
                         d.style.opacity = '1';
                     }
@@ -8436,6 +8432,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     }
 
     let _tokenCalcTid = null;
+    const _tokenCountPromises = new Map();
 
     async function estimateTokens(text) {
         if (!text) return 0;
@@ -8443,26 +8440,58 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (Array.isArray(text)) {
             str = text.map(t => t.type === 'text' ? t.text : '').join('\n');
         }
-        const ctx = SillyTavern.getContext();
+        
+        if (_tokenCountCache.has(str)) return _tokenCountCache.get(str);
+        if (_tokenCountPromises.has(str)) return _tokenCountPromises.get(str);
+
+        const promise = (async () => {
+            const ctx = SillyTavern.getContext();
+            
+            try {
+                if (typeof ctx.getTokenCountAsync === 'function') return await ctx.getTokenCountAsync(str);
+                if (typeof window.getTokenCountAsync === 'function') return await window.getTokenCountAsync(str);
+            } catch (_) {}
+            
+            await new Promise(resolve => setTimeout(resolve, 0));
+
+            try {
+                if (typeof ctx.getTokenCount === 'function') return ctx.getTokenCount(str);
+                if (typeof window.getTokenCount === 'function') return window.getTokenCount(str);
+            } catch (_) {}
+            
+            try {
+                const res = await fetch('/api/tokencount', {
+                    method: 'POST',
+                    headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: str })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (typeof data.length === 'number') return data.length;
+                    if (typeof data.count === 'number') return data.count;
+                    if (typeof data === 'number') return data;
+                }
+            } catch (_) {}
+            
+            return Math.ceil(str.length / 3.5);
+        })();
+
+        _tokenCountPromises.set(str, promise);
         try {
-            if (typeof ctx.getTokenCount === 'function') return ctx.getTokenCount(str);
-            if (typeof window.getTokenCount === 'function') return window.getTokenCount(str);
-        } catch (_) {}
-        try {
-            const res = await fetch('/api/tokencount', {
-                method: 'POST',
-                headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: str })
-            });
-            if (res.ok) {
-                const data = await res.json();
-                if (typeof data.length === 'number') return data.length;
-                if (typeof data.count === 'number') return data.count;
-                if (typeof data === 'number') return data;
+            const count = await promise;
+            if (_tokenCountCache.size > 500) {
+                const keysToDel = Array.from(_tokenCountCache.keys()).slice(0, 100);
+                keysToDel.forEach(k => _tokenCountCache.delete(k));
             }
-        } catch (_) {}
-        return Math.ceil(str.length / 3.5);
+            _tokenCountCache.set(str, count);
+            return count;
+        } finally {
+            _tokenCountPromises.delete(str);
+        }
     }
+
+    let _isTokenCalculating = false;
+    let _pendingTokenCalc = false;
 
     function updateMsgCount(session) {
         const el = $('scp-msg-count');
@@ -8471,26 +8500,47 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const tel = $('scp-token-count');
         if (tel && session) {
             clearTimeout(_tokenCalcTid);
-            tel.textContent = '... tkns';
+            if (!_isTokenCalculating) tel.textContent = '... tkns';
+            
             _tokenCalcTid = setTimeout(async () => {
-                const settings = getEffectiveSettings();
-                const currentInput = document.getElementById('scp-input')?.value || '';
+                if (_isTokenCalculating) {
+                    _pendingTokenCalc = true;
+                    return;
+                }
                 
-                const processedAtts = await _processAttachmentsBeforeSend(_pendingAttachments, true);
-                
-                const messages = await assembleMessages(session, settings, currentInput, processedAtts);
-                
-                const fullText = messages.map(m => {
-                    let c = m.content;
-                    if (Array.isArray(c)) {
-                        return c.map(part => part.type === 'text' ? part.text : '').join('\n');
+                const runCalc = async () => {
+                    _isTokenCalculating = true;
+                    try {
+                        await new Promise(r => setTimeout(r, 0));
+                        
+                        const settings = getEffectiveSettings();
+                        const currentInput = document.getElementById('scp-input')?.value || '';
+                        
+                        const processedAtts = await _processAttachmentsBeforeSend(_pendingAttachments, true);
+                        const messages = await assembleMessages(session, settings, currentInput, processedAtts);
+                        
+                        const fullText = messages.map(m => {
+                            let c = m.content;
+                            if (Array.isArray(c)) {
+                                return c.map(part => part.type === 'text' ? part.text : '').join('\n');
+                            }
+                            return c;
+                        }).join('\n');
+                        
+                        const count = await estimateTokens(fullText);
+                        const telNode = $('scp-token-count');
+                        if (telNode) telNode.textContent = `~${count} tkns`;
+                    } finally {
+                        _isTokenCalculating = false;
+                        if (_pendingTokenCalc) {
+                            _pendingTokenCalc = false;
+                            runCalc();
+                        }
                     }
-                    return c;
-                }).join('\n');
+                };
                 
-                const count = await estimateTokens(fullText);
-                if (tel) tel.textContent = `~${count} tkns`;
-            }, 600);
+                runCalc();
+            }, 800);
         }
     }
 
