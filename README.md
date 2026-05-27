@@ -124,6 +124,16 @@ A fully integrated, highly detailed theme editor.
 
 ## 📜 Changelog History
 
+### V2.7.0
+*   **Proposed Chat Edits:** A powerful new way to bulk-modify, delete, or hide message ranges. Just ask Copilot to "change the name Elara to Sarah in the last 10 messages" or "hide all mentions of the tavern."
+*   **File Attachments & Vision:** Directly upload text files and images to Copilot. Features an internal viewer and supports both direct vision models and the Image Captioning extension.
+*   **Message Swiping:** Copilot responses now support regeneration and swipes, allowing you to navigate through different iterations of a reply.
+*   **Multimedia Backgrounds:** Customize the Copilot interface with image or video backgrounds (local or URL) including adjustable dimming for better readability.
+*   **Character AI Enhancements:** Added support for the **tags** field during character creation and significantly improved generation prompts (credits to @realevernever).
+*   **Advanced Overrides & Sync:** Lorebook, Character, and Chat AI settings are now fully synced with Configuration Profiles and accessible via Session Overrides.
+*   **UX Improvements:** Added an "Always Off" state for Lorebooks, sender-based group selection in the Context Picker, and focus-aware completion sounds.
+*   **Refinements:** Optimized connection profile switching and fixed theme compatibility for list markers and hidden messages.
+
 ### V2.5.1
 *   **Continue Button:** Added a dedicated button to continue the last Copilot message.
 *   **Debug File Support:** You can now save a full debug log from the settings menu to help with troubleshooting. *Note: Export the log before refreshing the page, as it clears on reload.*
@@ -140,6 +150,9 @@ A fully integrated, highly detailed theme editor.
 *   **Mobile & Bug Fixes:** The Enter key on mobile keyboards now correctly inserts line breaks instead of sending messages. Fixed mobile UI headers, resolved user message duplication bugs, and redesigned system message outputs.
 *   *Note: The default Lorebook AI Edit prompt has been updated. Please reset your prompt to default in the settings to ensure compatibility!*
 
+<details>
+<summary><b>Previous Updates (v1.7.0 - v2.3.0)</b></summary>
+
 ### V2.3.0
 *   **Stream Support:** Added streaming support so you can see generations in real-time.
 *   **Reasoning Blocks:** Added native display support for Reasoning blocks.
@@ -150,9 +163,6 @@ A fully integrated, highly detailed theme editor.
 *   Improved and fixed the default prompt used for Lorebook editing.
 *   Fixed a bug where Lorebook entries would incorrectly remain in the context after being disconnected from the chat or character.
 *   Fixed message numbering in the Chat Context Picker (now 0 to N) to properly match ST's native numbering.
-
-<details>
-<summary><b>Previous Updates (v1.7.0 - v2.0.0)</b></summary>
 
 ###  V2.0.0: Massive Update
 The **V2.0.0** update is now live. While this update heavily improves how Copilot handles your lore and context, it also brings a massive wave of highly requested QoL improvements.

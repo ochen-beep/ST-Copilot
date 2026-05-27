@@ -48,6 +48,7 @@
         <div class="scp-sp-group">
           <div class="scp-sp-group-title"><i class="fa-solid fa-volume-high"></i> Completion Sound</div>
           <div id="scp-sp-sound-settings"></div>
+          <label class="scp-sp-check" style="margin-top:6px"><input type="checkbox" id="scp-sp-sound-unfocused"><span>Only play when window is not focused</span></label>
         </div>
 
         <div class="scp-sp-group">
@@ -176,14 +177,57 @@
         </div>
 
         <div class="scp-sp-group">
+          <div class="scp-sp-group-title"><i class="fa-solid fa-comments"></i> Chat Message AI Edits</div>
+          <label class="scp-sp-check"><input type="checkbox" id="scp-sp-chat-edit-enabled"><span>Enable AI Chat Message Editing</span></label>
+          <div class="scp-sp-field" style="margin-top:6px">
+            <label class="scp-sp-label">AI Edit Prompt <span class="scp-sp-hint">macros: {{chat_edit_format}}, {{active_chat_ids}}</span></label>
+            <textarea class="scp-sp-textarea" id="scp-sp-chat-edit-prompt" rows="5" style="font-family:monospace;font-size:11px"></textarea>
+            <button class="scp-action-btn" id="scp-sp-reset-chat-edit-prompt" style="margin-top:4px">${I.refresh}<span>Reset to Default</span></button>
+          </div>
+        </div>
+
+        <div class="scp-sp-group">
+          <div class="scp-sp-group-title"><i class="fa-solid fa-ellipsis"></i> Other</div>
+          
+          <!-- Background -->
+          <div class="scp-sp-group">
+            <div class="scp-sp-group-title"><i class="fa-solid fa-image"></i> Window Background</div>
+            <div id="scp-sp-bg-settings"></div>
+          </div>
+          
+          <!-- Context Message Picker -->
+          <div class="scp-sp-label" style="margin-bottom:4px;color:var(--scp-text)">Context Message Picker</div>
+          <div class="scp-sp-field">
+            <label class="scp-sp-label">Preview: first N lines</label>
+            <input type="number" class="scp-sp-input" id="scp-sp-picker-lines" min="1" max="20" placeholder="1">
+          </div>
+          <div class="scp-sp-field">
+            <label class="scp-sp-label">Preview: last N lines (0 = off)</label>
+            <input type="number" class="scp-sp-input" id="scp-sp-picker-last-lines" min="0" max="20" placeholder="0">
+          </div>
+          <div style="height:1px;background:rgba(255,255,255,0.06);margin:8px 0"></div>
+          
+          <!-- File Attachments -->
+          <div class="scp-sp-label" style="margin-bottom:4px;color:var(--scp-text)">File Attachments</div>
+          <div class="scp-sp-field">
+            <label class="scp-sp-label">Image Analysis Mode</label>
+            <select class="scp-sp-select" id="scp-sp-image-mode">
+              <option value="direct">Direct (send to current API)</option>
+              <option value="caption">Caption (use Image Captioning extension)</option>
+            </select>
+          </div>
+        </div>
+        <div class="scp-sp-group">
           <div class="scp-sp-group-title"><i class="fa-solid fa-palette"></i> Interface Theme</div>
           <div id="scp-sp-theme-section"></div>
         </div>
 
         <div class="scp-sp-group">
           <div class="scp-sp-group-title" style="color:var(--scp-danger)"><i class="fa-solid fa-triangle-exclamation"></i> Danger Zone</div>
-          <button class="scp-action-btn scp-sp-danger-btn" id="scp-sp-clear-sessions">${I.trash}<span>Clear All Sessions</span></button>
-          <button class="scp-action-btn" id="scp-sp-download-debug" style="margin-top:6px" title="Download full debug log as text file"><i class="fa-solid fa-bug"></i><span>Download Debug Log</span></button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="scp-action-btn scp-sp-danger-btn" id="scp-sp-clear-sessions" style="flex:1">${I.trash}<span>Clear All Sessions</span></button>
+            <button class="scp-action-btn" id="scp-sp-download-debug" style="flex:1" title="Download full debug log as text file"><i class="fa-solid fa-bug"></i><span>Download Debug Log</span></button>
+          </div>
         </div>
 
       </div>
@@ -291,7 +335,12 @@
               <label class="scp-sp-check"><input type="checkbox" id="scp-sp-ov-ce-authors-note"><span>Author's Note</span></label>
               <button class="scp-sp-ov-clear" data-ovkey="charField_authors_note" title="Clear override" disabled>↺</button>
             </div>
-          </div>
+            <div class="scp-sp-ov-check-row">
+              <label class="scp-sp-check"><input type="checkbox" id="scp-sp-ov-ce-alt-greetings"><span>Alternate Greetings</span></label>
+              <button class="scp-sp-ov-clear" data-ovkey="charField_alternate_greetings" title="Clear override" disabled>↺</button>
+            </div>
+            <div id="scp-sp-ov-ce-alt-greetings-picker" style="display:none;margin-top:4px;padding-left:14px"></div>
+        </div>
           <div class="scp-sp-field" style="margin-top:8px">
             <label class="scp-sp-ov-label scp-sp-label" data-ovkey="contextDepth">Main Chat Depth</label>
             <div class="scp-sp-ov-wrap">
@@ -327,6 +376,60 @@
             <div id="scp-sp-prompt-preset-manager"></div>
           </div>
           <textarea class="scp-sp-textarea scp-sp-textarea-lg" id="scp-sp-ov-sysprompt" placeholder="Using global system prompt…"></textarea>
+        </div>
+
+        <div class="scp-sp-group">
+          <div class="scp-sp-group-title"><i class="fa-solid fa-user-pen"></i> AI Edits (Prompts)</div>
+          
+          <!-- Char Edit -->
+          <div class="scp-sp-ov-check-row">
+            <label class="scp-sp-check"><input type="checkbox" id="scp-sp-ov-char-edit-enabled"><span>Character AI Edits</span></label>
+            <button class="scp-sp-ov-clear" data-ovkey="charEditAIEnabled" title="Clear override" disabled>↺</button>
+          </div>
+          <div class="scp-sp-ov-label-row" style="margin-top:4px">
+            <label class="scp-sp-ov-label scp-sp-label" data-ovkey="charEditPrompt">Char Edit Prompt</label>
+            <button class="scp-sp-ov-clear" data-ovkey="charEditPrompt" title="Clear override" disabled>↺</button>
+          </div>
+          <div style="margin-bottom:8px">
+            <div id="scp-sp-ov-char-preset-manager"></div>
+          </div>
+          <textarea class="scp-sp-textarea" id="scp-sp-ov-char-edit-prompt" rows="3" placeholder="Use global..."></textarea>
+
+          <div style="height:1px;background:rgba(255,255,255,0.06);margin:8px 0"></div>
+
+          <!-- LB Edit -->
+          <div class="scp-sp-ov-check-row">
+            <label class="scp-sp-check"><input type="checkbox" id="scp-sp-ov-lb-ai-enabled"><span>Lorebook AI Edits</span></label>
+            <button class="scp-sp-ov-clear" data-ovkey="lorebookAIManageEnabled" title="Clear override" disabled>↺</button>
+          </div>
+          <div class="scp-sp-ov-check-row">
+            <label class="scp-sp-check"><input type="checkbox" id="scp-sp-ov-lb-auto-kw"><span>Auto-Keywords</span></label>
+            <button class="scp-sp-ov-clear" data-ovkey="lorebookAutoKeyword" title="Clear override" disabled>↺</button>
+          </div>
+          <div class="scp-sp-ov-label-row" style="margin-top:4px">
+            <label class="scp-sp-ov-label scp-sp-label" data-ovkey="lorebookManagePrompt">Lorebook Edit Prompt</label>
+            <button class="scp-sp-ov-clear" data-ovkey="lorebookManagePrompt" title="Clear override" disabled>↺</button>
+          </div>
+          <div style="margin-bottom:8px">
+            <div id="scp-sp-ov-lb-preset-manager"></div>
+          </div>
+          <textarea class="scp-sp-textarea" id="scp-sp-ov-lb-manage-prompt" rows="3" placeholder="Use global..."></textarea>
+
+          <div style="height:1px;background:rgba(255,255,255,0.06);margin:8px 0"></div>
+
+          <!-- Chat Edit -->
+          <div class="scp-sp-ov-check-row">
+            <label class="scp-sp-check"><input type="checkbox" id="scp-sp-ov-chat-edit-enabled"><span>Chat Message AI Edits</span></label>
+            <button class="scp-sp-ov-clear" data-ovkey="chatEditAIEnabled" title="Clear override" disabled>↺</button>
+          </div>
+          <div class="scp-sp-ov-label-row" style="margin-top:4px">
+            <label class="scp-sp-ov-label scp-sp-label" data-ovkey="chatEditPrompt">Chat Edit Prompt</label>
+            <button class="scp-sp-ov-clear" data-ovkey="chatEditPrompt" title="Clear override" disabled>↺</button>
+          </div>
+          <div style="margin-bottom:8px">
+            <div id="scp-sp-ov-chat-preset-manager"></div>
+          </div>
+          <textarea class="scp-sp-textarea" id="scp-sp-ov-chat-edit-prompt" rows="3" placeholder="Use global..."></textarea>
         </div>
 
       </div>

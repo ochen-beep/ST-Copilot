@@ -7,8 +7,8 @@
     const ICON_ID = 'scp-dock-icon';
     const MODAL_ID = 'scp-ctx-modal';
     const ICON_STORAGE_KEY = 'scp-icon-position';
+    
     // ─── Debug Logger ────────────────────────────────────────────────────────────
-
     const _DBG = { log: [], MAX: 3000, sessionStart: new Date().toISOString(), _snapshot: null, _diffTid: null };
     const _DBG_SKIP = new Set(['customTheme','savedThemes','sessions','starredMessages','stats','quickPromptSets','customSounds','completionSoundData','quickPrompts','profiles','promptPresets','altGreetingIndices']);
 
@@ -198,7 +198,7 @@ If you look at the chat history and notice your previous \`lorebook-changes\` bl
 5. MODIFICATION PROTOCOL (Patch vs. Edit):
    - \`edit\`: Complete field overwrite. STRICTLY RESTRICTED to extremely short entries or 100% total rewrites. NEVER use \`edit\` for minor tweaks in a large block.
    - \`patch\`: Your DEFAULT operation for modifying existing entries. 
-     * BOUNDARY ANCHOR SYNTAX (CRITICAL): You are STRICTLY FORBIDDEN from writing the full text in the \`search\` key. You MUST extract exactly 3-4 words from the START of the target text, add " || ", then 3-4 words from the END.
+     * BOUNDARY ANCHOR SYNTAX (CRITICAL): You are STRICTLY FORBIDDEN from writing the full text in the \`anchor\` key. You MUST extract exactly 3-4 words from the START of the target text, add " || ", then 3-4 words from the END.
      * BAD: "The ancient castle was built in 1240 by a grumpy dwarf."
      * GOOD: "The ancient castle || grumpy dwarf."
 </guidelines>
@@ -211,11 +211,124 @@ Format requirement (Strictly adhere to this JSON structure):
 {{lorebook_output}}
 </output_formatting>`;
 
+    const DEFAULT_CHAR_EDIT_DIRECTIVE = `<system_mechanics>
+You are an Elite Character Architect operating within the SillyTavern engine. Your purpose is to dynamically create or modify Character Cards and User Personas via JSON blocks.
+Generated \`character-edits\` or \`character-creation\` blocks are AUTO-DELETED from chat history upon user decision to save tokens. Missing past blocks are intentional. NEVER re-generate, repeat, or fix them. 
+</system_mechanics>
+
+<guidelines>
+1. Interaction: Execute ONLY via explicit command. Explain reasoning naturally. NEVER narratively introduce the code block.
+2. TARGET SCOPES:
+   - Card Edits (\`description\`, \`personality\`, \`first_mes\`, etc.): Modify static AI config.
+   - \`user_persona\` Edits: Modify the player's profile, strictly separate from the AI card.
+3. MACRO RULE PRE-CHECK: You are forbidden from using raw names. Always use \`{{char}}\` and \`{{user}}\`.
+</guidelines>
+
+<character_architecture>
+To maximize semantic density and prevent AI hallucinations, you MUST adhere to this framework:
+
+1. THE TAGS FIELD (\`tags\`):
+   - The Semantic Index. Provide an array of universally recognized, highly common tags (e.g., "Fantasy", "Villain", "Tsundere", "Slow Burn", "NSFW/SFW").
+   - Purpose: Immediate cognitive mapping and rapid differentiation. Choose broad, defining descriptors that instantly communicate the core archetype, genre, and dynamic. Strictly avoid hyper-specific, long, or obscure labels.
+
+2. THE DESCRIPTION FIELD (\`description\`):
+   - The Factual Summary Block. Use XML tags (e.g., \`<appearance>\`, \`<mind>\`, \`<background>\`) for dense, scannable facts.
+   - Add texture to traits (e.g., "Loyal (would starve for them)", not just "Loyal").
+   - *Setting Exception*: If creating a world/RPG system, the \`description\` MUST begin EXACTLY with \`"{{char}} is not a character, it's a setting."\` placed right before the first XML tag.
+
+3. THE PERSONALITY FIELD (\`personality\`):
+   - The Voice & Behavioral Anchor. Use the Interview format here.
+   - Show, don't tell. Write a brief Q&A where a neutral interviewer asks questions and \`{{char}}\` answers. 
+   - STRICT FORMATTING: All spoken dialogue MUST be enclosed in standard quotes (e.g., "I don't need your help."). All physical actions, body language, and narration MUST be enclosed in asterisks (e.g., *{{char}} crosses their arms and looks away*).
+   - This must demonstrate \`{{char}}\`'s unique voice, verbal tics, deflections, and body language. Do NOT list flat traits here.
+
+4. THE SCENARIO (\`scenario\`):
+   - The Permanent Stage. Use ONLY for facts that are ALWAYS TRUE.
+   - NEVER put temporary states or starting locations here. 
+
+5. THE FIRST MESSAGE (\`first_mes\`):
+   - The Template. Length: 200-500 words.
+   - STRICTEST RULE: DO NOT CONTROL \`{{user}}\`. Write strictly from \`{{char}}\`'s 3rd-person perspective. 
+   - \`{{char}}\` cannot know what \`{{user}}\` thinks, feels, or does. \`{{char}}\` can only react to \`{{user}}\`'s presence.
+   - End with a "Hook" (an open question, a tense silence, an action) that invites \`{{user}}\` to respond.
+
+6. EXAMPLE DIALOGUE (\`mes_example\`):
+   - The Voice Coach. Drill speech patterns and emotional range.
+   - FORMAT: Isolate examples with \`<START>\` on a new line. End the section with \`<START>\`.
+   - STRICT FORMATTING: All spoken dialogue MUST be in quotes ("..."). All actions/body language MUST be in asterisks (*...*). Every example should combine speech with a physical action to demonstrate body language.
+   - STRICTEST RULE: NO \`{{user}}\` PROMPTS/DIALOGUE. Do NOT write back-and-forth Q&A here. Make examples context-independent (2-4 sentences showing \`{{char}}\` speaking + acting). Show emotional range (e.g., angry, flustered, guarded)
+
+</character_architecture>
+
+<edit_operations>
+- \`overwrite\`: Complete field rewrite. Use for short fields.
+- \`prepend\` / \`append_text\`: Insert text exactly BEFORE or AFTER existing field data.
+- \`append\`: (Exclusive to \`alternate_greetings\`) Adds a new discrete greeting.
+- \`replace\`: Surgical inline patching. 
+  * BOUNDARY ANCHOR SYNTAX (CRITICAL): You are STRICTLY FORBIDDEN from writing the full text in the search string. Extract exactly 3-4 words from the START, add " || ", then 3-4 words from the END.
+  * BAD: "The quick brown fox jumps over the lazy dog."
+  * GOOD: "The quick brown || lazy dog."
+</edit_operations>
+
+<the_macro_imperative>
+CRITICAL FATAL ERROR PREVENTION: Hardcoding names destroys card portability. 
+You are strictly forbidden from writing the raw name of the character or the user in the JSON block.
+- Replace ANY character/setting name with EXACTLY: \`{{char}}\`
+- Replace ANY user/player name with EXACTLY: \`{{user}}\`
+- BAD: "Alex looks at John's sword." -> GOOD: "{{char}} looks at {{user}}'s sword."
+This rule overrides everything else. Apply it to EVERY field, EVERY JSON value, EVERY time.
+</the_macro_imperative>
+
+<output_formatting>
+Append ONE markdown block at the absolute end. Maintain strict JSON. Valid fields: {{char_edit_fields}}.
+
+[IF EDITING EXISTING CARD OR USER PERSONA]
+Tag as \`character-edits\`. Structure:
+{{char_edit_format}}
+
+[IF CREATING NEW CARD]
+Tag as \`character-creation\`. Structure:
+{{char_create_format}}
+</output_formatting>`;
+
+const DEFAULT_CHAT_EDIT_DIRECTIVE = `<context>
+This module grants read/write access to SillyTavern Chat Messages. You can edit, replace, restructure, hide, or create messages. Contextual roleplay messages are explicitly tagged with a numerical \`index\` (e.g., \`<msg index="5" role="assistant">\`) for precise targeting.
+</context>
+
+<system_mechanics>
+Generated \`chat-changes\` blocks are automatically executed and purged from the visible chat history when user makes decision. Missing past blocks are intentional. NEVER hallucinate or re-generate previous blocks. The code block MUST be placed at the ABSOLUTE END of your response.
+</system_mechanics>
+
+<guidelines>
+1. Interaction Protocol: Execute operations ONLY when explicitly requested by the user. Explain your reasoning conversationally. NEVER narratively introduce or narrate the code block itself.
+2. Targeting: Extract the exact \`index\` integer from the \`<msg...>\` tags found in the \`<roleplay_context>\`.
+3. Operation Modalities:
+   - \`add\`: Create a NEW message. MUST declare \`role\` ("user", "assistant", or "system") and \`msg_index\` (insertion position). The \`content\` MUST contain only the message body; DO NOT include speaker prefixes or character names (e.g., "[Name]:").
+   - \`delete\`: Permanently remove a message entirely.
+   - \`hide\` / \`unhide\`: Exclude/include messages from the AI's context window. Target via \`msg_range\`: [start, end] OR \`msg_index\`.
+   - \`overwrite\` (RESTRICTED): Use ONLY when a complete semantic rewrite or absolute replacement of the entire existing message is explicitly required. 
+   - \`prepend\` / \`append\`: Insert text EXACTLY at the extreme start (\`prepend\`) or extreme end (\`append\`) of an existing message.
+   - \`replace\` (DEFAULT EDIT COMMAND): Use for all standard edits and surgical text patches. BOUNDARY ANCHOR FORMAT: Extract exactly 3-4 words from the START + " || " + 3-4 words from the END of the target segment. NEVER write the full text in the anchor.
+    * BAD: "The character looked at the horizon with a sense of deep longing and wondered if they would ever return home." (DO NOT include the full text; this wastes tokens and causes matching errors).
+    * GOOD: "The character looked at || ever return home." 
+   - \`bulk_replace\` / \`regex\`: Target via \`msg_range\`: [start, end] or \`msg_index\`.
+4. Stylistic & Linguistic Coherence (CRITICAL):
+   - Language Mirroring: All edits, overwrites, and newly added messages MUST strictly match the language used in the target message and surrounding chat context.
+   - Voice Preservation: You must seamlessly adapt to the established prose style, formatting, tone, and character voice. Never break linguistic immersion.
+</guidelines>
+
+<output_formatting>
+{{chat_edit_format}}
+
+Active chat message indices are shown in the \`<roleplay_context>\` block as: \`<msg index="N" role="user|assistant">\`
+Currently visible messages: {{active_chat_ids}}
+</output_formatting>`;
+
     const LB_FORMAT_BLOCK = `\`\`\`lorebook-changes
 {"changes":[
   {"action":"add","worldName":"BookName","name":"EntryName","triggers":["keyword"],"content":"Entry content","constant":false},
   {"action":"edit","worldName":"BookName","uid":123,"name":"NewName","triggers":null (for original keywords) | ["newKw"],"content":"New content","constant":false},
-  {"action":"patch","worldName":"BookName","uid":123,"triggers":null (for original keywords) | ["newKw"],"patches":[{"search":"first || last","replace":"replacement"}]},
+  {"action":"patch","worldName":"BookName","uid":123,"triggers":null (for original keywords) | ["newKw"],"patches":[{"anchor":"first || last","replace":"replacement"}]},
   {"action":"delete","worldName":"BookName","uid":123,"name":"EntryName"}
 ]}
 \`\`\`
@@ -226,7 +339,7 @@ Triggers field rules:
 
     const CHAR_EDIT_FORMAT_BLOCK = `\`\`\`character-changes
 <replace field="FIELD_NAME">
-<<<<<<< SEARCH
+<<<<<<< ANCHOR
 first || last
 =======
 replacement text
@@ -240,7 +353,7 @@ replacement text
 <append field="alternate_greetings">New alternate greeting to add as a NEW entry</append>
 <overwrite field="alternate_greetings" index="1">Complete rewrite of the EXISTING greeting with id="1"</overwrite>
 <replace field="alternate_greetings" index="2">
-<<<<<<< SEARCH
+<<<<<<< ANCHOR
 first || last
 =======
 replacement text
@@ -251,6 +364,7 @@ replacement text
     const CHAR_CREATE_FORMAT_BLOCK = `\`\`\`character-create
 {
   "name_suggestion": "Character Name",
+  "tags": ["tag1", "tag2"],
   "description": "Full character description",
   "personality": "Personality summary",
   "scenario": "Scenario / setting",
@@ -259,62 +373,42 @@ replacement text
 }
 \`\`\``;
 
-    const DEFAULT_CHAR_EDIT_DIRECTIVE = `<context>
-SillyTavern Cards define AI behavior, memory, and world-state. Cards possess ontological flexibility: they can be individual personas, settings, RPG systems, or narrators. This module enables dynamic card metadata editing, new card creation, AND \`user_persona\` (player profile) modifications via user requests.
-</context>
-
-<system_mechanics>
-Generated \`character-edits\` or \`character-creation\` blocks are AUTO-DELETES from chat history when user takes decision. That was made to save tokens. Missing past blocks are intentional. NEVER re-generate, repeat, or fix them.
-</system_mechanics>
-
-<guidelines>
-1. Interaction: Execute ONLY via explicit command. Use suggestive phrasing. Explain reasoning naturally. NEVER narratively introduce the code block.
-2. TARGET SCOPES:
-   - Card Edits (\`first_mes\`, etc.): Modify static AI config, NOT active chat history.
-   - \`user_persona\` Edits: Modify the player's persona, entirely separate from the AI card.
-3. Ontological Architecture & XML Description:
-   - XML ENCAPSULATION: The \`description\` field MUST be strictly categorized using XML blocks (e.g., \`<appearance>...</appearance>\`, \`<mind>...</mind>\`, \`<background>...</background>\`). NEVER write loose, unstructured paragraphs. Apply this ONLY to the \`description\` field.
-   - SETTING: If creating a world/system, \`description\` MUST begin EXACTLY with \`"{{char}} is not a character, its a setting."\` placed right before the first XML tag.
-   - LIVING PERSONA: Inside the XML tags, engineer extreme psychological depth. Detail idiolect, habits, and profound background. Reject flat archetypes.
-4. \`mes_example\` Syntax: Calibrate AI tone via SillyTavern format.
-   - Isolate examples with \`<START>\` on a new line.
-   - Prefix dialogue absolutely: \`{{user}}: "..."\` and \`{{char}}: "..."\`.
-5. THE MACRO IMPERATIVE (CRITICAL): Hardcoding names destroys portability.
-   - Replace ANY character/setting name with exactly: \`{{char}}\`
-   - Replace ANY user name with exactly: \`{{user}}\`
-   - Applies to ALL fields.
-   - BAD: "Alex's hair is red." -> GOOD: "{{char}}'s hair is red."
-   - BAD: "Alex looks at you." -> GOOD: "{{char}} looks at {{user}}."
-6. Edit Operations (CRITICAL):
-    - IMPORTANT: To edit existing \`alternate_greetings\`, you MUST include \`index="ID"\` in the tag (e.g. \`<replace field="alternate_greetings" index="1">\`).
-   - \`overwrite\`: Complete field rewrite. Use for short fields.
-   - \`prepend\` / \`append_text\`: Insert text exactly BEFORE or AFTER existing field data.
-   - \`append\`: (Exclusive to \`alternate_greetings\`) Adds a new discrete greeting.
-   - \`replace\`: Surgical inline patching. 
-     * BOUNDARY ANCHOR SYNTAX (CRITICAL): You are STRICTLY FORBIDDEN from writing the full text in the search string. You MUST extract exactly 3-4 words from the START, add " || ", then 3-4 words from the END.
-     * BAD: "The quick brown fox jumps over the lazy dog."
-     * GOOD: "The quick brown || lazy dog."
-</guidelines>
-
-<output_formatting>
-Append ONE markdown block at the absolute end. Maintain strict JSON. NO RAW NAMES, ONLY MACROS. Valid fields: {{char_edit_fields}}.
-
-[IF EDITING EXISTING CARD OR USER PERSONA]
-Tag as \`character-edits\`. Structure:
-{{char_edit_format}}
-
-[IF CREATING NEW CARD]
-Tag as \`character-creation\`. Structure:
-{{char_create_format}}
-</output_formatting>`;
-
+    const CHAT_EDIT_FORMAT_BLOCK = `\`\`\`chat-changes
+{"changes":[
+  {"action":"prepend","msg_index":6,"content":"Text to add at the start. "},
+  {"action":"append","msg_index":6,"content":" Text to add at the end."},
+  {"action":"add","msg_index":7,"role":"assistant","content":"Brand new message text"},
+  {"action":"delete","msg_index":12},
+  {"action":"hide","msg_range":[8,10]},
+  {"action":"unhide","msg_index":11},
+  {"action":"bulk_replace","msg_range":[0,10],"replacements":[{"anchor":"old","replace":"new"}]},
+  {"action":"regex","msg_index":13,"regex":"/(hello)/gi","replace":"hi $1"},
+  {"action":"overwrite","msg_index":6,"content":"New text"},
+  {"action":"replace","msg_index":5,"patches":[{"anchor":"first || last","replace":"new"}]},
+]}
+\`\`\``;
 
     // ─── Changelog Data ──────────────────────────────────────────────────────────
     const CHANGELOG = [
     {
+        version: '2.7.0',
+        date: '6/15/2026',
+        announce: true,
+        notes: [
+            '<strong>Proposed Chat Edits</strong> — Bulk-modify, delete, or hide message ranges using natural language instructions.',
+            '<strong>File Attachments & Vision</strong> — Support for text/image uploads with vision model integration and an internal previewer.',
+            '<strong>Message Swiping</strong> — Regenerate Copilot responses and navigate through multiple swipe iterations.',
+            '<strong>Multimedia Backgrounds</strong> — Custom image/video backgrounds (local or URL) with adjustable dimming.',
+            '<strong>Character Creator</strong> — Added "tags" field support and optimized generation prompts for AI-assisted creation.',
+            '<strong>Configuration Sync</strong> — AI settings are now linked to Configuration Profiles and Session Overrides.',
+            '<strong>UX Enhancements</strong> — Added "Always Off" Lorebook state, sender-based group selection in context picker, and focus-aware notification sounds.',
+            '<strong>UI & Maintenance</strong> — Improved "Save" button feedback, better theme support for lists, and optimized generation logic.'
+        ],
+    },
+    {
         version: '2.5.1',
         date: '5/22/2026',
-        announce: true,
+        announce: false,
         notes: [
             '<strong>Continue Message</strong> — Added a "Continue" button to extend the last Copilot generation.',
             '<strong>Debug Export</strong> — Introduced a downloadable debug log in settings for easier troubleshooting (refreshes on page load).',
@@ -325,7 +419,7 @@ Tag as \`character-creation\`. Structure:
     {
         version: '2.5.0',
         date: '5/20/2026',
-        announce: true,
+        announce: false,
         notes: [
             '<strong>Character Card Manager</strong> — You can now create new characters entirely from scratch or edit existing card fields directly within the extension.',
             '<strong>Massive Token Optimization</strong> — "Proposed Changes" now uses a smart search-and-replace method, reducing token consumption by over 80% (Huge thanks to Steel-skull for the PR!).',
@@ -423,6 +517,19 @@ Tag as \`character-creation\`. Structure:
             accentBg: 'rgba(112,112,112,0.08)',
             headerBg: 'rgba(255,255,255,0.04)', toolbarBg: 'rgba(0,0,0,0.25)',
             msgUserBg: 'rgba(214,214,214,0.1)', msgAiBg: 'rgba(214,214,214,0.03)',
+            inputBg: 'rgba(0,0,0,0.30)', codeBg: 'rgba(0,0,0,0.35)',
+            radius: '10px', danger: '#ff5c5c', success: '#4caf7d',
+            shadow: '0 24px 64px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)',
+            border: '1px solid rgba(255,255,255,0.09)', font: '',
+        },
+        blue_ocean : {
+            label: 'Blue Ocean',
+            bg: 'rgba(18,18,22,0.94)', blur: 'blur(14px)',
+            text: '#e2e2e6', textMuted: '#72728a',
+            accent: '#7c6dfa', accentDim: 'rgba(124,109,250,0.45)',
+            accentBg: 'rgba(124,109,250,0.12)',
+            headerBg: 'rgba(255,255,255,0.04)', toolbarBg: 'rgba(0,0,0,0.25)',
+            msgUserBg: 'rgba(124,109,250,0.10)', msgAiBg: 'rgba(255,255,255,0.03)',
             inputBg: 'rgba(0,0,0,0.30)', codeBg: 'rgba(0,0,0,0.35)',
             radius: '10px', danger: '#ff5c5c', success: '#4caf7d',
             shadow: '0 24px 64px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)',
@@ -558,12 +665,11 @@ Tag as \`character-creation\`. Structure:
             shadow: '0 24px 64px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)',
             border: 'var(--smartThemeBorder, 1px solid rgba(255,255,255,0.09))', font: '',
         },
+        
     };
 
     const THEME_VAR_DEFS = [
         { key: 'bg',         label: 'Background',    hint: 'rgba(r,g,b,a)' },
-        { key: 'blur',       label: 'Blur',          hint: 'blur(14px)' },
-        { key: 'border',     label: 'Border',        hint: '1px solid rgba(...)' },
         { key: 'text',       label: 'Text',          hint: '#hex or rgba' },
         { key: 'textMuted',  label: 'Muted Text',    hint: '#hex or rgba' },
         { key: 'accent',     label: 'Accent',        hint: '#hex or rgba' },
@@ -575,10 +681,12 @@ Tag as \`character-creation\`. Structure:
         { key: 'msgAiBg',    label: 'AI Msg BG',     hint: 'rgba(r,g,b,a)' },
         { key: 'inputBg',    label: 'Input BG',      hint: 'rgba(r,g,b,a)' },
         { key: 'codeBg',     label: 'Code BG',       hint: 'rgba(r,g,b,a)' },
-        { key: 'radius',     label: 'Corner Radius', hint: '10px' },
-        { key: 'shadow',     label: 'Shadow',        hint: 'CSS box-shadow' },
         { key: 'danger',     label: 'Danger Color',  hint: '#ff5c5c' },
         { key: 'success',    label: 'Success Color', hint: '#4caf7d' },
+        { key: 'blur',       label: 'Blur',          hint: 'blur(14px)' },
+        { key: 'border',     label: 'Border',        hint: '1px solid rgba(...)' },
+        { key: 'radius',     label: 'Corner Radius', hint: '10px' },
+        { key: 'shadow',     label: 'Shadow',        hint: 'CSS box-shadow' },
         { key: 'font',       label: 'Font Family',   hint: "system-ui, sans-serif" },
     ];
 
@@ -850,14 +958,14 @@ Tag as \`character-creation\`. Structure:
     async function buildLorebookContextBlock(settings) {
         _lastActiveEntries = [];
         const selectedBooks = settings.lorebookSelectedBooks || [];
+        const excludedBooks = new Set(settings.lorebookExcludedBooks || []);
         const overrides = settings.lorebookEntryOverrides || {};
-        if (!selectedBooks.length && !settings.lorebookAutoKeyword) return '';
-
+        if (!selectedBooks.length && !settings.lorebookAutoKeyword && !excludedBooks.size) return '';
         const loadedBooks = {};
         const _activeNamesSet = new Set(getActiveLorebookNames());
 
         await Promise.all(selectedBooks.map(async name => {
-            if (!_activeNamesSet.has(name)) return;
+            if (!_activeNamesSet.has(name) || excludedBooks.has(name)) return;
             const data = await fetchWorldInfoBook(name);
             if (data) loadedBooks[name] = data;
         }));
@@ -902,7 +1010,7 @@ Tag as \`character-creation\`. Structure:
 
             const activeNames = getActiveLorebookNames();
             await Promise.all(activeNames.map(async name => {
-                if (!loadedBooks[name]) {
+                if (!loadedBooks[name] && !excludedBooks.has(name)) {
                     const data = await fetchWorldInfoBook(name);
                     if (data) loadedBooks[name] = data;
                 }
@@ -966,8 +1074,8 @@ Tag as \`character-creation\`. Structure:
 
     function buildLBAIInstructions(settings) {
         if (!settings.lorebookAIManageEnabled) return '';
-        
-        const activeBooks =[...new Set(_lastActiveEntries.map(e => e.displayName || e.bookName))];
+        const excludedBooks = new Set(settings.lorebookExcludedBooks || []);
+        const activeBooks =[...new Set(_lastActiveEntries.map(e => e.displayName || e.bookName))].filter(b => !excludedBooks.has(b));
         const activeBooksStr = activeBooks.length > 0 ? activeBooks.map(b => `"${b}"`).join(', ') : 'None';
         
         let rawPrompt = settings.lorebookManagePrompt || DEFAULT_LB_MANAGE_PROMPT;
@@ -984,7 +1092,7 @@ Tag as \`character-creation\`. Structure:
             .replace('{{active_lorebooks}}', activeBooksStr)
             .replace('{{lorebook_output}}', LB_FORMAT_BLOCK);
             
-        return `\n\n<lorebook_management: extension>\n${prompt}\n</lorebook_management: extension>`;
+        return `<lorebook_management: module>\n${prompt}\n</lorebook_management: module>`;
     }
 
     // ─── Character Card Editing Engine ───────────────────────────────────────────
@@ -995,29 +1103,52 @@ Tag as \`character-creation\`. Structure:
         return !!(settings.charEditFields || {})[k];
     }
 
-    function buildAltGreetingsPicker(container) {
+    function buildAltGreetingsPicker(container, isOverride = false) {
         if (!container) return;
         container.innerHTML = '';
         
         const s = getSettings();
         if (!s.charEditFields) s.charEditFields = {};
         
-        if (!s.charEditFields.alternate_greetings) { 
-            container.style.display = 'none'; 
-            return; 
+        if (Array.isArray(s.altGreetingIndices)) s.altGreetingIndices = {};
+        if (!s.altGreetingIndices) s.altGreetingIndices = {};
+        
+        const ctx = SillyTavern.getContext();
+        const charId = ctx.characterId || 'unknown';
+        const char = ctx.characters?.[charId];
+        const greetings = char?.data?.alternate_greetings || [];
+
+        let isEnabled = false;
+        if (isOverride) {
+            const sess = getCurrentSession();
+            if (sess && sess.overrides && sess.overrides.charField_alternate_greetings !== undefined) {
+                isEnabled = sess.overrides.charField_alternate_greetings;
+            } else {
+                isEnabled = !!s.charEditFields.alternate_greetings;
+            }
+        } else {
+            isEnabled = !!s.charEditFields.alternate_greetings;
         }
 
-        const ctx = SillyTavern.getContext();
-        const char = ctx.characters?.[ctx.characterId];
-        const greetings = char?.data?.alternate_greetings || [];
-        
+        if (!isEnabled) { container.style.display = 'none'; return; }
+
         if (!greetings.length) {
             container.innerHTML = '<div style="font-size:11px;color:var(--scp-text-muted);font-style:italic;padding:4px">No alternate greetings found for current character.</div>';
             container.style.display = '';
             return;
         }
 
-        if (!Array.isArray(s.altGreetingIndices)) s.altGreetingIndices = [];
+        let targetArray = [];
+        if (isOverride) {
+            const sess = getCurrentSession();
+            if (sess?.overrides?.altGreetingIndices && sess.overrides.altGreetingIndices[charId]) {
+                targetArray = sess.overrides.altGreetingIndices[charId];
+            } else {
+                targetArray = s.altGreetingIndices[charId] || [];
+            }
+        } else {
+            targetArray = s.altGreetingIndices[charId] || [];
+        }
 
         const label = document.createElement('div');
         label.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--scp-text-muted,#72728a);margin-bottom:5px';
@@ -1030,17 +1161,25 @@ Tag as \`character-creation\`. Structure:
         const allBtn = document.createElement('button');
         allBtn.type = 'button';
         allBtn.style.cssText = 'font-size:10px;cursor:pointer;background:none;border:1px solid rgba(255,255,255,.1);border-radius:4px;color:var(--scp-text-muted,#888);padding:2px 8px;align-self:flex-start;margin-bottom:3px;font-family:inherit';
-        allBtn.textContent = s.altGreetingIndices.length === greetings.length ? 'Deselect All' : 'Select All';
+        allBtn.textContent = targetArray.length === greetings.length ? 'Deselect All' : 'Select All';
+        
         allBtn.addEventListener('click', () => {
-            const isAll = s.altGreetingIndices.length === greetings.length;
-            s.altGreetingIndices = isAll ? [] : greetings.map((_, i) => i);
-            saveSettings();
-            buildAltGreetingsPicker(container);
+            const isAll = targetArray.length === greetings.length;
+            const newArray = isAll ? [] : greetings.map((_, i) => i);
+            if (isOverride) {
+                const sess = getCurrentSession();
+                if (!sess.overrides) sess.overrides = {};
+                if (!sess.overrides.altGreetingIndices) sess.overrides.altGreetingIndices = {};
+                sess.overrides.altGreetingIndices[charId] = newArray;
+            } else {
+                getSettings().altGreetingIndices[charId] = newArray;
+            }
+            saveSettings(); buildAltGreetingsPicker(container, isOverride);
         });
         wrap.appendChild(allBtn);
 
         greetings.forEach((greeting, idx) => {
-            const isSelected = s.altGreetingIndices.includes(idx);
+            const isSelected = targetArray.includes(idx);
             const row = document.createElement('label');
             row.style.cssText = 'display:flex;align-items:flex-start;gap:6px;cursor:pointer;padding:3px 4px;border-radius:4px;transition:background .12s';
             row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,.04)'; });
@@ -1049,35 +1188,44 @@ Tag as \`character-creation\`. Structure:
             const cb = document.createElement('input');
             cb.type = 'checkbox'; cb.checked = isSelected; cb.style.cssText = 'flex-shrink:0;margin-top:2px;accent-color:var(--scp-accent,#7c6dfa)';
             cb.addEventListener('change', () => {
-                const s2 = getSettings();
-                if (!Array.isArray(s2.altGreetingIndices)) s2.altGreetingIndices = [];
-                if (cb.checked) { if (!s2.altGreetingIndices.includes(idx)) s2.altGreetingIndices.push(idx); }
-                else s2.altGreetingIndices = s2.altGreetingIndices.filter(i => i !== idx);
-                s2.altGreetingIndices.sort((a, b) => a - b);
+                let currentArr = [...targetArray];
+                if (cb.checked) { if (!currentArr.includes(idx)) currentArr.push(idx); }
+                else currentArr = currentArr.filter(i => i !== idx);
+                currentArr.sort((a, b) => a - b);
+                
+                if (isOverride) {
+                    const sess = getCurrentSession();
+                    if (!sess.overrides) sess.overrides = {};
+                    if (!sess.overrides.altGreetingIndices) sess.overrides.altGreetingIndices = {};
+                    sess.overrides.altGreetingIndices[charId] = currentArr;
+                } else {
+                    getSettings().altGreetingIndices[charId] = currentArr;
+                }
+                
                 saveSettings();
-                allBtn.textContent = s2.altGreetingIndices.length === greetings.length ? 'Deselect All' : 'Select All';
+                allBtn.textContent = currentArr.length === greetings.length ? 'Deselect All' : 'Select All';
+                targetArray = currentArr;
             });
 
             const text = document.createElement('span');
             text.style.cssText = 'font-size:11px;color:var(--scp-text,#e2e2e6);line-height:1.4;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical';
             text.textContent = `#${idx + 1}: ${(greeting || '').slice(0, 80)}${greeting?.length > 80 ? '…' : ''}`;
 
-            row.appendChild(cb); row.appendChild(text);
-            wrap.appendChild(row);
+            row.appendChild(cb); row.appendChild(text); wrap.appendChild(row);
         });
-
-        container.appendChild(wrap);
-        container.style.display = '';
+        container.appendChild(wrap); container.style.display = '';
     }
 
     function refreshAltGreetingsPickers() {
-        buildAltGreetingsPicker(document.getElementById('scp-ce-alt-greetings-picker'));
-        buildAltGreetingsPicker(document.getElementById('scp-sp-ce-alt-greetings-picker'));
+        buildAltGreetingsPicker(document.getElementById('scp-ce-alt-greetings-picker'), false);
+        buildAltGreetingsPicker(document.getElementById('scp-sp-ce-alt-greetings-picker'), false);
+        buildAltGreetingsPicker(document.getElementById('scp-sp-ov-ce-alt-greetings-picker'), true);
     }
 
     function buildCharacterContextBlock(settings) {
         const ctx = SillyTavern.getContext();
-        const char = ctx.characters?.[ctx.characterId];
+        const charId = ctx.characterId || 'unknown';
+        const char = ctx.characters?.[charId];
         if (!char) return '';
         const d = char.data || {};
         const parts = [];
@@ -1093,10 +1241,10 @@ Tag as \`character-creation\`. Structure:
             if (getEffectiveCharField(settings, key) && val) parts.push(`<${key}>\n${val}\n</${key}>`);
         }
         if (getEffectiveCharField(settings, 'alternate_greetings') && Array.isArray(d.alternate_greetings) && d.alternate_greetings.length) {
-            const indices = Array.isArray(settings.altGreetingIndices) && settings.altGreetingIndices.length
-                ? settings.altGreetingIndices
-                : d.alternate_greetings.map((_, i) => i);
+            const agMap = settings.altGreetingIndices || {};
+            const indices = Array.isArray(agMap[charId]) ? agMap[charId] : d.alternate_greetings.map((_, i) => i);
             const filtered = indices.filter(i => i >= 0 && i < d.alternate_greetings.length);
+            
             if (filtered.length) {
                 const gs = filtered.map(i => `  <greeting id="${i+1}">\n${d.alternate_greetings[i]}\n  </greeting>`).join('\n');
                 parts.push(`<alternate_greetings>\n${gs}\n</alternate_greetings>`);
@@ -1122,7 +1270,31 @@ Tag as \`character-creation\`. Structure:
             .replace('{{char_edit_fields}}', enabledFields)
             .replace('{{char_edit_format}}', CHAR_EDIT_FORMAT_BLOCK)
             .replace('{{char_create_format}}', CHAR_CREATE_FORMAT_BLOCK);
-        return `\n\n<character_management: extension>\n${base}\n</character_management: extension>`;
+        return `<character_management: module>\n${base}\n</character_management: module>`;
+    }
+
+    function buildChatEditAIInstructions(settings) {
+        if (!settings.chatEditAIEnabled) return '';
+        const ctx = SillyTavern.getContext();
+        const stMsgs = ctx.chat || [];
+        const depth = Math.max(0, parseInt(settings.contextDepth) || 0);
+        let slice;
+        try {
+            const sess = getCurrentSession();
+            const picked = sess.pickedChatIndices;
+            if (picked && picked.length > 0) {
+                slice = picked.filter(i => i >= 0 && i < stMsgs.length);
+            } else {
+                slice = depth > 0 ? stMsgs.slice(-depth).map((_, i) => stMsgs.length - depth + i) : [];
+            }
+        } catch(_) {
+            slice = depth > 0 ? stMsgs.slice(-depth).map((_, i) => stMsgs.length - depth + i) : [];
+        }
+        const activeChatIds = slice.map(i => `#${i}`).join(', ') || 'none';
+        const base = (settings.chatEditPrompt || DEFAULT_CHAT_EDIT_DIRECTIVE.trim())
+            .replace('{{chat_edit_format}}', CHAT_EDIT_FORMAT_BLOCK)
+            .replace('{{active_chat_ids}}', activeChatIds);
+        return `<chat_messages_editing: module>\n${base}\n</chat_message_editing: module>`;
     }
 
     function parseCharChangesFromText(text) {
@@ -1146,14 +1318,15 @@ Tag as \`character-creation\`. Structure:
             const index = m[2] ? parseInt(m[2]) : undefined;
             const content = m[3];
             const key = field + (index !== undefined ? `_${index}` : '');
-            const diffRe = /<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE/g;
+            
+            const diffRe = /<<<<<<< (?:SEARCH|ANCHOR)\r?\n([\s\S]*?)\r?\n=+\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE/g;
             let diffMatch;
             const patches = [];
             while ((diffMatch = diffRe.exec(content)) !== null) {
                 patches.push({ search: diffMatch[1], replace: diffMatch[2] });
             }
             if (!patches.length) {
-                const searchOnly = content.match(/<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======/);
+                const searchOnly = content.match(/<<<<<<< (?:SEARCH|ANCHOR)\r?\n([\s\S]*?)\r?\n=+/);
                 if (searchOnly) patches.push({ search: searchOnly[1], replace: '' });
             }
             if (!patches.length) continue;
@@ -1236,8 +1409,8 @@ Tag as \`character-creation\`. Structure:
             }
         }
 
-        s = s.replace(/(<<<<<<< SEARCH\r?\n[\s\S]*?)(?=<<<<<<< SEARCH|$)/g, (m) => {
-            if (!m.includes('=======')) return m + '\n=======\n>>>>>>> REPLACE\n';
+        s = s.replace(/(<<<<<<< (?:SEARCH|ANCHOR)\r?\n[\s\S]*?)(?=<<<<<<< (?:SEARCH|ANCHOR)|$)/g, (m) => {
+            if (!/=+\r?\n/.test(m) && !m.includes('=======')) return m + '\n=======\n>>>>>>> REPLACE\n';
             if (!m.includes('>>>>>>> REPLACE')) return m + '\n>>>>>>> REPLACE\n';
             return m;
         });
@@ -1300,48 +1473,68 @@ Tag as \`character-creation\`. Structure:
     }
 
     function applySearchReplaceToField(fieldContent, searchText, replaceText) {
-        if (!fieldContent) return { result: replaceText, matched: true };
-        const normalize = s => s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-        const src = normalize(fieldContent);
-        const srch = normalize(searchText);
-        const repl = normalize(replaceText);
+        if (!fieldContent) return { result: replaceText || '', matched: true };
+        const src = fieldContent;
+        const srch = searchText || '';
+        const repl = replaceText || '';
+
+        const createFuzzyRegex = (str) => {
+            const tokens = str.trim().split(/\s+/);
+            const regexParts = tokens.map(token => {
+                let t = token.replace(/['"“”‘’`]/g, '"');
+                t = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                t = t.replace(/"/g, '[\'\\"“”‘’`]?');
+                return t;
+            });
+            return new RegExp(regexParts.join('\\s+'), 'i'); 
+        };
 
         let sepIdx = srch.indexOf(' || ');
         let sepLen = 4;
         if (sepIdx === -1) { sepIdx = srch.indexOf('||'); sepLen = 2; }
         if (sepIdx === -1) { sepIdx = srch.indexOf('...'); sepLen = 3; }
 
-        if (sepIdx >= 3 && srch.length - sepIdx - sepLen >= 3) {
+        if (sepIdx !== -1 && sepIdx > 0 && srch.length - sepIdx - sepLen > 0) {
             const startPart = srch.slice(0, sepIdx).trim();
             const endPart = srch.slice(sepIdx + sepLen).trim();
+            
             if (startPart && endPart) {
-                const sIdx = src.indexOf(startPart);
-                if (sIdx !== -1) {
-                    const eIdx = src.indexOf(endPart, sIdx + startPart.length);
-                    if (eIdx !== -1) {
-                        return { result: src.slice(0, sIdx) + repl + src.slice(eIdx + endPart.length), matched: true };
+                try {
+                    const sRegex = createFuzzyRegex(startPart);
+                    const eRegex = createFuzzyRegex(endPart);
+                    
+                    const sMatch = src.match(sRegex);
+                    if (sMatch) {
+                        const remainingSrc = src.slice(sMatch.index + sMatch[0].length);
+                        const eMatch = remainingSrc.match(eRegex);
+                        if (eMatch) {
+                            const absoluteEnd = sMatch.index + sMatch[0].length + eMatch.index + eMatch[0].length;
+                            return {
+                                result: src.slice(0, sMatch.index) + repl + src.slice(absoluteEnd),
+                                matched: true
+                            };
+                        }
                     }
-                }
+                } catch(e) { console.warn("[ST-Copilot] Fuzzy regex error:", e); }
             }
+        }
+
+        if (srch.trim()) {
+            try {
+                const fullRegex = createFuzzyRegex(srch);
+                const fullMatch = src.match(fullRegex);
+                if (fullMatch) {
+                    return {
+                        result: src.slice(0, fullMatch.index) + repl + src.slice(fullMatch.index + fullMatch[0].length),
+                        matched: true
+                    };
+                }
+            } catch(e) { console.warn("[ST-Copilot] Fuzzy regex error:", e); }
         }
 
         const idx = src.indexOf(srch);
         if (idx !== -1) return { result: src.slice(0, idx) + repl + src.slice(idx + srch.length), matched: true };
 
-        const normWs = s => s.replace(/[ \t]+/g, ' ').replace(/\n\s*\n/g, '\n').trim();
-        const srcN = normWs(src), srchN = normWs(srch), replN = normWs(repl);
-        if (srcN.includes(srchN)) return { result: srcN.replace(srchN, replN), matched: true };
-
-        const srcLines = src.split('\n');
-        const srchLines = srch.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        if (srchLines.length > 0) {
-            for (let i = 0; i <= srcLines.length - srchLines.length; i++) {
-                const candidate = srcLines.slice(i, i + srchLines.length).map(l => l.trim());
-                if (srchLines.every((sl, j) => candidate[j] === sl)) {
-                    return { result: [...srcLines.slice(0, i), ...repl.split('\n'), ...srcLines.slice(i + srchLines.length)].join('\n'), matched: true };
-                }
-            }
-        }
         return { result: src, matched: false };
     }
 
@@ -1517,23 +1710,11 @@ Tag as \`character-creation\`. Structure:
                 return `${icon} **${actionText}**: \`${escHtml(FIELD_LABELS[c.field] || c.field || '?')}\` — ${escHtml(c.action || '?')}${c.index ? ` #${c.index}` : ''}${patches}`;
             });
 
-            const lastMsg = session.messages[session.messages.length - 1];
-            if (lastMsg && lastMsg.isCharEditHistory) {
-                if (!lastMsg.appliedLines) lastMsg.appliedLines = [];
-                lastMsg.appliedLines.push(...newLines);
-                lastMsg.content = `**System Notification** — Character card edits:\n${lastMsg.appliedLines.join('\n')}`;
-                if (lastMsg.role !== 'system') lastMsg.role = 'system';
-                updateMessage(session, lastMsg.id, lastMsg.content);
-                
-                const contentEl = document.querySelector(`.scp-msg[data-id="${lastMsg.id}"] .scp-lb-history-content`);
-                if (contentEl) renderLBHistoryContent(lastMsg, contentEl);
-            } else {
-                const histText = `**System Notification** — Character card edits:\n${newLines.join('\n')}`;
-                const msg = afterMsgId
-                    ? insertMessageAfter(session, afterMsgId, 'system', histText, { isCharEditHistory: true, isLBHistory: true, appliedLines: [...newLines] })
-                    : addMessage(session, 'system', histText, { isCharEditHistory: true, isLBHistory: true, appliedLines: [...newLines] });
-                appendLBHistoryEl(msg, afterMsgId);
-            }
+            if (afterMsgId && addHistoryToSwipe(afterMsgId, newLines)) return;
+
+            const histText = `**System Notification** — Character card edits:\n${newLines.join('\n')}`;
+            const msg = addMessage(session, 'system', histText, { isCharEditHistory: true, isLBHistory: true, appliedLines: [...newLines] });
+            appendLBHistoryEl(msg);
         } catch (_) {}
     }
 
@@ -1544,23 +1725,11 @@ Tag as \`character-creation\`. Structure:
             const actionText = statusStr === 'Applied' ? 'ACCEPTED' : (statusStr === 'Rejected' ? 'REJECTED' : 'DISMISSED (ignored)');
             const newLines = [`${icon} **${actionText}**: Character Creation Proposal for "${escHtml(creationData.name_suggestion || 'New Character')}"`];
             
-            const lastMsg = session.messages[session.messages.length - 1];
-            if (lastMsg && lastMsg.isCharEditHistory) {
-                if (!lastMsg.appliedLines) lastMsg.appliedLines = [];
-                lastMsg.appliedLines.push(...newLines);
-                lastMsg.content = `**System Notification** — Character card edits:\n${lastMsg.appliedLines.join('\n')}`;
-                if (lastMsg.role !== 'system') lastMsg.role = 'system';
-                updateMessage(session, lastMsg.id, lastMsg.content);
-                
-                const contentEl = document.querySelector(`.scp-msg[data-id="${lastMsg.id}"] .scp-lb-history-content`);
-                if (contentEl) renderLBHistoryContent(lastMsg, contentEl);
-            } else {
-                const histText = `**System Notification** — Character card edits:\n${newLines.join('\n')}`;
-                const msg = afterMsgId
-                    ? insertMessageAfter(session, afterMsgId, 'system', histText, { isCharEditHistory: true, isLBHistory: true, appliedLines: [...newLines] })
-                    : addMessage(session, 'system', histText, { isCharEditHistory: true, isLBHistory: true, appliedLines: [...newLines] });
-                appendLBHistoryEl(msg, afterMsgId);
-            }
+            if (afterMsgId && addHistoryToSwipe(afterMsgId, newLines)) return;
+
+            const histText = `**System Notification** — Character card edits:\n${newLines.join('\n')}`;
+            const msg = addMessage(session, 'system', histText, { isCharEditHistory: true, isLBHistory: true, appliedLines: [...newLines] });
+            appendLBHistoryEl(msg);
         } catch (_) {}
     }
 
@@ -1588,51 +1757,64 @@ Tag as \`character-creation\`. Structure:
         return xml;
     }
 
+    let _tagsModule = null;
+    async function loadTagsModule() {
+        if (_tagsModule !== null) return _tagsModule;
+        try {
+            _tagsModule = await import('/scripts/tags.js');
+        } catch (e) {
+            console.error('[ST-Copilot-Debug] Failed to import /scripts/tags.js dynamically:', e);
+            _tagsModule = null;
+        }
+        return _tagsModule;
+    }
+
     async function createCharacterAPI(data) {
         const ctx = SillyTavern.getContext();
         
-        const payload = {
-            name: data.name || 'New Character',
-            description: data.description || '',
-            personality: data.personality || '',
-            scenario: data.scenario || '',
-            first_mes: data.first_mes || 'Hello.',
-            mes_example: data.mes_example || '',
-            data: {
-                alternate_greetings: [],
-                tags: [],
-                avatar: 'none',
-                name: data.name || 'New Character',
-                description: data.description || '',
-                first_mes: data.first_mes || 'Hello.',
-                mes_example: data.mes_example || '',
-                personality: data.personality || '',
-                scenario: data.scenario || '',
-            },
-            avatar: 'none',
-            tags: [],
-            spec: 'chara_card_v3',
-            spec_version: '3.0'
-        };
+        _dbgAdd('CHAR_CREATE_START', { data });
+
+        const tagsString = Array.isArray(data.tags) 
+            ? data.tags.join(', ') 
+            : (typeof data.tags === 'string' ? data.tags : '');
 
         const formData = new FormData();
-        formData.append('avatar', new Blob([JSON.stringify(payload)], { type: 'application/json' }), 'character.json');
-        formData.append('file_type', 'json');
+        formData.append('ch_name', data.name || 'New Character');
+        formData.append('description', data.description || '');
+        formData.append('personality', data.personality || '');
+        formData.append('scenario', data.scenario || '');
+        formData.append('first_mes', data.first_mes || '');
+        formData.append('mes_example', data.mes_example || '');
+        formData.append('tags', tagsString);
 
         const headers = ctx.getRequestHeaders();
         delete headers['Content-Type'];
-
-        const res = await fetch('/api/characters/import', {
-            method: 'POST',
-            headers,
-            body: formData,
-            cache: 'no-cache',
-        });
         
+        let res;
+        try {
+            res = await fetch('/api/characters/create', {
+                method: 'POST',
+                headers,
+                body: formData,
+                cache: 'no-cache',
+            });
+        } catch (err) {
+            console.error('[ST-Copilot-Debug] Network error during character post:', err);
+            _dbgAdd('CHAR_CREATE_NET_ERR', { error: err.message, stack: err.stack });
+            throw err;
+        }
+
         if (!res.ok) {
             const errText = await res.text().catch(() => res.statusText);
+            console.error(`[ST-Copilot-Debug] API returned HTTP Error ${res.status}: ${errText}`);
+            _dbgAdd('CHAR_CREATE_HTTP_ERR', { status: res.status, text: errText });
             throw new Error(`HTTP ${res.status}: ${errText}`);
         }
+
+        const newAvatar = await res.text();
+        _dbgAdd('CHAR_CREATE_SERVER_OK', { avatar: newAvatar });
+
+        await new Promise(r => setTimeout(r, 400));
 
         try {
             if (typeof ctx.getCharacters === 'function') {
@@ -1640,13 +1822,65 @@ Tag as \`character-creation\`. Structure:
             } else if (typeof window.getCharacters === 'function') {
                 await window.getCharacters();
             }
-            if (typeof window.PrintCharacterList === 'function') window.PrintCharacterList();
-            
+        } catch(e) {
+            console.warn('[ST-Copilot-Debug] Failed to reload list of characters:', e);
+            _dbgAdd('CHAR_CREATE_RELOAD_ERR', { error: e.message });
+        }
+
+        const chars = ctx.characters || window.characters || [];
+        
+        const foundChar = chars.find(c => c.avatar === newAvatar);
+        if (foundChar) {
+            _dbgAdd('CHAR_CREATE_CACHE_FOUND', { name: foundChar.name, tags: foundChar.tags });
+
+            const tagsMod = await loadTagsModule();
+            if (tagsMod) {
+                if (typeof tagsMod.importTags === 'function') {
+                    _dbgAdd('CHAR_CREATE_IMPORT_TAGS_CALL', { avatar: foundChar.avatar });
+                    try {
+                        let importSettingValue = tagsMod.tag_import_setting?.ALL;
+                        if (importSettingValue === undefined && tagsMod.tag_import_setting) {
+                            for (const key of Object.keys(tagsMod.tag_import_setting)) {
+                                if (key.toUpperCase() === 'ALL') {
+                                    importSettingValue = tagsMod.tag_import_setting[key];
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (importSettingValue === undefined) {
+                            importSettingValue = 2; 
+                        }
+
+                        const importResult = await tagsMod.importTags(foundChar, { importSetting: importSettingValue });
+                        _dbgAdd('CHAR_CREATE_IMPORT_TAGS_DONE', { result: importResult });
+                    } catch (importErr) {
+                        console.error('[ST-Copilot-Debug] Exception inside importTags():', importErr);
+                        _dbgAdd('CHAR_CREATE_IMPORT_TAGS_FAIL', { error: importErr.message, stack: importErr.stack });
+                    }
+                } else {
+                    console.warn('[ST-Copilot-Debug] tags.js was imported, but importTags() is not exported.');
+                    _dbgAdd('CHAR_CREATE_IMPORT_TAGS_MISSING', { keys: Object.keys(tagsMod) });
+                }
+            } else {
+                console.warn('[ST-Copilot-Debug] Skipping tag mapping because tags.js module failed to load.');
+            }
+        } else {
+            console.error(`[ST-Copilot-Debug] Character "${newAvatar}" is missing from ST cache! Check if file name matches.`);
+            _dbgAdd('CHAR_CREATE_CACHE_MISSING', { avatar: newAvatar });
+        }
+
+        try {
+            if (typeof window.PrintCharacterList === 'function') {
+                window.PrintCharacterList();
+            }
             const es = ctx.eventSource || window.eventSource;
             const et = ctx.event_types || window.event_types;
-            if (es && et?.CHARACTERS_UPDATED) es.emit(et.CHARACTERS_UPDATED);
+            if (es && et?.CHARACTERS_UPDATED) {
+                es.emit(et.CHARACTERS_UPDATED);
+            }
         } catch(e) {
-            console.warn(`[${EXT_DISPLAY}] Failed to forcefully update UI`, e);
+            console.warn('[ST-Copilot-Debug] UI redraw error:', e);
         }
 
         return true;
@@ -1662,10 +1896,12 @@ Tag as \`character-creation\`. Structure:
             scenario: creationData.scenario || '',
             first_mes: creationData.first_mes || '',
             mes_example: creationData.mes_example || '',
+            tags: Array.isArray(creationData.tags) ? creationData.tags.join(', ') : (creationData.tags || ''),
         };
 
         const FIELDS = [
             { key: 'name',        label: 'Name',            multiline: false },
+            { key: 'tags',        label: 'Tags',             multiline: false, hint: 'comma-separated' },
             { key: 'description', label: 'Description',      multiline: true, rows: 4 },
             { key: 'personality', label: 'Personality',      multiline: true, rows: 3 },
             { key: 'scenario',    label: 'Scenario',         multiline: true, rows: 3 },
@@ -1680,7 +1916,11 @@ Tag as \`character-creation\`. Structure:
         const stripAndRemove = () => {
             const session = getCurrentSession();
             const msg = session.messages.find(m => m.id === card.dataset.for);
-            if (msg) { msg.content = stripCharCreationBlock(msg.content); saveSettings(); }
+            if (msg) { 
+                msg.content = stripCharCreationBlock(msg.content); 
+                if (msg.swipes) msg.swipes[msg.swipeIndex || 0].content = msg.content;
+                saveSessionsToMetadata(); 
+            }
             card.remove();
         };
 
@@ -1753,7 +1993,11 @@ Tag as \`character-creation\`. Structure:
             createBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…';
             const session = getCurrentSession();
             const msgForStrip = session.messages.find(m => m.id === card.dataset.for);
-            if (msgForStrip) { msgForStrip.content = stripCharCreationBlock(msgForStrip.content); saveSettings(); }
+            if (msgForStrip) { 
+                msgForStrip.content = stripCharCreationBlock(msgForStrip.content); 
+                if (msgForStrip.swipes) msgForStrip.swipes[msgForStrip.swipeIndex || 0].content = msgForStrip.content;
+                saveSessionsToMetadata(); 
+            }
             try {
                 await createCharacterAPI(editableData);
                 logCharCreationHistory(editableData, 'Applied', card.dataset.for);
@@ -1772,7 +2016,10 @@ Tag as \`character-creation\`. Structure:
 
         footer.appendChild(createBtn); footer.appendChild(cancelBtn);
         card.appendChild(footer);
-        msgEl.after(card);
+        card.style.margin = '8px 0 0 0';
+        const bodyEl = msgEl.querySelector('.scp-msg-body');
+        if (bodyEl) bodyEl.insertBefore(card, bodyEl.querySelector('.scp-swipe-bar'));
+        else msgEl.after(card);
     }
 
     function renderCharProposalCard(changes, msgEl) {
@@ -1789,6 +2036,7 @@ Tag as \`character-creation\`. Structure:
         const card = document.createElement('div');
         card.className = 'scp-lb-proposal-card scp-char-proposal-card';
         card.dataset.for = msgEl.dataset.id;
+        card.style.margin = '8px 0 0 0';
 
         const syncBlockToMessage = () => {
             const session = getCurrentSession();
@@ -1796,21 +2044,21 @@ Tag as \`character-creation\`. Structure:
             if (!msg) return;
             const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
             const stripped = stripCharChangesBlock(msg.content);
-            if (pending.length === 0) {
-                msg.content = stripped;
-            } else {
-                msg.content = stripped + '\n\n' + reconstructCharChangesBlock(pending);
-            }
-            saveSettings();
+            if (pending.length === 0) msg.content = stripped;
+            else msg.content = stripped + '\n\n' + reconstructCharChangesBlock(pending);
+            if (msg.swipes) msg.swipes[msg.swipeIndex || 0].content = msg.content;
+            saveSessionsToMetadata();
         };
 
-        const persistState = () => {
-            const sess = getCurrentSession();
-            const msg = sess.messages.find(m => m.id === card.dataset.for);
-            if (msg) { msg.charChangesState = Object.fromEntries(itemStates.map((s,i)=>[i,s]).filter(([,s])=>s!=='pending')); saveSettings(); }
-        };
+        const persistState = () => {};
         const getPending = () => itemStates.filter(s => s === 'pending').length;
-        const checkAllResolved = () => { if (getPending() === 0) { syncBlockToMessage(); card.remove(); } };
+        const checkAllResolved = () => {
+            if (getPendingCount() > 0) return;
+            stripAndSave();
+            card.remove(); 
+            const msg = getCurrentSession().messages.find(m => m.id === msgEl.dataset.id);
+            if (msg) _renderMsgBodyContent(msgEl, msg);
+        };
 
         const validateReplaceChange = (change) => {
             if (!char) return { valid: false, reason: 'No active character' };
@@ -1831,6 +2079,7 @@ Tag as \`character-creation\`. Structure:
 
         const getAppliedResult = (change) => {
             if (!char) return '';
+            if (change.action === 'overwrite') return change.value || '';
             let current;
             if (change.field === 'alternate_greetings') {
                 const idx = (change.index || 1) - 1;
@@ -1839,7 +2088,7 @@ Tag as \`character-creation\`. Structure:
                 current = String(getCharFieldValue(char, change.field));
             }
             for (const patch of (change.patches || [])) {
-                const { result } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                const { result } = applySearchReplaceToField(current, patch.search || patch.anchor || '', patch.replace || '');
                 current = result;
             }
             return current;
@@ -1889,9 +2138,9 @@ Tag as \`character-creation\`. Structure:
             const btns = document.createElement('div');
             btns.className = 'scp-lb-proposal-item-btns';
 
-            if (c.action === 'replace' && char) {
+            if ((c.action === 'replace' || c.action === 'overwrite') && char) {
                 const diffBtn = document.createElement('button');
-                diffBtn.className = 'scp-lb-proposal-diff-btn'; diffBtn.title = 'View diff'; diffBtn.textContent = '⬚';
+                diffBtn.className = 'scp-lb-proposal-diff-btn'; diffBtn.title = 'View diff'; diffBtn.innerHTML = I.diff;
                 diffBtn.addEventListener('click', e => {
                     e.stopPropagation();
                     const change = editableChanges[ci];
@@ -1903,21 +2152,8 @@ Tag as \`character-creation\`. Structure:
                         original = String(getCharFieldValue(char, change.field));
                     }
                     const result = getAppliedResult(change);
-                    const modal = document.getElementById('scp-diff-modal');
-                    const body = document.getElementById('scp-diff-body');
-                    if (!modal || !body) return;
-                    const titleEl = modal.querySelector('.scp-diff-modal-title');
-                    if (titleEl) titleEl.textContent = `Diff: ${FIELD_LABELS[c.field]||c.field}${c.index?` #${c.index}`:''}`;
-                    body.innerHTML = renderDiffSplit(original, result);
-                    modal.querySelectorAll('[data-diff-tab]').forEach(tab => {
-                        tab.classList.toggle('active', tab.dataset.diffTab === 'split');
-                        tab.onclick = () => {
-                            modal.querySelectorAll('[data-diff-tab]').forEach(t => t.classList.remove('active'));
-                            tab.classList.add('active');
-                            body.innerHTML = tab.dataset.diffTab === 'split' ? renderDiffSplit(original, result) : renderDiffUnified(computeLineDiff(original, result));
-                        };
-                    });
-                    modal.style.display = 'flex';
+                    const title = `Diff: ${FIELD_LABELS[c.field]||c.field}${c.index?` #${c.index}`:''}`;
+                    openTextDiffModal(title, original, result);
                 });
                 btns.appendChild(diffBtn);
             }
@@ -2052,7 +2288,7 @@ Tag as \`character-creation\`. Structure:
                             if (char) { const { valid } = validateReplaceChange(change); applyBtn.disabled = !valid; }
                             refreshPreview();
                         });
-                        editPanel.appendChild(mkRow('Search', searchTa));
+                        editPanel.appendChild(mkRow('Anchor', searchTa));
 
                         const replaceTa = document.createElement('textarea');
                         replaceTa.className = 'scp-lb-pe-textarea'; replaceTa.rows = 3; replaceTa.value = patch.replace || '';
@@ -2101,19 +2337,15 @@ Tag as \`character-creation\`. Structure:
             return item;
         });
 
-        // Restore persisted states
-        const initMsg = getCurrentSession().messages.find(m => m.id === msgEl.dataset.id);
-        if (initMsg?.charChangesState) {
-            Object.entries(initMsg.charChangesState).forEach(([i, state]) => {
-                const idx = parseInt(i);
-                if (!itemEls[idx]) return;
-                itemStates[idx] = state;
-                if (state !== 'pending') {
-                    itemEls[idx].classList.add(state === 'applied' ? 'scp-lb-item-applied' : 'scp-lb-item-rejected');
-                    itemEls[idx].querySelectorAll('button').forEach(b => { b.disabled = true; });
-                }
-            });
-        }
+        itemEls.forEach((el, i) => {
+            if (itemStates[i] === 'applied') {
+                el.classList.add('scp-lb-item-applied');
+                el.querySelectorAll('button').forEach(b => { b.disabled = true; });
+            } else if (itemStates[i] === 'rejected') {
+                el.classList.add('scp-lb-item-rejected');
+                el.querySelectorAll('button').forEach(b => { b.disabled = true; });
+            }
+        });
 
         const footer = document.createElement('div');
         footer.className = 'scp-lb-proposal-footer';
@@ -2155,7 +2387,9 @@ Tag as \`character-creation\`. Structure:
 
         footer.appendChild(applyAllBtn); footer.appendChild(rejectAllBtn);
         card.appendChild(header); card.appendChild(list); card.appendChild(footer);
-        msgEl.after(card);
+        const body = msgEl.querySelector('.scp-msg-body');
+        if (body) body.insertBefore(card, body.querySelector('.scp-swipe-bar'));
+        else msgEl.after(card);
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -2197,7 +2431,7 @@ Tag as \`character-creation\`. Structure:
     }
 
     function _parseLBDiffPatch(str) {
-        const m = str.match(/<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE/);
+        const m = str.match(/<<<<<<< (?:SEARCH|ANCHOR)\r?\n([\s\S]*?)\r?\n=+\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE/);
         return m ? { search: m[1], replace: m[2] } : null;
     }
 
@@ -2217,7 +2451,10 @@ Tag as \`character-creation\`. Structure:
             if (c.action === 'patch' && Array.isArray(c.patches)) {
                 c.patches = c.patches.map(p => {
                     if (typeof p === 'string') return _parseLBDiffPatch(p);
-                    if (p && typeof p === 'object' && p.search !== undefined) return p;
+                    if (p && typeof p === 'object') {
+                        p.search = p.search || p.anchor;
+                        if (p.search !== undefined) return p;
+                    }
                     return null;
                 }).filter(Boolean);
             }
@@ -2259,74 +2496,70 @@ Tag as \`character-creation\`. Structure:
     async function bindNewLorebookToCharacter(bookName) {
         try {
             const ctx = SillyTavern.getContext();
-            
-            if (typeof ST_WorldInfo !== 'undefined' && typeof ST_WorldInfo.createNewWorldInfo === 'function') {
-                await ST_WorldInfo.createNewWorldInfo(bookName);
-            } else if (typeof window.createNewWorldInfo === 'function') {
-                await window.createNewWorldInfo(bookName);
-            } else {
-                const payload = { entries: {} };
-                if (typeof ctx.saveWorldInfo === 'function') await ctx.saveWorldInfo(bookName, payload);
-                else await fetch('/api/worldinfo/edit', { method: 'POST', headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ name: bookName, data: payload }) });
-                
-                if (typeof ctx.updateWorldInfoList === 'function') await ctx.updateWorldInfoList();
-                else if (typeof window.loadWorldInfoList === 'function') await window.loadWorldInfoList();
+
+            const allBooks = window.world_names || ST_WorldInfo?.world_names || [];
+            const isNew = !allBooks.includes(bookName);
+
+            if (isNew) {
+                console.log('[ST-Copilot-Debug] Lorebook is new. Requesting ST to create...');
+                if (typeof ST_WorldInfo?.createNewWorldInfo === 'function') {
+                    await ST_WorldInfo.createNewWorldInfo(bookName);
+                } else if (typeof window.createNewWorldInfo === 'function') {
+                    await window.createNewWorldInfo(bookName);
+                } else {
+                    const payload = { entries: {}, extensions: {} };
+                    await fetch('/api/worldinfo/edit', {
+                        method: 'POST',
+                        headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: bookName, data: payload }),
+                    });
+                    if (typeof ctx.updateWorldInfoList === 'function') await ctx.updateWorldInfoList();
+                    else if (typeof window.loadWorldInfoList === 'function') await window.loadWorldInfoList();
+                }
+                toastr.success(`Lorebook "${escHtml(bookName)}" created successfully.`, EXT_DISPLAY);
             }
-            
+
             delete _wiCache[bookName];
 
             const charId = ctx.characterId;
             if (charId === undefined || charId === null) return;
-            
+
             let fileName = ctx.characters?.[charId]?.avatar;
-            if (typeof ST_Utils !== 'undefined' && typeof ST_Utils.getCharaFilename === 'function') {
+            if (ST_Utils && typeof ST_Utils.getCharaFilename === 'function') {
                 fileName = ST_Utils.getCharaFilename(charId);
+            } else if (typeof window.getCharaFilename === 'function') {
+                fileName = window.getCharaFilename(charId);
             }
             if (!fileName) return;
 
-            let wiSettings = null;
-            if (typeof ST_WorldInfo !== 'undefined' && ST_WorldInfo.world_info) {
-                wiSettings = ST_WorldInfo.world_info;
-            } else if (window.world_info) {
-                wiSettings = window.world_info;
-            }
+            let wiSettings = window.world_info || ST_WorldInfo?.world_info;
+            if (!wiSettings) return;
 
-            if (wiSettings && Array.isArray(wiSettings.charLore)) {
-                const charLoreList = wiSettings.charLore;
-                let extraCharLore = charLoreList.find(e => e.name === fileName);
-                if (!extraCharLore) {
-                    extraCharLore = { name: fileName, extraBooks: [] };
-                    charLoreList.push(extraCharLore);
-                }
-                if (!Array.isArray(extraCharLore.extraBooks)) extraCharLore.extraBooks = [];
-                
-                if (!extraCharLore.extraBooks.includes(bookName)) {
-                    extraCharLore.extraBooks.push(bookName);
-                    
-                    if (typeof ST_WorldInfo !== 'undefined' && typeof ST_WorldInfo.saveWorldInfoSettings === 'function') {
-                        ST_WorldInfo.saveWorldInfoSettings();
-                    } else if (typeof window.saveWorldInfoSettings === 'function') {
-                        window.saveWorldInfoSettings();
-                    } else {
-                        await fetch('/api/worldinfo/settings', {
-                            method: 'POST',
-                            headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
-                            body: JSON.stringify(wiSettings)
-                        });
-                    }
-                    
-                    if (typeof ST_WorldInfo !== 'undefined' && typeof ST_WorldInfo.printWorldInfoCharacters === 'function') {
-                        ST_WorldInfo.printWorldInfoCharacters();
-                    } else if (typeof window.printWorldInfoCharacters === 'function') {
-                        window.printWorldInfoCharacters();
-                    }
-                }
+            if (!Array.isArray(wiSettings.charLore)) wiSettings.charLore = [];
+
+            const charLoreList = wiSettings.charLore;
+            let extraCharLore = charLoreList.find(e => e.name === fileName);
+            if (!extraCharLore) {
+                extraCharLore = { name: fileName, extraBooks: [] };
+                charLoreList.push(extraCharLore);
             }
-            
-            toastr.success(`Lorebook "${escHtml(bookName)}" created and bound to character.`, EXT_DISPLAY);
+            if (!Array.isArray(extraCharLore.extraBooks)) extraCharLore.extraBooks = [];
+
+            if (!extraCharLore.extraBooks.includes(bookName)) {
+                extraCharLore.extraBooks.push(bookName);
+                console.log(`[ST-Copilot-Debug] Added "${bookName}" to extraBooks.`);
+
+                if (typeof ST_WorldInfo?.saveWorldInfoSettings === 'function') ST_WorldInfo.saveWorldInfoSettings();
+                else if (typeof window.saveWorldInfoSettings === 'function') window.saveWorldInfoSettings();
+
+                if (typeof window.saveSettingsDebounced === 'function') window.saveSettingsDebounced();
+                else if (typeof saveSettingsDebounced === 'function') saveSettingsDebounced();
+
+                if (typeof ST_WorldInfo?.printWorldInfoCharacters === 'function') ST_WorldInfo.printWorldInfoCharacters();
+                else if (typeof window.printWorldInfoCharacters === 'function') window.printWorldInfoCharacters();
+            }
         } catch (e) {
-            console.error(`[${EXT_DISPLAY}] Failed to create and bind lorebook:`, e);
-            toastr.error('Failed to create new lorebook.', EXT_DISPLAY);
+            console.error(`[ST-Copilot-Debug] Exception in bindNewLorebookToCharacter:`, e);
         }
     }
 
@@ -2398,39 +2631,66 @@ Tag as \`character-creation\`. Structure:
         return { bookName, data, origEntry };
     }
 
+    function addHistoryToSwipe(msgId, newLines) {
+        if (!msgId) return false;
+        const session = getCurrentSession();
+        const msg = session.messages.find(m => m.id === msgId);
+        if (!msg) return false;
+        if (!msg.swipes) msg.swipes = [{ content: msg.content, reasoning: msg.reasoning }];
+        const currentSwipe = msg.swipes[msg.swipeIndex || 0];
+        if (!currentSwipe.historyLines) currentSwipe.historyLines = [];
+        currentSwipe.historyLines.push(...newLines);
+        saveSessionsToMetadata();
+        
+        const msgEl = document.querySelector(`.scp-msg[data-id="${msgId}"]`);
+        if (msgEl) {
+            let body = msgEl.querySelector('.scp-msg-body');
+            if (body) {
+                let histWrap = body.querySelector('.scp-msg-hist-wrap');
+                if (!histWrap) {
+                    histWrap = document.createElement('div');
+                    histWrap.className = 'scp-msg-hist-wrap';
+                    body.appendChild(histWrap);
+                }
+                const dummyMsg = { appliedLines: currentSwipe.historyLines };
+                const contentEl = document.createElement('div');
+                contentEl.className = 'scp-msg-content scp-lb-history-content';
+                contentEl.style.marginTop = '10px';
+                contentEl.style.padding = '8px 12px';
+                contentEl.style.background = 'var(--scp-accent-bg)';
+                contentEl.style.border = '1px solid var(--scp-accent-dim)';
+                contentEl.style.borderRadius = '6px';
+                
+                renderLBHistoryContent(dummyMsg, contentEl);
+                histWrap.innerHTML = '';
+                histWrap.appendChild(contentEl);
+
+                const swipeBar = body.querySelector('.scp-swipe-bar');
+                if (swipeBar) body.insertBefore(histWrap, swipeBar);
+                else body.appendChild(histWrap);
+            }
+        }
+        return true;
+    }
+
     function logLBHistoryChanges(changes, statusStr, afterMsgId = null) {
         if (!changes || !changes.length) return;
         try {
             const session = getCurrentSession();
             const icons = { add: '✚', edit: '✎', patch: '✂', delete: '✕' };
             const statusIcon = statusStr === 'Accepted' ? '✓' : (statusStr === 'Rejected' ? '✕' : '·');
-
-            const actionText = statusStr === 'Accepted' ? 'ACCEPTED' :
-                               (statusStr === 'Rejected' ? 'REJECTED' : 'DISMISSED (ignored)');
+            const actionText = statusStr === 'Accepted' ? 'ACCEPTED' : (statusStr === 'Rejected' ? 'REJECTED' : 'DISMISSED (ignored)');
 
             const newLines = changes.map(c => {
                 const act = (c.action || 'edit').toUpperCase();
                 return `${statusIcon} **${actionText}**: ${icons[c.action] || '·'} ${act} "${escHtml(c.name || c.originalName || `Entry #${c.uid || '?'}`)}" in \`${escHtml(c.worldName || '?')}\``;
             });
 
-            const lastMsg = session.messages[session.messages.length - 1];
-            if (lastMsg && lastMsg.isLBHistory && !lastMsg.isCharEditHistory) {
-                if (!lastMsg.appliedLines) lastMsg.appliedLines = [];
-                lastMsg.appliedLines.push(...newLines);
-                lastMsg.content = `**System Notification** — User interaction with proposed lorebook changes:\n${lastMsg.appliedLines.join('\n')}`;
-                
-                if (lastMsg.role !== 'system') lastMsg.role = 'system';
-                updateMessage(session, lastMsg.id, lastMsg.content);
+            if (afterMsgId && addHistoryToSwipe(afterMsgId, newLines)) return;
 
-                const contentEl = document.querySelector(`.scp-msg[data-id="${lastMsg.id}"] .scp-lb-history-content`);
-                if (contentEl) renderLBHistoryContent(lastMsg, contentEl);
-            } else {
-                const histText = `**System Notification** — User interaction with proposed lorebook changes:\n${newLines.join('\n')}`;
-                const histMsg = afterMsgId
-                    ? insertMessageAfter(session, afterMsgId, 'system', histText, { isLBHistory: true, appliedLines: [...newLines] })
-                    : addMessage(session, 'system', histText, { isLBHistory: true, appliedLines: [...newLines] });
-                appendLBHistoryEl(histMsg, afterMsgId);
-            }
+            const histText = `**System Notification** — User interaction with proposed lorebook changes:\n${newLines.join('\n')}`;
+            const histMsg = addMessage(session, 'system', histText, { isLBHistory: true, appliedLines: [...newLines] });
+            appendLBHistoryEl(histMsg);
         } catch (_) {}
     }
 
@@ -2440,7 +2700,21 @@ Tag as \`character-creation\`. Structure:
         const successfulChanges =[];
 
         for (const change of changes) {
-            const { bookName, data, origEntry } = await resolveLBChangeTarget(change);
+            let { bookName, data, origEntry } = await resolveLBChangeTarget(change);
+
+            if (change.worldName && change.action !== 'delete') {
+                const activeBooks = getActiveLorebookNames();
+                
+                if (!activeBooks.includes(change.worldName)) {
+                    await bindNewLorebookToCharacter(change.worldName);
+                    
+                    const resolved = await resolveLBChangeTarget(change);
+                    bookName = resolved.bookName;
+                    data = resolved.data;
+                    origEntry = resolved.origEntry;
+                }
+            }
+
             if (!data) {
                 const msg = `Lorebook not found: "${change.worldName || '(empty)'}" — is it active in this chat?`;
                 toastr.error(`[LB] ${msg}`, EXT_DISPLAY, { timeOut: 10000 });
@@ -2470,6 +2744,7 @@ Tag as \`character-creation\`. Structure:
                 };
                 console.log(`[${EXT_DISPLAY}] applyLBChanges: ADD uid=${newUid} in "${bookName}" constant=${data.entries[newUid].constant}`);
                 bookCache[bookName] = data;
+                _wiCache[bookName] = data;
                 successfulChanges.push(change);
             } else if (change.action === 'edit') {
                 if (!origEntry) {
@@ -2489,6 +2764,7 @@ Tag as \`character-creation\`. Structure:
                 if (change.constant !== undefined) origEntry.constant = !!change.constant;
                 console.log(`[${EXT_DISPLAY}] applyLBChanges: EDIT uid=${origEntry.uid} in "${bookName}"`);
                 bookCache[bookName] = data;
+                _wiCache[bookName] = data;
                 successfulChanges.push(change);
             } else if (change.action === 'patch') {
                 if (!origEntry) {
@@ -2517,6 +2793,7 @@ Tag as \`character-creation\`. Structure:
                 if (change.constant !== undefined) origEntry.constant = !!change.constant;
                 console.log(`[${EXT_DISPLAY}] applyLBChanges: PATCH uid=${origEntry.uid} in "${bookName}"`);
                 bookCache[bookName] = data;
+                _wiCache[bookName] = data;
                 successfulChanges.push(change);
             } else if (change.action === 'delete') {
                 if (!origEntry) {
@@ -2526,6 +2803,7 @@ Tag as \`character-creation\`. Structure:
                 delete data.entries[origEntry.uid];
                 console.log(`[${EXT_DISPLAY}] applyLBChanges: DELETE uid=${origEntry.uid} in "${bookName}"`);
                 bookCache[bookName] = data;
+                _wiCache[bookName] = data;
                 successfulChanges.push(change);
             } else {
                 toastr.warning(`[LB] Unknown action: "${change.action}"`, EXT_DISPLAY, { timeOut: 6000 });
@@ -2722,41 +3000,48 @@ Tag as \`character-creation\`. Structure:
         return `<table class="scp-diff-split-table"><thead><tr><th>Original</th><th>Modified</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
     }
 
-    function openDiffModal(change, originalEntry) {
+    function openTextDiffModal(title, originalText, newText) {
         const modal = document.getElementById('scp-diff-modal');
         if (!modal) return;
-        const originalContent = originalEntry?.content || '';
-        let newContent = change.content || '';
         
-        if (change.action === 'patch' && originalEntry) {
-            let current = originalContent;
-            for (const patch of (change.patches || [])) {
-                const { result } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
-                current = result;
-            }
-            newContent = current;
-        }
-        
-        const diffLines = computeLineDiff(originalContent, newContent);
-
-        const entryName = change.name || originalEntry?.comment || `Entry #${change.uid || '?'}`;
+        const diffLines = computeLineDiff(originalText, newText);
         const titleEl = modal.querySelector('.scp-diff-modal-title');
-        if (titleEl) titleEl.textContent = `Diff: "${entryName}" in ${change.worldName || '?'}`;
+        if (titleEl) titleEl.textContent = title;
 
         const body = document.getElementById('scp-diff-body');
-        if (body) body.innerHTML = renderDiffSplit(originalContent, newContent);
+        if (body) body.innerHTML = renderDiffSplit(originalText, newText);
 
         modal.querySelectorAll('[data-diff-tab]').forEach(tab => {
             tab.classList.toggle('active', tab.dataset.diffTab === 'split');
             tab.onclick = () => {
                 modal.querySelectorAll('[data-diff-tab]').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
-                if (body) body.innerHTML = tab.dataset.diffTab === 'split'
-                    ? renderDiffSplit(originalContent, newContent)
-                    : renderDiffUnified(diffLines);
+                if (body) {
+                    body.innerHTML = tab.dataset.diffTab === 'split' 
+                        ? renderDiffSplit(originalText, newText) 
+                        : renderDiffUnified(diffLines);
+                }
             };
         });
         modal.style.display = 'flex';
+    }
+
+    function openDiffModal(change, originalEntry) {
+        const originalContent = originalEntry?.content || '';
+        let newContent = change.content || '';
+        
+        if (change.action === 'patch' && originalEntry) {
+            let current = originalContent;
+            for (const patch of (change.patches || [])) {
+                const { result } = applySearchReplaceToField(current, patch.search || patch.anchor || '', patch.replace || '');
+                current = result;
+            }
+            newContent = current;
+        }
+        
+        const entryName = change.name || originalEntry?.comment || `Entry #${change.uid || '?'}`;
+        const title = `Diff: "${entryName}" in ${change.worldName || '?'}`;
+        openTextDiffModal(title, originalContent, newContent);
     }
 
     function renderLBHistoryContent(msg, contentEl) {
@@ -2822,6 +3107,8 @@ Tag as \`character-creation\`. Structure:
         
         if (msg.isCharEditHistory) {
             avatar.innerHTML = '<i class="fa-solid fa-user-pen" style="font-size:14px; padding-left:1px;"></i>';
+        } else if (msg.isChatEditHistory) {
+            avatar.innerHTML = '<i class="fa-solid fa-comments" style="font-size:14px; padding-left:1px;"></i>';
         } else {
             avatar.innerHTML = I.book;
         }
@@ -2862,6 +3149,922 @@ Tag as \`character-creation\`. Structure:
         if (!anchor) scrollToBottom();
     }
 
+    // ─── Chat Message Editing Engine ─────────────────────────────────────────────
+
+    function parseChatChangesFromText(text) {
+        let raw = null;
+        const strict = text.match(/```chat-changes\s*([\s\S]*?)```/);
+        if (strict) { raw = strict[1].trim(); }
+        else {
+            const open = text.match(/```chat-changes\s*([\s\S]*?)(?=```|$)/);
+            if (open) raw = open[1].trim();
+        }
+        if (!raw) return null;
+        try {
+            const data = JSON.parse(raw);
+            if (Array.isArray(data.changes)) return _sanitizeChatChanges(data.changes);
+        } catch (_) {}
+        try {
+            const data = JSON.parse(_repairJSON(raw));
+            if (Array.isArray(data.changes)) return _sanitizeChatChanges(data.changes);
+        } catch (_) {}
+        return null;
+    }
+
+    function _sanitizeChatChanges(changes) {
+        if (!Array.isArray(changes)) return null;
+        const valid = [];
+        for (const c of changes) {
+            if (!c || typeof c !== 'object') continue;
+            if (!['replace', 'overwrite', 'prepend', 'append', 'bulk_replace', 'regex', 'delete', 'add', 'hide', 'unhide'].includes(c.action)) continue;
+
+            // normalize msg_indices
+            if (c.msg_indices !== undefined) {
+                if (typeof c.msg_indices === 'string') {
+                    c.msg_indices = c.msg_indices.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+                }
+                if (!Array.isArray(c.msg_indices) || !c.msg_indices.length) delete c.msg_indices;
+                else c.msg_indices = [...new Set(c.msg_indices)].sort((a, b) => a - b);
+            }
+
+            if (c.action === 'add') {
+                if (!c.role) c.role = 'assistant';
+                if (c.msg_index === undefined) c.msg_index = 99999;
+            } else if (c.action === 'bulk_replace' || c.action === 'hide' || c.action === 'unhide') {
+                if (c.action === 'bulk_replace' && (!Array.isArray(c.replacements) || (!Array.isArray(c.msg_range) && !Array.isArray(c.msg_indices)))) continue;
+                if (c.action === 'bulk_replace') {
+                    c.replacements = c.replacements.map(r => {
+                        if (typeof r === 'object') {
+                            r.search = r.search || r.anchor;
+                            if (r.search !== undefined) return r;
+                        }
+                        return null;
+                    }).filter(Boolean);
+                }
+            } else {
+                if (c.msg_index === undefined && c.msg_id === undefined && c.msg_range === undefined && !c.msg_indices) continue;
+            }
+            if (c.action === 'replace' && Array.isArray(c.patches)) {
+                c.patches = c.patches.map(p => {
+                    if (typeof p === 'object') {
+                        p.search = p.search || p.anchor;
+                        if (p.search !== undefined) return p;
+                    }
+                    return null;
+                }).filter(Boolean);
+            }
+            valid.push(c);
+        }
+        return valid.length ? valid : null;
+    }
+    
+    function stripChatChangesBlock(text) {
+        return text.replace(/```chat-changes[\s\S]*?```/g, '').replace(/```chat-changes[\s\S]*/g, '').trim();
+    }
+
+    function reconstructChatChangesBlock(pendingChanges) {
+        if (!pendingChanges.length) return '';
+        return '```chat-changes\n{"changes": ' + JSON.stringify(pendingChanges, null, 2) + '}\n```';
+    }
+
+    function reconstructLBChangesBlock(pendingChanges) {
+        if (!pendingChanges.length) return '';
+        return '```lorebook-changes\n{"changes": ' + JSON.stringify(pendingChanges, null, 2) + '}\n```';
+    }
+
+    function _resolveStMsgByIndexOrId(change) {
+        const ctx = SillyTavern.getContext();
+        const msgs = ctx.chat || [];
+        if (typeof change.msg_index === 'number') {
+            if (change.msg_index >= 0 && change.msg_index < msgs.length) {
+                return { idx: change.msg_index, msg: msgs[change.msg_index] };
+            }
+        }
+        return null;
+    }
+
+    async function applyChatChanges(changes, afterMsgId = null) {
+        const ctx = SillyTavern.getContext();
+        const msgs = ctx.chat;
+        if (!msgs) { toastr.error('[ChatEdit] No active chat.', EXT_DISPLAY); return; }
+        const successLog = [];
+
+        for (const change of changes) {
+            try {
+                if (change.action === 'hide' || change.action === 'unhide') {
+                    const cmd = change.action === 'hide' ? '/hide' : '/unhide';
+                    if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
+                        const valid = change.msg_indices.filter(i => i >= 0 && i < msgs.length);
+                        if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
+                            for (const idx of valid) {
+                                await ctx.executeSlashCommandsWithOptions(`${cmd} ${idx}-${idx}`);
+                            }
+                        }
+                        successLog.push({ ...change, affectedCount: valid.length });
+                    } else {
+                        let startIdx = 0, endIdx = msgs.length - 1;
+                        if (Array.isArray(change.msg_range)) {
+                            startIdx = change.msg_range[0]; endIdx = change.msg_range[1];
+                        } else if (change.msg_index !== undefined) {
+                            startIdx = change.msg_index; endIdx = change.msg_index;
+                        }
+                        if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
+                            await ctx.executeSlashCommandsWithOptions(`${cmd} ${startIdx}-${endIdx}`);
+                        }
+                        successLog.push({ ...change, affectedCount: endIdx - startIdx + 1 });
+                    }
+                    continue;
+                }
+
+                if (change.action === 'add') {
+                    const isSys = change.role === 'system';
+                    const isUser = change.role === 'user';
+                    const newMsg = {
+                        name: isSys ? 'System' : (isUser ? (ctx.name1 || 'User') : (ctx.name2 || 'Character')),
+                        is_user: isUser,
+                        is_system: isSys,
+                        send_date: Date.now(),
+                        mes: change.content || '',
+                        extra: {}
+                    };
+                    let insertIdx = msgs.length;
+                    if (typeof change.msg_index === 'number' && change.msg_index >= 0) {
+                        insertIdx = Math.min(change.msg_index, msgs.length);
+                    }
+                    msgs.splice(insertIdx, 0, newMsg);
+                    await _saveChatAfterDelete(ctx);
+                    successLog.push(change);
+                    continue;
+                }
+
+                if (change.action === 'bulk_replace' || change.action === 'regex') {
+                    let targetIndices = [];
+                    if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
+                        targetIndices = change.msg_indices.filter(i => i >= 0 && i < msgs.length);
+                    } else {
+                        let startIdx = 0, endIdx = msgs.length - 1;
+                        if (Array.isArray(change.msg_range)) {
+                            startIdx = change.msg_range[0]; endIdx = change.msg_range[1];
+                        } else if (change.msg_index !== undefined) {
+                            startIdx = change.msg_index; endIdx = change.msg_index;
+                        }
+                        for (let i = Math.max(0, startIdx); i <= Math.min(msgs.length - 1, endIdx); i++) targetIndices.push(i);
+                    }
+
+                    let affected = 0;
+                    for (const i of targetIndices) {
+                        const msg = msgs[i];
+                        let content = msg.mes || '';
+                        let changed = false;
+
+                        if (change.action === 'bulk_replace') {
+                            for (const rp of (change.replacements || [])) {
+                                if (!rp.search && !rp.anchor) continue;
+                                const { result, matched } = applySearchReplaceToField(content, rp.search || rp.anchor, rp.replace || '');
+                                if (matched) { content = result; changed = true; }
+                            }
+                        } else if (change.action === 'regex') {
+                            try {
+                                const m = (change.regex || '').match(/^\/([\s\S]+)\/([a-z]*)$/i);
+                                const re = m ? new RegExp(m[1], m[2]) : new RegExp(change.regex, 'g');
+                                if (re.test(content)) {
+                                    content = content.replace(re, change.replace || '');
+                                    changed = true;
+                                }
+                            } catch(e) { toastr.error(`[ChatEdit] Invalid regex: ${change.regex}`, EXT_DISPLAY); }
+                        }
+
+                        if (changed) {
+                            msg.mes = content;
+                            await _saveChatMessage(ctx, i, msg);
+                            affected++;
+                        }
+                    }
+                    successLog.push({ ...change, affectedCount: affected });
+                    continue;
+                }
+
+                // msg_indices: apply same operation to each specified index
+                if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
+                    let allSuccess = true;
+                    const sortedIndices = [...change.msg_indices].sort((a, b) =>
+                        change.action === 'delete' ? b - a : a - b // delete in reverse to preserve indices
+                    );
+                    for (const idx of sortedIndices) {
+                        if (idx < 0 || idx >= msgs.length) {
+                            toastr.warning(`[ChatEdit] Message #${idx} not found`, EXT_DISPLAY, { timeOut: 6000 });
+                            allSuccess = false; continue;
+                        }
+                        const msg = msgs[idx];
+                        if (change.action === 'delete') {
+                            msgs.splice(idx, 1);
+                            await _saveChatAfterDelete(ctx);
+                            continue;
+                        }
+                        let content = msg.mes || '';
+                        if (change.action === 'overwrite') {
+                            content = change.content || '';
+                        } else if (change.action === 'prepend') {
+                            content = (change.content || '') + content;
+                        } else if (change.action === 'append') {
+                            content = content + (change.content || '');
+                        } else if (change.action === 'replace') {
+                            let matched = true;
+                            for (const patch of (change.patches || [])) {
+                                const { result, matched: m } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
+                                if (!m) { toastr.warning(`[ChatEdit] ANCHOR not found in #${idx}: "${(patch.search || patch.anchor || '').slice(0, 60)}"`, EXT_DISPLAY, { timeOut: 8000 }); matched = false; break; }
+                                content = result;
+                            }
+                            if (!matched) { allSuccess = false; continue; }
+                        }
+                        msg.mes = content;
+                        await _saveChatMessage(ctx, idx, msg);
+                    }
+                    if (allSuccess) successLog.push(change);
+                    continue;
+                }
+
+                const resolved = _resolveStMsgByIndexOrId(change);
+                if (!resolved) {
+                    toastr.warning(`[ChatEdit] Message not found: Index ${change.msg_index ?? change.msg_id}`, EXT_DISPLAY, { timeOut: 6000 });
+                    continue;
+                }
+                const { idx, msg } = resolved;
+
+                if (change.action === 'delete') {
+                    msgs.splice(idx, 1);
+                    if (typeof ctx.deleteMessage === 'function') ctx.deleteMessage(idx);
+                    else await _saveChatAfterDelete(ctx);
+                    successLog.push(change);
+                    continue;
+                }
+
+                let content = msg.mes || '';
+                if (change.action === 'overwrite') {
+                    content = change.content || '';
+                } else if (change.action === 'prepend') {
+                    content = (change.content || '') + content;
+                } else if (change.action === 'append') {
+                    content = content + (change.content || '');
+                } else if (change.action === 'replace') {
+                    let allMatched = true;
+                    for (const patch of (change.patches || [])) {
+                        const { result, matched } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
+                        if (!matched) {
+                            toastr.warning(`[ChatEdit] ANCHOR not found in message ${change.msg_index ?? change.msg_id}: "${(patch.search || patch.anchor || '').slice(0, 60)}"`, EXT_DISPLAY, { timeOut: 8000 });
+                            allMatched = false; break;
+                        }
+                        content = result;
+                    }
+                    if (!allMatched) continue;
+                }
+                msg.mes = content;
+                await _saveChatMessage(ctx, idx, msg);
+                successLog.push(change);
+            } catch (e) {
+                toastr.error(`[ChatEdit] Failed on change: ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
+            }
+        }
+
+        if (successLog.length > 0) {
+            _refreshSTChatDOM(ctx);
+            logChatEditHistory(successLog, 'Applied', afterMsgId);
+            toastr.success(`[ChatEdit] ${successLog.length} change(s) applied.`, EXT_DISPLAY);
+        }
+    }
+
+    async function _saveChatMessage(ctx, idx, msg) {
+        try {
+            if (typeof ctx.saveChat === 'function') await ctx.saveChat();
+            else if (typeof window.saveChat === 'function') await window.saveChat();
+            const es = ctx.eventSource || window.eventSource;
+            const et = ctx.event_types || window.event_types;
+            if (es && et?.MESSAGE_UPDATED) es.emit(et.MESSAGE_UPDATED, { detail: { index: idx, message: msg } });
+        } catch(e) { console.warn('[ChatEdit] Save error:', e); }
+    }
+
+    async function _saveChatAfterDelete(ctx) {
+        try {
+            if (typeof ctx.saveChat === 'function') await ctx.saveChat();
+            else if (typeof window.saveChat === 'function') await window.saveChat();
+        } catch(e) {}
+    }
+
+    function _refreshSTChatDOM(ctx) {
+        try {
+            const es = ctx.eventSource || window.eventSource;
+            const et = ctx.event_types || window.event_types;
+            if (es && et?.CHAT_CHANGED) es.emit(et.CHAT_CHANGED);
+            if (typeof window.printMessages === 'function') window.printMessages();
+            else if (typeof ctx.printMessages === 'function') ctx.printMessages();
+        } catch(_) {}
+    }
+
+    function logChatEditHistory(changes, statusStr, afterMsgId = null) {
+        if (!changes?.length) return;
+        try {
+            const session = getCurrentSession();
+            const icon = statusStr === 'Applied' ? '✓' : (statusStr === 'Rejected' ? '✕' : '·');
+            const actionText = statusStr === 'Applied' ? 'ACCEPTED' : (statusStr === 'Rejected' ? 'REJECTED' : 'DISMISSED');
+            
+            const newLines = changes.map(c => {
+                let target = `\`#${escHtml(c.msg_index ?? c.msg_id ?? '?')}\``;
+                if (c.msg_range && Array.isArray(c.msg_range)) target = `[${c.msg_range[0]}–${c.msg_range[1]}]`;
+                if (Array.isArray(c.msg_indices) && c.msg_indices.length) target = `[${c.msg_indices.join(', ')}]`;
+                let extras = c.affectedCount !== undefined ? ` (${c.affectedCount} affected)` : '';
+                return `${icon} **${actionText}**: \`${escHtml(c.action)}\` on message ${target}${extras}`;
+            });
+            
+            if (afterMsgId && addHistoryToSwipe(afterMsgId, newLines)) return;
+
+            const histText = `**System Notification** — Chat message edits:\n${newLines.join('\n')}`;
+            const msg = addMessage(session, 'system', histText, { isChatEditHistory: true, isLBHistory: true, appliedLines: [...newLines] });
+            appendLBHistoryEl(msg);
+        } catch(_) {}
+    }
+    
+    function renderChatProposalCard(changes, msgEl) {
+        if (!changes?.length) return;
+        document.querySelector(`.scp-chat-proposal-card[data-for="${msgEl.dataset.id}"]`)?.remove();
+
+        const ctx = SillyTavern.getContext();
+        const stMsgs = ctx.chat || [];
+        const editableChanges = changes.map(c => JSON.parse(JSON.stringify(c)));
+        const itemStates = editableChanges.map(() => 'pending');
+
+        const ACTION_LABELS = { 
+            add: '<i class="fa-solid fa-square-plus" style="margin-right: 4px;"></i> Add', 
+            replace: '<i class="fa-solid fa-pen-to-square" style="margin-right: 4px;"></i> Replace', 
+            overwrite: '<i class="fa-solid fa-rotate" style="margin-right: 4px;"></i> Overwrite', 
+            prepend: '<i class="fa-solid fa-arrow-up" style="margin-right: 4px;"></i> Prepend', 
+            append: '<i class="fa-solid fa-arrow-down" style="margin-right: 4px;"></i> Append', 
+            bulk_replace: '<i class="fa-solid fa-list-check" style="margin-right: 4px;"></i> Bulk', 
+            regex: '<i class="fa-solid fa-terminal" style="margin-right: 4px;"></i> Regex', 
+            delete: '<i class="fa-solid fa-trash" style="margin-right: 4px;"></i> Delete', 
+            hide: '<i class="fa-solid fa-eye-slash" style="margin-right: 4px;"></i> Hide', 
+            unhide: '<i class="fa-solid fa-eye" style="margin-right: 4px;"></i> Unhide' 
+        };
+        
+        const card = document.createElement('div');
+        card.className = 'scp-lb-proposal-card scp-chat-proposal-card';
+        card.dataset.for = msgEl.dataset.id;
+        card.style.margin = '8px 0 0 0';
+
+        const stripAndSave = () => {
+            const session = getCurrentSession();
+            const msg = session.messages.find(m => m.id === card.dataset.for);
+            if (msg) { 
+                msg.content = stripChatChangesBlock(msg.content); 
+                if (msg.swipes) msg.swipes[msg.swipeIndex || 0].content = msg.content;
+                saveSessionsToMetadata(); 
+            }
+        };
+
+        const persistState = () => {};
+        const getPending = () => itemStates.filter(s => s === 'pending').length;
+        const checkAllResolved = () => { 
+            if (getPending() === 0) { 
+                stripAndSave(); 
+                card.remove(); 
+                const msg = getCurrentSession().messages.find(m => m.id === msgEl.dataset.id);
+                if (msg) _renderMsgBodyContent(msgEl, msg);
+            } 
+        };
+
+        const validateChatChange = (change) => {
+            if (change.action === 'add') {
+                if (!['user', 'assistant', 'system'].includes(change.role)) return { valid: false, reason: 'Invalid role' };
+                if (change.msg_index < 0 || change.msg_index > stMsgs.length + 1) return { valid: false, reason: 'Index out of bounds' };
+                return { valid: true };
+            }
+            let startIdx, endIdx;
+            if (['bulk_replace', 'regex', 'hide', 'unhide'].includes(change.action)) {
+                if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
+                    const invalid = change.msg_indices.filter(i => i < 0 || i >= stMsgs.length);
+                    if (invalid.length) return { valid: false, reason: `Indices out of bounds: ${invalid.join(', ')}` };
+                    if (change.action === 'hide' || change.action === 'unhide') return { valid: true };
+                    if (change.action === 'bulk_replace') {
+                        let anyMatch = false;
+                        for (const i of change.msg_indices) {
+                            let content = stMsgs[i].mes || '', thisMsgMatch = true;
+                            for (const rp of (change.replacements || [])) {
+                                if (!rp.search && !rp.anchor) continue;
+                                const { matched } = applySearchReplaceToField(content, rp.search || rp.anchor, rp.replace || '');
+                                if (!matched) { thisMsgMatch = false; break; }
+                            }
+                            if (thisMsgMatch && change.replacements?.length > 0) anyMatch = true;
+                        }
+                        if (!anyMatch) return { valid: false, reason: 'Anchors not found in the specified messages' };
+                    } else if (change.action === 'regex') {
+                        try {
+                            const m = (change.regex || '').match(/^\/([\s\S]+)\/([a-z]*)$/i);
+                            const re = m ? new RegExp(m[1], m[2]) : new RegExp(change.regex, 'g');
+                            const anyMatch = change.msg_indices.some(i => re.test(stMsgs[i].mes || ''));
+                            if (!anyMatch) return { valid: false, reason: 'Regex matched nothing in the specified messages' };
+                        } catch(e) { return { valid: false, reason: 'Invalid regex syntax' }; }
+                    }
+                    return { valid: true };
+                }
+                if (Array.isArray(change.msg_range)) {
+                    startIdx = change.msg_range[0]; endIdx = change.msg_range[1];
+                } else if (change.msg_index !== undefined) {
+                    startIdx = change.msg_index; endIdx = change.msg_index;
+                } else return { valid: false, reason: 'Target index or range not specified' };
+                
+                if (startIdx < 0 || endIdx >= stMsgs.length || startIdx > endIdx) return { valid: false, reason: `Range [${startIdx}-${endIdx}] is out of bounds` };
+
+                if (change.action === 'hide' || change.action === 'unhide') return { valid: true };
+                
+                let anyMatch = false;
+                if (change.action === 'bulk_replace') {
+                    for (let i = startIdx; i <= endIdx; i++) {
+                        let content = stMsgs[i].mes || '';
+                        let thisMsgMatch = true;
+                        for (const rp of (change.replacements || [])) {
+                            if (!rp.search && !rp.anchor) continue;
+                            const { matched } = applySearchReplaceToField(content, rp.search || rp.anchor, rp.replace || '');
+                            if (!matched) { thisMsgMatch = false; break; }
+                        }
+                        if (thisMsgMatch && change.replacements?.length > 0) anyMatch = true;
+                    }
+                    if (!anyMatch) return { valid: false, reason: 'Anchors not found in the specified range' };
+                } else if (change.action === 'regex') {
+                    try {
+                        const m = (change.regex || '').match(/^\/([\s\S]+)\/([a-z]*)$/i);
+                        const re = m ? new RegExp(m[1], m[2]) : new RegExp(change.regex, 'g');
+                        for (let i = startIdx; i <= endIdx; i++) {
+                            if (re.test(stMsgs[i].mes || '')) { anyMatch = true; break; }
+                        }
+                        if (!anyMatch) return { valid: false, reason: 'Regex matched nothing in the specified range' };
+                    } catch(e) { return { valid: false, reason: 'Invalid regex syntax' }; }
+                }
+                return { valid: true };
+            } else {
+                if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
+                    const invalid = change.msg_indices.filter(i => i < 0 || i >= stMsgs.length);
+                    if (invalid.length) return { valid: false, reason: `Indices out of bounds: ${invalid.join(', ')}` };
+                    if (change.action === 'replace') {
+                        for (const idx of change.msg_indices) {
+                            let content = stMsgs[idx].mes || '';
+                            for (const patch of (change.patches || [])) {
+                                const { matched } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
+                                if (!matched) return { valid: false, reason: `ANCHOR not found in #${idx}: "${(patch.search || patch.anchor || '').slice(0, 40)}..."` };
+                            }
+                        }
+                    }
+                    return { valid: true };
+                }
+                const resolved = _resolveStMsgByIndexOrId(change);
+                if (!resolved) return { valid: false, reason: `Message not found (Index: ${change.msg_index ?? change.msg_id})` };
+
+                if (change.action === 'replace') {
+                    let content = resolved.msg.mes || '';
+                    for (const patch of (change.patches || [])) {
+                        const { matched } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
+                        if (!matched) return { valid: false, reason: `ANCHOR not found: "${(patch.search || patch.anchor || '').slice(0, 40)}..."` };
+                    }
+                }
+                return { valid: true };
+            }
+        };
+
+        const getChatChangeResult = (change, content) => {
+            if (change.action === 'overwrite') return change.content || '';
+            if (change.action === 'replace') {
+                let c = content;
+                for (const p of (change.patches || [])) {
+                    const { result } = applySearchReplaceToField(c, p.search || p.anchor || '', p.replace || '');
+                    c = result;
+                }
+                return c;
+            }
+            if (change.action === 'bulk_replace') {
+                let c = content;
+                for (const p of (change.replacements || [])) {
+                    const { result } = applySearchReplaceToField(c, p.search || p.anchor || '', p.replace || '');
+                    c = result;
+                }
+                return c;
+            }
+            if (change.action === 'regex') {
+                let c = content;
+                try {
+                    const m = (change.regex || '').match(/^\/([\s\S]+)\/([a-z]*)$/i);
+                    const re = m ? new RegExp(m[1], m[2]) : new RegExp(change.regex, 'g');
+                    c = c.replace(re, change.replace || '');
+                } catch(e) {}
+                return c;
+            }
+            return content;
+        };
+
+        const header = document.createElement('div');
+        header.className = 'scp-lb-proposal-header';
+        const headerLeft = document.createElement('div');
+        headerLeft.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;min-width:0';
+        const countBadge = document.createElement('span');
+        countBadge.className = 'scp-lb-proposal-count';
+        countBadge.textContent = `${editableChanges.length} pending`;
+        headerLeft.innerHTML = `<span class="scp-lb-proposal-icon" style="color:var(--scp-accent);display:flex">${I.chatEdit}</span><span class="scp-lb-proposal-title">Proposed Chat Edits</span>`;
+        headerLeft.appendChild(countBadge);
+        const dismissBtn = document.createElement('button');
+        dismissBtn.className = 'scp-lb-proposal-dismiss'; dismissBtn.innerHTML = I.x; dismissBtn.title = 'Dismiss all';
+        dismissBtn.addEventListener('click', () => {
+            const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
+            if (pending.length > 0) logChatEditHistory(pending, 'Dismissed', card.dataset.for);
+            itemStates.forEach((s, i) => { if (s === 'pending') itemStates[i] = 'dismissed'; });
+            stripAndSave(); card.remove();
+        });
+        header.appendChild(headerLeft); header.appendChild(dismissBtn);
+
+        const list = document.createElement('div');
+        list.className = 'scp-lb-proposal-list';
+
+        const itemEls = editableChanges.map((c, ci) => {
+            const item = document.createElement('div');
+            const actionCls = c.action === 'delete' ? 'scp-lb-proposal-delete' : (c.action === 'overwrite' || c.action === 'bulk_replace' || c.action === 'regex' ? 'scp-lb-proposal-edit' : 'scp-lb-proposal-add');
+            item.className = `scp-lb-proposal-item ${actionCls}`;
+
+            const hdr = document.createElement('div');
+            hdr.className = 'scp-lb-proposal-item-header';
+
+            const meta = document.createElement('div');
+            meta.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;flex-wrap:wrap;min-width:0';
+            
+            const targetDescEl = document.createElement('span');
+            targetDescEl.className = 'scp-lb-proposal-name scp-lb-pn-target';
+            
+            const updateTargetDesc = () => {
+                const change = editableChanges[ci];
+                let targetDesc = '';
+                if (change.action === 'add') {
+                    targetDesc = `Insert at #${change.msg_index} (${change.role})`;
+                } else if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
+                    targetDesc = `msgs [${change.msg_indices.join(', ')}]`;
+                } else if (['bulk_replace', 'regex', 'hide', 'unhide'].includes(change.action)) {
+                    if (change.msg_range) targetDesc = `msgs [${change.msg_range[0]}–${change.msg_range[1]}]`;
+                    else targetDesc = `msg #${change.msg_index}`;
+                } else {
+                    const resolved = _resolveStMsgByIndexOrId(change);
+                    targetDesc = resolved ? `#${resolved.idx} ${stMsgs[resolved.idx]?.is_user ? '(user)' : '(assistant)'}` : `Index ${change.msg_index ?? change.msg_id}`;
+                }
+                targetDescEl.textContent = targetDesc;
+            };
+            updateTargetDesc();
+
+            const actionBadge = document.createElement('span');
+            actionBadge.className = 'scp-lb-proposal-action';
+            actionBadge.innerHTML = ACTION_LABELS[c.action] || c.action;
+            
+            meta.appendChild(actionBadge);
+            meta.appendChild(targetDescEl);
+            
+            const warnEl = document.createElement('div');
+            warnEl.style.cssText = 'font-size:10px;color:var(--scp-danger);margin-top:4px;width:100%;display:none';
+            meta.appendChild(warnEl);
+
+            const btns = document.createElement('div');
+            btns.className = 'scp-lb-proposal-item-btns';
+
+            if (['replace', 'overwrite', 'bulk_replace', 'regex'].includes(c.action)) {
+                const diffBtn = document.createElement('button');
+                diffBtn.className = 'scp-lb-proposal-diff-btn'; diffBtn.title = 'View diff'; diffBtn.innerHTML = I.diff;
+                diffBtn.addEventListener('click', e => {
+                    e.stopPropagation();
+                    const change = editableChanges[ci];
+                    let targetIdxList = [];
+                    if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
+                        targetIdxList = change.msg_indices.filter(i => stMsgs[i]);
+                    } else {
+                        let startIdx = change.msg_index !== undefined ? change.msg_index : (change.msg_range ? change.msg_range[0] : null);
+                        let endIdx = change.msg_index !== undefined ? change.msg_index : (change.msg_range ? change.msg_range[1] : null);
+                        if (startIdx === null || endIdx === null) { toastr.warning('Message index not specified.', EXT_DISPLAY); return; }
+                        for (let i = startIdx; i <= endIdx; i++) { if (stMsgs[i]) targetIdxList.push(i); }
+                    }
+
+                    if (!targetIdxList.length) { toastr.warning('Message index not specified.', EXT_DISPLAY); return; }
+                    
+                    let origCombined = [];
+                    let newCombined = [];
+                    let changesFound = 0;
+                    
+                    for (const i of targetIdxList) {
+                        const origText = stMsgs[i].mes || '';
+                        const newText = getChatChangeResult(change, origText);
+                        
+                        if (origText !== newText || targetIdxList.length === 1) {
+                            const prefix = targetIdxList.length > 1 ? `[Message #${i}]\n` : '';
+                            origCombined.push(prefix + origText);
+                            newCombined.push(prefix + newText);
+                            changesFound++;
+                        }
+                    }
+
+                    if (changesFound === 0) {
+                        toastr.info('No changes would be made to these messages.', EXT_DISPLAY);
+                        return;
+                    }
+
+                    const finalOrig = origCombined.join('\n\n' + '—'.repeat(30) + '\n\n');
+                    const finalNew = newCombined.join('\n\n' + '—'.repeat(30) + '\n\n');
+                    const title = targetIdxList.length === 1
+                        ? `Diff: ${stMsgs[targetIdxList[0]]?.is_user ? 'User' : 'Copilot/Char'} Message #${targetIdxList[0]}`
+                        : `Diff: Messages [${targetIdxList.join(', ')}]`;
+
+                    openTextDiffModal(title, finalOrig, finalNew);
+                });
+                btns.appendChild(diffBtn);
+            }
+
+            let editToggleBtn = null;
+            let editPanel = null;
+            if (c.action !== 'delete') {
+                editToggleBtn = document.createElement('button');
+                editToggleBtn.className = 'scp-lb-proposal-edit-toggle'; editToggleBtn.title = 'Edit before applying'; editToggleBtn.textContent = '✎';
+                btns.appendChild(editToggleBtn);
+            }
+
+            const applyBtn = document.createElement('button');
+            applyBtn.className = 'scp-lb-proposal-item-apply'; applyBtn.title = 'Apply'; applyBtn.textContent = '✓';
+            
+            const refreshValidation = () => {
+                const { valid, reason } = validateChatChange(editableChanges[ci]);
+                if (!valid) {
+                    applyBtn.disabled = true; applyBtn.title = reason;
+                    item.style.borderLeftColor = 'var(--scp-danger)';
+                    warnEl.textContent = `⚠ ${reason}`; warnEl.style.display = 'block';
+                } else {
+                    applyBtn.disabled = false; applyBtn.title = 'Apply';
+                    item.style.borderLeftColor = ''; 
+                    warnEl.style.display = 'none';
+                }
+            };
+
+            applyBtn.addEventListener('click', async e => {
+                e.stopPropagation();
+                if (itemStates[ci] !== 'pending' || applyBtn.disabled) return;
+                applyBtn.disabled = true; applyBtn.textContent = '…';
+                try {
+                    await applyChatChanges([editableChanges[ci]], card.dataset.for);
+                    itemStates[ci] = 'applied';
+                    item.classList.add('scp-lb-item-applied');
+                    btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
+                    persistState(); countBadge.textContent = `${getPending()} pending`; updateFooterBtns(); syncBlockToMessage(); checkAllResolved();
+                } catch(err) {
+                    toastr.error(`Failed: ${err.message}`, EXT_DISPLAY);
+                    applyBtn.disabled = false; applyBtn.textContent = '✓';
+                }
+            });
+
+            const rejectBtn = document.createElement('button');
+            rejectBtn.className = 'scp-lb-proposal-item-reject'; rejectBtn.title = 'Reject'; rejectBtn.textContent = '✕';
+            rejectBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                if (itemStates[ci] !== 'pending') return;
+                itemStates[ci] = 'rejected';
+                item.classList.add('scp-lb-item-rejected');
+                btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
+                logChatEditHistory([editableChanges[ci]], 'Rejected', card.dataset.for);
+                persistState(); countBadge.textContent = `${getPending()} pending`; updateFooterBtns(); syncBlockToMessage(); checkAllResolved();
+            });
+            btns.appendChild(applyBtn); btns.appendChild(rejectBtn);
+            hdr.appendChild(meta); hdr.appendChild(btns);
+            item.appendChild(hdr);
+
+            const buildPreview = () => {
+                const change = editableChanges[ci];
+                if (change.action === 'hide') return 'Exclude message(s) from AI prompt context.';
+                if (change.action === 'unhide') return 'Include message(s) back into AI context.';
+                if (change.action === 'replace' && change.patches?.length) {
+                    const target = Array.isArray(change.msg_indices) && change.msg_indices.length
+                        ? ` (msgs ${change.msg_indices.join(', ')})` : '';
+                    return change.patches.map((p, pi) => `Patch ${pi+1}${target}: "${(p.search||p.anchor||'').slice(0,60)}" → "${(p.replace||'').slice(0,60)}"`).join('\n');
+                }
+                if (change.action === 'bulk_replace' && change.replacements?.length) {
+                    return change.replacements.map(r => `"${(r.search||r.anchor||'').slice(0,40)}" → "${(r.replace||'').slice(0,40)}"`).join('\n');
+                }
+                if (change.action === 'regex') {
+                    return `Regex: ${change.regex}\nReplace: ${change.replace || ''}`;
+                }
+                return change.content || '';
+            };
+            let _expanded = false;
+            const previewEl = document.createElement('div');
+            previewEl.className = 'scp-lb-proposal-preview';
+            previewEl.style.whiteSpace = 'pre-wrap';
+            const refreshPreview = () => {
+                const raw = buildPreview();
+                previewEl.textContent = (!_expanded && raw.length > 140) ? raw.slice(0, 140) + '…' : raw;
+            };
+            refreshPreview();
+            previewEl.style.cursor = 'pointer';
+            previewEl.addEventListener('click', e => { e.stopPropagation(); _expanded = !_expanded; refreshPreview(); });
+            item.appendChild(previewEl);
+
+            if (c.action !== 'delete') {
+                editPanel = document.createElement('div');
+                editPanel.className = 'scp-lb-proposal-edit-panel';
+                editPanel.style.display = 'none';
+
+                const mkRow = (labelHtml, el) => {
+                    const row = document.createElement('div'); row.className = 'scp-lb-pe-row';
+                    const lbl = document.createElement('label'); lbl.className = 'scp-lb-pe-label'; lbl.innerHTML = labelHtml;
+                    row.appendChild(lbl); row.appendChild(el); return row;
+                };
+
+                const rebuildEditPanel = () => {
+                    editPanel.innerHTML = '';
+                    const change = editableChanges[ci];
+                    
+                    if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
+                        const idxInp = document.createElement('input');
+                        idxInp.type = 'text'; idxInp.className = 'scp-lb-pe-input';
+                        idxInp.value = change.msg_indices.join(', ');
+                        idxInp.placeholder = 'e.g. 12, 17, 19';
+                        idxInp.addEventListener('input', () => {
+                            change.msg_indices = idxInp.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+                            refreshPreview(); refreshValidation(); updateTargetDesc();
+                        });
+                        editPanel.appendChild(mkRow('Message Indices (comma-separated)', idxInp));
+                    } else if (change.msg_range) {
+                        const rangeRow = document.createElement('div');
+                        rangeRow.style.cssText = 'display:flex;gap:8px;';
+                        const sInp = document.createElement('input'); sInp.type='number'; sInp.className='scp-lb-pe-input'; sInp.value=change.msg_range[0];
+                        const eInp = document.createElement('input'); eInp.type='number'; eInp.className='scp-lb-pe-input'; eInp.value=change.msg_range[1];
+                        sInp.addEventListener('input', () => { change.msg_range[0] = parseInt(sInp.value)||0; refreshPreview(); refreshValidation(); updateTargetDesc(); });
+                        eInp.addEventListener('input', () => { change.msg_range[1] = parseInt(eInp.value)||0; refreshPreview(); refreshValidation(); updateTargetDesc(); });
+                        rangeRow.append(sInp, eInp);
+                        editPanel.appendChild(mkRow('Msg Range (Start - End)', rangeRow));
+                    } else if (change.msg_index !== undefined) {
+                        const idxInp = document.createElement('input'); idxInp.type='number'; idxInp.className='scp-lb-pe-input'; idxInp.value=change.msg_index;
+                        idxInp.addEventListener('input', () => { change.msg_index = parseInt(idxInp.value)||0; refreshPreview(); refreshValidation(); updateTargetDesc(); });
+                        editPanel.appendChild(mkRow('Message Index', idxInp));
+                    }
+
+                    if (['hide', 'unhide'].includes(change.action)) {
+                        return;
+                    }
+                    if (change.action === 'add') {
+                        const roleSel = document.createElement('select');
+                        roleSel.className = 'scp-lb-pe-input';
+                        ['user', 'assistant', 'system'].forEach(r => {
+                            const opt = document.createElement('option'); opt.value = r; opt.textContent = r;
+                            roleSel.appendChild(opt);
+                        });
+                        roleSel.value = change.role || 'assistant';
+                        roleSel.addEventListener('change', () => { change.role = roleSel.value; refreshValidation(); updateTargetDesc(); });
+                        editPanel.appendChild(mkRow('Role', roleSel));
+
+                        const valueTa = document.createElement('textarea');
+                        valueTa.className = 'scp-lb-pe-textarea'; 
+                        valueTa.rows = 4; 
+                        valueTa.placeholder = 'Type the message content here...';
+                        valueTa.value = change.content || '';
+                        valueTa.addEventListener('input', () => { 
+                            change.content = valueTa.value; 
+                            refreshPreview(); 
+                            refreshValidation(); 
+                        });
+                        editPanel.appendChild(mkRow('Content', valueTa));
+                    } else if (change.action === 'replace') {
+                        (change.patches || []).forEach((patch, pi) => {
+                            const pHdr = document.createElement('div');
+                            pHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px';
+                            pHdr.innerHTML = `<span style="font-size:10px;font-weight:700;color:var(--scp-accent);text-transform:uppercase;letter-spacing:.04em">Patch ${pi+1}</span>`;
+                            if (change.patches.length > 1) {
+                                const delP = document.createElement('button');
+                                delP.style.cssText = 'background:none;border:none;color:var(--scp-danger);cursor:pointer;font-size:11px;padding:0;font-family:var(--scp-font)';
+                                delP.textContent = '✕ Remove';
+                                delP.addEventListener('click', () => { change.patches.splice(pi, 1); rebuildEditPanel(); refreshPreview(); refreshValidation(); });
+                                pHdr.appendChild(delP);
+                            }
+                            editPanel.appendChild(pHdr);
+                            const searchTa = document.createElement('textarea');
+                            searchTa.className = 'scp-lb-pe-textarea'; searchTa.rows = 2; searchTa.value = patch.search || patch.anchor || '';
+                            searchTa.addEventListener('input', () => { change.patches[pi].search = searchTa.value; refreshPreview(); refreshValidation(); });
+                            const replaceTa = document.createElement('textarea');
+                            replaceTa.className = 'scp-lb-pe-textarea'; replaceTa.rows = 3; replaceTa.value = patch.replace || '';
+                            replaceTa.addEventListener('input', () => { change.patches[pi].replace = replaceTa.value; refreshPreview(); refreshValidation(); });
+                            editPanel.appendChild(mkRow('Anchor', searchTa));
+                            editPanel.appendChild(mkRow('Replace', replaceTa));
+                        });
+                        const addPatchBtn = document.createElement('button');
+                        addPatchBtn.className = 'scp-action-btn'; addPatchBtn.style.marginTop = '8px';
+                        addPatchBtn.innerHTML = `${I.plus}<span>Add Patch</span>`;
+                        addPatchBtn.addEventListener('click', () => { change.patches.push({ search: '', replace: '' }); rebuildEditPanel(); });
+                        editPanel.appendChild(addPatchBtn);
+                    } else if (change.action === 'bulk_replace') {
+                        (change.replacements || []).forEach((rp, ri) => {
+                            const searchTa = document.createElement('textarea');
+                            searchTa.className = 'scp-lb-pe-textarea'; searchTa.rows = 1; searchTa.value = rp.search || rp.anchor || '';
+                            searchTa.addEventListener('input', () => { change.replacements[ri].search = searchTa.value; refreshPreview(); refreshValidation(); });
+                            const replaceTa = document.createElement('textarea');
+                            replaceTa.className = 'scp-lb-pe-textarea'; replaceTa.rows = 1; replaceTa.value = rp.replace || '';
+                            replaceTa.addEventListener('input', () => { change.replacements[ri].replace = replaceTa.value; refreshPreview(); refreshValidation(); });
+                            editPanel.appendChild(mkRow(`Replace pair ${ri+1} — Anchor`, searchTa));
+                            editPanel.appendChild(mkRow('Replace', replaceTa));
+                        });
+                    } else if (change.action === 'regex') {
+                        const regTa = document.createElement('textarea');
+                        regTa.className = 'scp-lb-pe-textarea'; regTa.rows = 1; regTa.value = change.regex || '';
+                        regTa.addEventListener('input', () => { change.regex = regTa.value; refreshPreview(); refreshValidation(); });
+                        editPanel.appendChild(mkRow('Regex Pattern', regTa));
+                        
+                        const replTa = document.createElement('textarea');
+                        replTa.className = 'scp-lb-pe-textarea'; replTa.rows = 2; replTa.value = change.replace || '';
+                        replTa.addEventListener('input', () => { change.replace = replTa.value; refreshPreview(); refreshValidation(); });
+                        editPanel.appendChild(mkRow('Replace', replTa));
+                    } else {
+                        const valueTa = document.createElement('textarea');
+                        valueTa.className = 'scp-lb-pe-textarea'; valueTa.rows = 5; valueTa.value = change.content || '';
+                        valueTa.addEventListener('input', () => { change.content = valueTa.value; refreshPreview(); refreshValidation(); });
+                        editPanel.appendChild(mkRow('Content', valueTa));
+                    }
+                };
+                rebuildEditPanel();
+                item.appendChild(editPanel);
+
+                if (editToggleBtn) {
+                    editToggleBtn.addEventListener('click', e => {
+                        e.stopPropagation();
+                        const isOpen = editPanel.style.display !== 'none';
+                        editPanel.style.display = isOpen ? 'none' : 'flex';
+                        previewEl.style.display = isOpen ? '' : 'none';
+                        editToggleBtn.classList.toggle('active', !isOpen);
+                        if (!isOpen) rebuildEditPanel();
+                    });
+                }
+            }
+
+            refreshValidation();
+
+            list.appendChild(item);
+            return item;
+        });
+
+        itemEls.forEach((el, i) => {
+            if (itemStates[i] === 'applied') {
+                el.classList.add('scp-lb-item-applied');
+                el.querySelectorAll('button').forEach(b => { b.disabled = true; });
+            } else if (itemStates[i] === 'rejected') {
+                el.classList.add('scp-lb-item-rejected');
+                el.querySelectorAll('button').forEach(b => { b.disabled = true; });
+            }
+        });
+
+        const syncBlockToMessage = () => {
+            const session = getCurrentSession();
+            const msg = session.messages.find(m => m.id === card.dataset.for);
+            if (!msg) return;
+            const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
+            const stripped = stripChatChangesBlock(msg.content);
+            if (pending.length === 0) {
+                msg.content = stripped;
+            } else {
+                msg.content = stripped + '\n\n' + reconstructChatChangesBlock(pending);
+            }
+            if (msg.swipes) msg.swipes[msg.swipeIndex || 0].content = msg.content;
+            saveSessionsToMetadata();
+        };
+
+        const footer = document.createElement('div');
+        footer.className = 'scp-lb-proposal-footer';
+        const applyAllBtn = document.createElement('button');
+        applyAllBtn.className = 'scp-lb-proposal-apply'; applyAllBtn.textContent = 'Apply All';
+        const rejectAllBtn = document.createElement('button');
+        rejectAllBtn.className = 'scp-lb-proposal-reject'; rejectAllBtn.textContent = 'Reject All';
+
+        const updateFooterBtns = () => {
+            const p = getPending();
+            applyAllBtn.style.display = p > 0 ? '' : 'none';
+            rejectAllBtn.style.display = p > 0 ? '' : 'none';
+        };
+        updateFooterBtns();
+
+        applyAllBtn.addEventListener('click', async () => {
+            const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
+            if (!pending.length) return;
+            applyAllBtn.disabled = true; applyAllBtn.textContent = 'Applying…';
+            try {
+                await applyChatChanges(pending, card.dataset.for);
+                itemStates.forEach((s, i) => { if (s === 'pending') { itemStates[i] = 'applied'; itemEls[i]?.classList.add('scp-lb-item-applied'); itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = true; }); } });
+                persistState(); countBadge.textContent = `${getPending()} pending`; updateFooterBtns(); syncBlockToMessage(); checkAllResolved();
+            } catch(e) { toastr.error(`Failed: ${e.message}`, EXT_DISPLAY); applyAllBtn.disabled = false; applyAllBtn.textContent = 'Apply All'; }
+        });
+        rejectAllBtn.addEventListener('click', () => {
+            const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
+            itemStates.forEach((s, i) => { if (s === 'pending') { itemStates[i] = 'rejected'; itemEls[i]?.classList.add('scp-lb-item-rejected'); itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = true; }); } });
+            logChatEditHistory(pending, 'Rejected', card.dataset.for);
+            persistState(); countBadge.textContent = `${getPending()} pending`; updateFooterBtns(); syncBlockToMessage(); checkAllResolved();
+        });
+
+        footer.appendChild(applyAllBtn); footer.appendChild(rejectAllBtn);
+        card.appendChild(header); card.appendChild(list); card.appendChild(footer);
+        const body = msgEl.querySelector('.scp-msg-body');
+        if (body) body.insertBefore(card, body.querySelector('.scp-swipe-bar'));
+        else msgEl.after(card);
+    }
+
     // ─── Lorebook Manager UI ─────────────────────────────────────────────────────
 
     let _lbActiveBook = null;
@@ -2874,40 +4077,36 @@ Tag as \`character-creation\`. Structure:
         document.querySelector(`.scp-lb-proposal-card[data-for="${msgEl.dataset.id}"]`)?.remove();
 
         const editableChanges = changes.map(c => ({ ...c }));
-        const _initSess = getCurrentSession();
-        const _initMsg = _initSess.messages.find(m => m.id === msgEl.dataset.id);
-        const _savedStates = _initMsg?.lbChangesState || {};
-        const itemStates = editableChanges.map((_, i) => _savedStates[i] || 'pending');
+        const itemStates = editableChanges.map(() => 'pending');
         const actionLabels = { add: '+ Add', edit: '✎ Edit', patch: '✂ Patch', delete: '✕ Remove' };
 
         const card = document.createElement('div');
         card.className = 'scp-lb-proposal-card';
         card.dataset.for = msgEl.dataset.id;
+        card.style.margin = '8px 0 0 0';
 
-        const stripAndSave = () => {
+        const syncBlockToMessage = () => {
             const session = getCurrentSession();
             const msg = session.messages.find(m => m.id === card.dataset.for);
-            if (msg) { msg.content = stripLBChangesBlock(msg.content); saveSettings(); }
+            if (!msg) return;
+            const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
+            const stripped = stripLBChangesBlock(msg.content);
+            if (pending.length === 0) {
+                msg.content = stripped;
+            } else {
+                msg.content = stripped + '\n\n' + reconstructLBChangesBlock(pending);
+            }
+            if (msg.swipes) msg.swipes[msg.swipeIndex || 0].content = msg.content;
+            saveSessionsToMetadata();
         };
 
-        const persistState = () => {
-            const sess = getCurrentSession();
-            const msg = sess.messages.find(m => m.id === card.dataset.for);
-            if (msg) {
-                msg.lbChangesState = Object.fromEntries(
-                    itemStates.map((s, i) => [i, s]).filter(([, s]) => s !== 'pending')
-                );
-                saveSettings();
-            }
-        };
+        const persistState = () => {};
 
         const getPendingCount = () => itemStates.filter(s => s === 'pending').length;
         const getAppliedCount = () => itemStates.filter(s => s === 'applied').length;
 
         const checkAllResolved = () => {
-            if (getPendingCount() > 0) return;
-            stripAndSave();
-            card.remove(); 
+            if (getPendingCount() === 0) card.remove();
         };
 
         // ── Header ──
@@ -2932,7 +4131,7 @@ Tag as \`character-creation\`. Structure:
             if (dismissedChanges.length > 0) {
                 logLBHistoryChanges(dismissedChanges, 'Dismissed', card.dataset.for);
             }
-            stripAndSave(); card.remove();
+            syncBlockToMessage(); card.remove();
         });
 
         header.appendChild(headerLeft); header.appendChild(dismissBtn);
@@ -3021,8 +4220,9 @@ Tag as \`character-creation\`. Structure:
                         const name = await showCustomDialog({ type: 'prompt', title: 'New Lorebook Name', message: 'Enter name for the new lorebook:', placeholder: 'My Lorebook' });
                         if (name?.trim()) {
                             const n = name.trim();
-                            _activeBooks.push(n);
-                            await bindNewLorebookToCharacter(n);
+                            if (!_activeBooks.includes(n)) {
+                                _activeBooks.push(n);
+                            }
                             buildWorldPanelItems(_activeBooks);
                             selectBook(n);
                         }
@@ -3153,7 +4353,7 @@ Tag as \`character-creation\`. Structure:
             if (c.action === 'edit' || c.action === 'patch') {
                 const diffBtn = document.createElement('button');
                 diffBtn.className = 'scp-lb-proposal-diff-btn';
-                diffBtn.title = 'View diff'; diffBtn.textContent = '⬚';
+                diffBtn.title = 'View diff'; diffBtn.innerHTML = I.diff;
                 diffBtn.addEventListener('click', async e => {
                     e.stopPropagation();
                     const change = editableChanges[ci];
@@ -3193,6 +4393,7 @@ Tag as \`character-creation\`. Structure:
                     itemBtns.querySelectorAll('button').forEach(b => { b.disabled = true; });
                     _wiCache = {};
                     persistState(); updateCountBadge(); updateFooterBtns(); 
+                    syncBlockToMessage()
                     checkAllResolved();
                 } catch (err) {
                     toastr.error(`Failed: ${err.message}`, EXT_DISPLAY);
@@ -3213,6 +4414,7 @@ Tag as \`character-creation\`. Structure:
 
                 logLBHistoryChanges([editableChanges[ci]], 'Rejected', card.dataset.for);
                 persistState(); updateCountBadge(); updateFooterBtns(); 
+                syncBlockToMessage()
                 checkAllResolved();
             });
 
@@ -3317,7 +4519,7 @@ Tag as \`character-creation\`. Structure:
                             replaceTa.placeholder = 'replacement text';
                             replaceTa.addEventListener('input', () => { editableChanges[ci].patches[pi].replace = replaceTa.value; });
                             patchWrap.appendChild(pHdr);
-                            patchWrap.appendChild(mkRow('Search (range)', searchTa));
+                            patchWrap.appendChild(mkRow('Anchor (range)', searchTa));
                             patchWrap.appendChild(mkRow('Replace', replaceTa));
                             if (pi < (editableChanges[ci].patches || []).length - 1) {
                                 const sep = document.createElement('div');
@@ -3441,7 +4643,9 @@ Tag as \`character-creation\`. Structure:
 
         footer.appendChild(applyAllBtn); footer.appendChild(rejectAllBtn);
         card.appendChild(header); card.appendChild(list); card.appendChild(footer);
-        msgEl.after(card);
+        const body = msgEl.querySelector('.scp-msg-body');
+        if (body) body.insertBefore(card, body.querySelector('.scp-swipe-bar'));
+        else msgEl.after(card);
     }
 
     async function openLorebookManager() {
@@ -3461,6 +4665,25 @@ Tag as \`character-creation\`. Structure:
         document.getElementById('scp-lb-overlay').style.display = 'none';
     }
 
+    function _applyLBBookCheckState(item, name, s) {
+        const isSelected = s.lorebookSelectedBooks.includes(name);
+        const isExcluded = (s.lorebookExcludedBooks || []).includes(name);
+        const check = item.querySelector('.scp-lb-book-check');
+        if (!check) return;
+        check.classList.remove('checked', 'excluded');
+        if (isSelected) check.classList.add('checked');
+        else if (isExcluded) check.classList.add('excluded');
+        check.title = isSelected ? 'Selected: all entries included — click to exclude' : isExcluded ? 'Excluded: all entries blocked — click to reset' : 'Default — click to include all';
+        item.classList.toggle('selected', isSelected);
+        item.classList.toggle('lb-excluded', isExcluded);
+        // dim entries area when forced state
+        const isForced = isSelected || isExcluded;
+        if (item.classList.contains('lb-book-open')) {
+            const entriesEl = document.getElementById('scp-lb-entries');
+            if (entriesEl) entriesEl.classList.toggle('lb-entries-dimmed', isForced);
+        }
+    }
+
     async function refreshLorebookList() {
         const listEl = document.getElementById('scp-lb-book-list');
         if (!listEl) return;
@@ -3472,7 +4695,6 @@ Tag as \`character-creation\`. Structure:
 
         const activeNamesArray = getActiveLorebookNames();
         const s = getSettings();
-        const selected = new Set(s.lorebookSelectedBooks || []);
 
         listEl.innerHTML = '';
         if (!activeNamesArray.length) {
@@ -3485,11 +4707,11 @@ Tag as \`character-creation\`. Structure:
         const frag = document.createDocumentFragment();
         for (const name of activeNamesArray) {
             const displayName = getDisplayName(name);
-            const isSelected = selected.has(name);
-            const isActive = true;
+            const isSelected = s.lorebookSelectedBooks.includes(name);
+            const isExcluded = (s.lorebookExcludedBooks || []).includes(name);
             
             const item = document.createElement('div');
-            item.className = `scp-lb-book-item${isSelected ? ' selected' : ''}${_lbActiveBook === name ? ' lb-book-open' : ''}`;
+            item.className = `scp-lb-book-item${isSelected ? ' selected' : ''}${isExcluded ? ' lb-excluded' : ''}${_lbActiveBook === name ? ' lb-book-open' : ''}`;
             item.dataset.name = name;
             
             const cached = _wiCache[name];
@@ -3499,14 +4721,17 @@ Tag as \`character-creation\`. Structure:
             const srcLabel = { global: 'G', character: 'C', chat: 'Ch', embedded: '✦', manual: '' }[srcType] || '';
             const srcClass = `scp-lb-src-${srcType}`;
             
+            const checkState = isSelected ? 'checked' : isExcluded ? 'excluded' : '';
+            const checkTitle = isSelected ? 'Selected: all entries included — click to exclude' : isExcluded ? 'Excluded: all entries blocked — click to reset' : 'Default — click to include all';
+            
             item.innerHTML = `
-                <div class="scp-lb-book-check${isSelected ? ' checked' : ''}" data-book="${escHtml(name)}" title="${isSelected ? 'Deselect from context' : 'Select for context injection'}"></div>
+                <div class="scp-lb-book-check${checkState ? ' ' + checkState : ''}" data-book="${escHtml(name)}" title="${checkTitle}"></div>
                 <div class="scp-lb-book-info">
                     <span class="scp-lb-book-name">${escHtml(displayName)}${isEmbedded ? ' <span class="scp-lb-embedded-badge">embedded</span>' : ''}</span>
-                    <span class="scp-lb-book-meta">${entryCount} entries${isActive ? ' · Active' : ''}</span>
+                    <span class="scp-lb-book-meta">${entryCount} entries · Active</span>
                 </div>
                 ${srcLabel ? `<span class="scp-lb-src-badge ${srcClass}" title="Source: ${srcType}">${srcLabel}</span>` : ''}
-                ${isActive ? '<span class="scp-lb-book-active-dot" title="Currently active in this chat"></span>' : ''}`;
+                <span class="scp-lb-book-active-dot" title="Currently active in this chat"></span>`;
                 
             item.querySelector('.scp-lb-book-check').addEventListener('click', e => { e.stopPropagation(); toggleLorebookSelection(name); });
             item.addEventListener('click', () => viewLorebookEntries(name));
@@ -3518,20 +4743,28 @@ Tag as \`character-creation\`. Structure:
 
     async function toggleLorebookSelection(name) {
         const s = getSettings();
-        const idx = s.lorebookSelectedBooks.indexOf(name);
-        const isAdding = idx < 0;
-        if (isAdding) s.lorebookSelectedBooks.push(name);
-        else s.lorebookSelectedBooks.splice(idx, 1);
+        const isSelected = s.lorebookSelectedBooks.includes(name);
+        const isExcluded = (s.lorebookExcludedBooks || []).includes(name);
+
+        if (!isSelected && !isExcluded) {
+            // default → selected
+            s.lorebookSelectedBooks.push(name);
+            s.lorebookExcludedBooks = (s.lorebookExcludedBooks || []).filter(b => b !== name);
+        } else if (isSelected) {
+            // selected → excluded
+            s.lorebookSelectedBooks = s.lorebookSelectedBooks.filter(b => b !== name);
+            if (!s.lorebookExcludedBooks) s.lorebookExcludedBooks = [];
+            s.lorebookExcludedBooks.push(name);
+        } else {
+            // excluded → default
+            s.lorebookExcludedBooks = s.lorebookExcludedBooks.filter(b => b !== name);
+        }
         saveSettings();
 
         await buildLorebookContextBlock(s);
 
         const item = document.querySelector(`.scp-lb-book-item[data-name="${CSS.escape(name)}"]`);
-        if (item) {
-            const isSel = s.lorebookSelectedBooks.includes(name);
-            item.classList.toggle('selected', isSel);
-            item.querySelector('.scp-lb-book-check')?.classList.toggle('checked', isSel);
-        }
+        if (item) _applyLBBookCheckState(item, name, s);
         updateLBFooterInfo();
         updateMsgCount(getCurrentSession());
         if (_lbActiveBook) renderEntryList(_lbActiveBook, _lbSearchQuery);
@@ -3544,6 +4777,10 @@ Tag as \`character-creation\`. Structure:
         document.getElementById('scp-lb-ctx-legend').style.display = '';
         document.getElementById('scp-lb-entry-detail').style.display = 'none';
         document.getElementById('scp-lb-entries').style.display = '';
+        const s = getSettings();
+        const isForced = s.lorebookSelectedBooks.includes(name) || (s.lorebookExcludedBooks || []).includes(name);
+        const entriesEl = document.getElementById('scp-lb-entries');
+        if (entriesEl) entriesEl.classList.toggle('lb-entries-dimmed', isForced);
         await renderEntryList(name, _lbSearchQuery);
     }
 
@@ -3765,11 +5002,13 @@ Tag as \`character-creation\`. Structure:
         if (!el) return;
         const s = getSettings();
         const count = (s.lorebookSelectedBooks || []).length;
+        const excCount = (s.lorebookExcludedBooks || []).length;
         const kwOn = s.lorebookAutoKeyword;
         const parts = [];
         if (count) parts.push(`${count} book${count !== 1 ? 's' : ''} selected`);
+        if (excCount) parts.push(`${excCount} excluded`);
         if (kwOn) parts.push('Auto-keywords ON');
-        if (!count && !kwOn) parts.push('☑ Check books in sidebar to inject entries into Copilot context');
+        if (!count && !excCount && !kwOn) parts.push('☑ Check books in sidebar to inject entries into Copilot context');
         el.textContent = parts.join(' · ');
     }
 
@@ -3947,8 +5186,19 @@ Tag as \`character-creation\`. Structure:
             },
             completionSound: 'none',
             completionSoundVolume: 80,
+            completionSoundOnlyWhenUnfocused: false,
             wobbleWindow: true,
             altGreetingIndices: [],
+            chatEditAIEnabled: true,
+            chatEditPrompt: '',
+            lorebookExcludedBooks: [],
+            windowBgUrl: '',
+            windowBgDim: 50,
+            windowBgType: 'none',
+            pickerPreviewLines: 1,
+            pickerPreviewLastLines: 0,
+            imageAnalysisMode: 'direct',
+            attachedFiles: [],
         };
         for (const [k, v] of Object.entries(defaults)) {
             if (s[k] === undefined) s[k] = v;
@@ -3973,7 +5223,7 @@ Tag as \`character-creation\`. Structure:
     }
 
     function _clearDirty(type) {
-        if (type === 'config') _configDirty = false;
+        if (type === 'config') { _configDirty = false; _takeProfileSnapshot(); }
         if (type === 'theme') _themeDirty = false;
         _updateDirtyDots();
     }
@@ -3985,8 +5235,8 @@ Tag as \`character-creation\`. Structure:
             btn.querySelectorAll('.scp-save-dirty-dot').forEach(d => d.remove());
             if (_configDirty) btn.insertAdjacentHTML('beforeend', configDot);
         });
-        ['scp-theme-save'].forEach(id => {
-            const btn = document.getElementById(id); if (!btn) return;
+        // query ALL theme-save buttons (may exist in multiple containers)
+        document.querySelectorAll('#scp-theme-save').forEach(btn => {
             btn.querySelectorAll('.scp-save-dirty-dot').forEach(d => d.remove());
             if (_themeDirty) btn.insertAdjacentHTML('beforeend', configDot);
         });
@@ -4315,29 +5565,29 @@ Tag as \`character-creation\`. Structure:
 
             const DURATION = 480;
             const start = performance.now();
-
             const lerp = (a, b, t) => a + (b - a) * t;
             const ease = t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    const newDotEls = existing.querySelectorAll('.scp-stats-dot');
-                    newDotEls.forEach((d) => {
-                        const di = parseInt(d.getAttribute('data-i') || '0');
-                        d.style.transition = `cy 0.4s ease-out, opacity 0.3s ease-out`;
-                        d.setAttribute('cy', newPts[di][1].toFixed(2));
-                        d.style.opacity = '1';
-                    });
-                });
-            });
-
+            
+            const dotEls = Array.from(existing.querySelectorAll('.scp-stats-dot'));
             const animFrame = (now) => {
                 const t = ease(Math.min(1, (now - start) / DURATION));
                 const interpolated = newPts.map((np, i) => {
                     const op = oldPts[i] || [np[0], PT + cH];
                     return [lerp(op[0], np[0], t), lerp(op[1], np[1], t)];
                 });
+                
                 prevLine.setAttribute('d', buildLinePath(interpolated));
                 prevArea.setAttribute('d', buildAreaPath(interpolated));
+                
+                dotEls.forEach((d) => {
+                    if (d) {
+                        const idx = parseInt(d.getAttribute('data-i') || '0');
+                        d.style.transition = 'none'; // Отключаем CSS-конфликты
+                        d.setAttribute('cy', interpolated[idx][1].toFixed(2));
+                        d.style.opacity = '1';
+                    }
+                });
+                
                 if (t < 1) requestAnimationFrame(animFrame);
             };
             requestAnimationFrame(animFrame);
@@ -4445,12 +5695,15 @@ Tag as \`character-creation\`. Structure:
     }
 
     // ─── Session Override System ─────────────────────────────────────────────────
-
+    
     const SESSION_OVERRIDE_KEYS = [
         'contextDepth','localHistoryLimit','maxTokens',
         'connectionSource','connectionProfileId','systemPrompt',
         'includeSystemPrompt','includeUserPersonality','reasoningTrimStrings',
         'applyRegexToContext','forceStreaming',
+        'charEditAIEnabled', 'charEditPrompt', 'lorebookAIManageEnabled',
+        'lorebookManagePrompt', 'chatEditAIEnabled', 'chatEditPrompt', 'altGreetingIndices',
+        'lorebookAutoKeyword'
     ];
 
     function getSessionOverrides() {
@@ -4874,7 +6127,7 @@ Tag as \`character-creation\`. Structure:
     function addMessage(session, role, content, extra = {}) {
         const msg = { id: genId('msg'), role, content, timestamp: Date.now(), ...extra };
         session.messages.push(msg); 
-        if (session.messages.length > 400) session.messages = session.messages.slice(-400); // Ограничение раздувания
+        if (session.messages.length > 400) session.messages = session.messages.slice(-400);
         saveSessionsToMetadata(); 
         return msg;
     }
@@ -5098,33 +6351,28 @@ Tag as \`character-creation\`. Structure:
     function getMainChatSlice(depth) {
         const ctx = SillyTavern.getContext();
         if (!ctx.chat) return [];
+        
+        const extractData = (m, i) => ({
+            role: m.is_user ? 'user' : 'assistant',
+            name: m.is_user ? (ctx.name1 || 'User') : (m.name || getCharInfo()?.name || 'Character'),
+            content: typeof m.mes === 'string' ? m.mes : '',
+            chatIndex: i,
+            is_hidden: !!m.is_system || !!m.is_hidden || !!(m.extra && m.extra.is_hidden)
+        });
+
         try {
             const sess = getCurrentSession();
             const picked = sess.pickedChatIndices;
             if (picked && picked.length > 0) {
-                const charInfo = getCharInfo();
                 return picked
                     .filter(i => i >= 0 && i < ctx.chat.length)
-                    .map(i => {
-                        const m = ctx.chat[i];
-                        return {
-                            role: m.is_user ? 'user' : 'assistant',
-                            name: m.is_user ? (ctx.name1 || 'User') : (m.name || charInfo?.name || 'Character'),
-                            content: typeof m.mes === 'string' ? m.mes : '',
-                            chatIndex: i,
-                        };
-                    })
-                    .filter(Boolean);
+                    .map(i => extractData(ctx.chat[i], i));
             }
         } catch(_) {}
+        
         if (depth === 0) return [];
         const total = ctx.chat.length;
-        return ctx.chat.slice(-depth).map((m, i) => ({
-            role: m.is_user ? 'user' : 'assistant',
-            name: m.is_user ? (ctx.name1 || 'User') : (m.name || getCharInfo()?.name || 'Character'),
-            content: typeof m.mes === 'string' ? m.mes : '',
-            chatIndex: total - depth + i,
-        }));
+        return ctx.chat.slice(-depth).map((m, i) => extractData(m, total - depth + i));
     }
 
     // ─── Payload Assembly ───────────────────────────────────────────────────────
@@ -5156,11 +6404,14 @@ Tag as \`character-creation\`. Structure:
             parts.push(`\n\n<${userName}_persona>\n${inner}\n</${userName}_persona>`);
         }
 
-        const aiInstructions = buildLBAIInstructions(settings);
-        if (aiInstructions) parts.push(aiInstructions);
+        const aiInstructions = buildLBAIInstructions(settings).trim();
+        const charEditDirective = buildCharEditAIInstructions(settings).trim();
+        const chatEditDirective = buildChatEditAIInstructions(settings).trim();
 
-        const charEditDirective = buildCharEditAIInstructions(settings);
-        if (charEditDirective) parts.push(charEditDirective);
+        const modules = [aiInstructions, charEditDirective, chatEditDirective].filter(Boolean);
+        if (modules.length > 0) {
+            parts.push(`\n\n<modules>\n${modules.join('\n\n')}\n</modules>`);
+        }
 
         return parts.join('\n');
     }
@@ -5188,7 +6439,7 @@ Tag as \`character-creation\`. Structure:
         }
     }
 
-    async function assembleMessages(session, settings, pendingUserText) {
+    async function assembleMessages(session, settings, pendingUserText, pendingAtts = null) {
         const messages = [{ role: 'system', content: await buildSystemContent(settings) }];
         const depth = Math.max(0, parseInt(settings.contextDepth) || 0);
         const hasPicked = !!(session.pickedChatIndices && session.pickedChatIndices.length > 0);
@@ -5199,9 +6450,12 @@ Tag as \`character-creation\`. Structure:
                 const processedSlice = await Promise.all(slice.map(async m => ({
                     ...m, content: await applyRegexIfEnabled(m.content, m.role === 'user', chatTotal - m.chatIndex - 1),
                 })));
-                const block = hasPicked
-                    ? processedSlice.map(m => `[msg #${m.chatIndex}][${m.name}]: ${m.content}`).join('\n\n')
-                    : processedSlice.map(m => `[${m.name}]: ${m.content}`).join('\n\n');
+                const ctx = SillyTavern.getContext();
+                const stMsgs = ctx.chat || [];
+                const block = processedSlice.map(m => {
+                    const hiddenAttr = m.is_hidden ? ' hidden_from_ai="true"' : '';
+                    return `<msg index="${m.chatIndex}" role="${m.role === 'user' ? 'user' : 'assistant'}"${hiddenAttr}>\n[${m.name}]: ${m.content}\n</msg>`;
+                }).join('\n\n');
                 const ctxAttr = hasPicked ? `picked_messages="${slice.length}"` : `last_messages="${slice.length}"`;
                 messages.push({
                     role: 'user',
@@ -5213,50 +6467,34 @@ Tag as \`character-creation\`. Structure:
         const limit = Math.max(1, parseInt(settings.localHistoryLimit) || 50);
         for (const m of session.messages.slice(-limit)) {
             let content = m.content;
-            if (m.isLBHistory || m.isCharEditHistory) {
+            if (m.isLBHistory || m.isCharEditHistory || m.isChatEditHistory) {
                 content = _buildAiContextForHistoryMsg(m);
             }
-            messages.push({ role: m.role, content });
+            const finalContent = _mergeContent(content, m.attachments);
+            messages.push({ role: m.role, content: finalContent });
         }
-        if (pendingUserText) messages.push({ role: 'user', content: pendingUserText });
+        if (pendingUserText !== null && pendingUserText !== undefined) {
+            const finalContent = _mergeContent(pendingUserText, pendingAtts);
+            if (finalContent || (Array.isArray(finalContent) && finalContent.length)) {
+                messages.push({ role: 'user', content: finalContent });
+            }
+        }
         return messages;
     }
 
     function formatPayloadAsText(messages) {
         return messages.map(m => {
             const label = m.role === 'system' ? '■ SYSTEM' : m.role === 'user' ? '▶ USER' : '◀ ASSISTANT';
-            return `${label}\n${'─'.repeat(50)}\n${m.content}`;
-        }).join('\n\n');
-    }
-
-    // ─── Connection Profile Helper ──────────────────────────────────────────────
-
-    async function withConnectionProfile(profileName, fn) {
-        if (!profileName) return fn();
-
-        const ctx = SillyTavern.getContext();
-        if (typeof ctx.executeSlashCommandsWithOptions !== 'function') return fn();
-
-        let prevProfileName = '';
-        try {
-            const currentResult = await ctx.executeSlashCommandsWithOptions('/profile');
-            prevProfileName = currentResult?.pipe?.trim() || '';
-        } catch (e) {
-            console.warn(`[${EXT_DISPLAY}] Could not get current profile:`, e);
-        }
-
-        if (prevProfileName === profileName) return fn();
-
-        await ctx.executeSlashCommandsWithOptions(`/profile "${profileName}"`);
-        await new Promise(r => setTimeout(r, 450));
-
-        try {
-            return await fn();
-        } finally {
-            if (prevProfileName && prevProfileName !== profileName) {
-                await ctx.executeSlashCommandsWithOptions(`/profile "${prevProfileName}"`);
+            let c = m.content;
+            if (Array.isArray(c)) {
+                c = c.map(part => {
+                    if (part.type === 'text') return part.text;
+                    if (part.type === 'image_url') return `[Image Base64 Attached]`;
+                    return `[Unknown Block]`;
+                }).join('\n');
             }
-        }
+            return `${label}\n${'─'.repeat(50)}\n${c}`;
+        }).join('\n\n');
     }
 
     // ─── API Generation ─────────────────────────────────────────────────────────
@@ -5266,10 +6504,194 @@ Tag as \`character-creation\`. Structure:
     const _htmlBlockRegistry = new Map();
     let _htmlBlockCounter = 0;
 
+    async function callGenerate(session, settings, pendingText, onChunk) {
+        const ctx = SillyTavern.getContext();
+        const messages = await assembleMessages(session, settings, pendingText);
+        const maxTokens = parseInt(settings.maxTokens) || 8200;
+
+        const abort = new AbortController();
+        _abortController = abort;
+
+        const service = ctx.ConnectionManagerRequestService;
+        if (!service || typeof service.sendRequest !== 'function') {
+            throw new Error('ConnectionManagerRequestService not available. Please ensure the Connection Manager extension is enabled in SillyTavern.');
+        }
+
+        let profiles = [];
+        if (typeof service.getSupportedProfiles === 'function') {
+            profiles = service.getSupportedProfiles();
+        } else {
+            profiles = ctx.extensionSettings?.connectionManager?.profiles || [];
+        }
+
+        let profileId = null;
+
+        if (settings.connectionSource === 'profile') {
+            if (settings.connectionProfileId) {
+                const found = profiles.find(p =>
+                    p.id === settings.connectionProfileId || p.name === settings.connectionProfileId
+                );
+                if (found) {
+                    profileId = found.id;
+                } else {
+                    throw new Error(`Connection profile "${settings.connectionProfileId}" not found. Available: ${profiles.map(p => p.name).join(', ') || 'None'}`);
+                }
+            } else {
+                throw new Error('No profile selected in ST-Copilot settings.');
+            }
+        } else {
+            profileId = ctx.extensionSettings?.connectionManager?.selectedProfile;
+            if (!profileId) {
+                const domSelect = document.getElementById('connection_profiles');
+                if (domSelect && domSelect.value) {
+                    profileId = domSelect.value;
+                }
+            }
+        }
+
+        if (!profileId) {
+            throw new Error('No active profile found. Please select a profile in the SillyTavern Connection Manager UI, or assign a specific profile in ST-Copilot settings.');
+        }
+
+        const streamSetting = settings.forceStreaming;
+        let useStream;
+
+        if (streamSetting === 'on' || streamSetting === true) {
+            useStream = true;
+        } else if (streamSetting === 'off') {
+            useStream = false;
+        } else {
+            let autoStream = false;
+            try {
+                const profileObj = profiles.find(p => p.id === profileId);
+                const api = profileObj?.api || ctx.main_api || document.getElementById('main_api')?.value;
+                
+                if (['openai', 'claude', 'google', 'scale'].includes(api)) {
+                    autoStream = ctx.chatCompletionSettings?.stream_openai ?? !!document.getElementById('stream_toggle')?.checked;
+                } else if (api === 'textgenerationwebui' || api === 'kobold') {
+                    autoStream = ctx.textCompletionSettings?.streaming ?? !!document.getElementById('stream_toggle')?.checked;
+                } else {
+                    autoStream = !!document.getElementById('stream_toggle')?.checked;
+                }
+            } catch (err) {
+                autoStream = !!document.getElementById('stream_toggle')?.checked;
+            }
+            useStream = autoStream;
+        }
+
+        let asyncGeneratorFn;
+        try {
+            asyncGeneratorFn = await service.sendRequest(profileId, messages, maxTokens, {
+                stream: useStream,
+                signal: abort.signal,
+                extractData: useStream, 
+                includePreset: true
+            });
+        } catch (e) {
+            _abortController = null;
+            if (abort.signal.aborted || e?.name === 'AbortError' || e?.message === 'userStopped') return null;
+            throw e;
+        }
+
+        let text = '';
+        let reasoning = null;
+        let reasoningStartMs = null;
+        let reasoningDone = false;
+
+        const isGen = typeof asyncGeneratorFn === 'function' ||
+            (asyncGeneratorFn != null && typeof asyncGeneratorFn[Symbol.asyncIterator] === 'function') ||
+            (asyncGeneratorFn != null && typeof asyncGeneratorFn.next === 'function');
+
+        // Couldnt get the reasoning block via "extractData: true" (maybe skill issue), so Im building my own extractor
+        function deepExtract(obj) {
+            if (!obj || typeof obj !== 'object') return { t: '', r: null };
+            
+            let r = null;
+            if (typeof obj.state?.reasoning === 'string' && obj.state.reasoning !== '') r = obj.state.reasoning;
+            else if (typeof obj.reasoning === 'string' && obj.reasoning !== '') r = obj.reasoning;
+            else if (typeof obj.original_response?.choices?.[0]?.message?.reasoning === 'string' && obj.original_response.choices[0].message.reasoning !== '') r = obj.original_response.choices[0].message.reasoning;
+            else if (typeof obj.choices?.[0]?.message?.reasoning === 'string' && obj.choices[0].message.reasoning !== '') r = obj.choices[0].message.reasoning;
+            else if (typeof obj.choices?.[0]?.delta?.reasoning === 'string' && obj.choices[0].delta.reasoning !== '') r = obj.choices[0].delta.reasoning;
+
+            let t = '';
+            if (typeof obj.text === 'string' && obj.text !== '') t = obj.text;
+            else if (typeof obj.content === 'string' && obj.content !== '') t = obj.content;
+            else if (typeof obj.message?.content === 'string' && obj.message.content !== '') t = obj.message.content;
+            else if (typeof obj.original_response?.choices?.[0]?.message?.content === 'string' && obj.original_response.choices[0].message.content !== '') t = obj.original_response.choices[0].message.content;
+            else if (typeof obj.choices?.[0]?.message?.content === 'string' && obj.choices[0].message.content !== '') t = obj.choices[0].message.content;
+            else if (typeof obj.choices?.[0]?.delta?.content === 'string' && obj.choices[0].delta.content !== '') t = obj.choices[0].delta.content;
+            else if (typeof obj.choices?.[0]?.text === 'string' && obj.choices[0].text !== '') t = obj.choices[0].text;
+            else if (typeof obj.results?.[0]?.text === 'string' && obj.results[0].text !== '') t = obj.results[0].text;
+
+            return { t, r };
+        }
+
+        let lastValue = null;
+
+        if (!isGen) {
+            const value = asyncGeneratorFn;
+            if (typeof value === 'string') {
+                text = value.trim();
+            } else {
+                const ext = deepExtract(value);
+                text = ext.t.trim();
+                reasoning = ext.r;
+                lastValue = value;
+            }
+            
+            const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason;
+            const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
+
+            _abortController = null;
+            return { text, reasoning, isMaxTokens };
+        }
+
+        const gen = typeof asyncGeneratorFn === 'function' ? asyncGeneratorFn() : asyncGeneratorFn;
+
+        try {
+            while (true) {
+                if (abort.signal.aborted) { _abortController = null; return null; }
+                const { value, done } = await gen.next();
+                if (done) {
+                    if (value) lastValue = value;
+                    break;
+                }
+                lastValue = value;
+
+                const ext = deepExtract(value);
+                text = ext.t;
+                const newReasoning = ext.r;
+
+                if (newReasoning) {
+                    if (reasoningStartMs === null) reasoningStartMs = performance.now();
+                    reasoning = newReasoning;
+                }
+                if (text && !reasoningDone && reasoning) {
+                    reasoningDone = true;
+                }
+
+                if (typeof onChunk === 'function') {
+                    const reasoningMs = reasoningStartMs !== null ? performance.now() - reasoningStartMs : null;
+                    onChunk(text, reasoning, reasoningMs, reasoningDone);
+                }
+            }
+        } catch (e) {
+            _abortController = null;
+            if (abort.signal.aborted || e?.name === 'AbortError' || e?.message === 'userStopped') return null;
+            throw e;
+        }
+
+        const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason;
+        const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
+
+        _abortController = null;
+        return { text: text.trim(), reasoning, isMaxTokens };
+    }
 
     // ─── SVG Icons ──────────────────────────────────────────────────────────────
 
     const I = {
+        diff: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>`,
         copy: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
         edit: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
         trash: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
@@ -5293,6 +6715,10 @@ Tag as \`character-creation\`. Structure:
         star: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
         starFill: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
         continueArrow: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>`,
+        chevronLeft: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+        chevronRight: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>`,
+        chatEdit: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v5Z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>`,
+        paperclip: `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`,
     };
 
     // ─── Quick Prompts ───────────────────────────────────────────────────────────
@@ -5493,11 +6919,11 @@ Tag as \`character-creation\`. Structure:
 
     // ─── Prompt Preset Manager ────────────────────────────────────────────────────
 
-    function buildPromptPresetManager(containerEl, getTextFn, setTextFn) {
+    function buildPromptPresetManager(containerEl, getTextFn, setTextFn, dictKey = 'promptPresets') {
         if (!containerEl) return;
         containerEl.innerHTML = '';
         const s = getSettings();
-        if (!s.promptPresets) s.promptPresets = {};
+        if (!s[dictKey]) s[dictKey] = {};
 
         let _activeName = '';
         let _activeSource = '';
@@ -5534,11 +6960,11 @@ Tag as \`character-creation\`. Structure:
                 }));
             if (profileItems.length) groups.push({ label: 'From Profiles', items: profileItems });
 
-            const customItems = Object.keys(s.promptPresets)
+            const customItems = Object.keys(s[dictKey])
                 .map(n => ({
                     name: n,
-                    value: s.promptPresets[n],
-                    preview: (s.promptPresets[n] || '').replace(/\s+/g, ' ').slice(0, 80),
+                    value: s[dictKey][n],
+                    preview: (s[dictKey][n] || '').replace(/\s+/g, ' ').slice(0, 80),
                     badge: 'custom',
                     _source: 'custom',
                 }));
@@ -5567,13 +6993,13 @@ Tag as \`character-creation\`. Structure:
 
         const saveBtn = mkBtn('floppy-disk', 'Save preset', '', async () => {
             if (_activeName && _activeSource === 'custom') {
-                s.promptPresets[_activeName] = getTextFn();
+                s[dictKey][_activeName] = getTextFn();
                 saveSettings();
                 toastr.success(`Saved preset "${escHtml(_activeName)}"`, EXT_DISPLAY);
             } else {
                 const name = await showCustomDialog({ type: 'prompt', title: 'Save Prompt Preset', message: 'Preset name:', placeholder: 'My Preset' });
                 if (!name?.trim()) return;
-                s.promptPresets[name.trim()] = getTextFn();
+                s[dictKey][name.trim()] = getTextFn();
                 saveSettings();
                 setActive(name.trim(), 'custom');
                 toastr.success(`Saved preset "${escHtml(name.trim())}"`, EXT_DISPLAY);
@@ -5584,8 +7010,8 @@ Tag as \`character-creation\`. Structure:
             if (!_activeName || _activeSource !== 'custom') { toastr.info('Select a custom preset first.', EXT_DISPLAY); return; }
             const newName = await showCustomDialog({ type: 'prompt', title: 'Rename Preset', message: 'New name:', defaultValue: _activeName });
             if (!newName?.trim() || newName.trim() === _activeName) return;
-            s.promptPresets[newName.trim()] = s.promptPresets[_activeName];
-            delete s.promptPresets[_activeName];
+            s[dictKey][newName.trim()] = s[dictKey][_activeName];
+            delete s[dictKey][_activeName];
             saveSettings();
             setActive(newName.trim(), 'custom');
         });
@@ -5594,7 +7020,7 @@ Tag as \`character-creation\`. Structure:
             if (!_activeName || _activeSource !== 'custom') { toastr.info('Only custom presets can be deleted.', EXT_DISPLAY); return; }
             const ok = await showCustomDialog({ type: 'confirm', title: 'Delete Preset', message: `Delete "${_activeName}"?` });
             if (!ok) return;
-            delete s.promptPresets[_activeName];
+            delete s[dictKey][_activeName];
             saveSettings();
             setActive('', '');
         });
@@ -5932,7 +7358,22 @@ Tag as \`character-creation\`. Structure:
             const textEl = document.createElement('div');
             textEl.className = 'scp-picker-text';
             const raw = (msg.mes || '').replace(/<[^>]+>/g, '').trim();
-            textEl.textContent = raw.length > 150 ? raw.slice(0, 150) + '…' : raw;
+            const s2 = getSettings();
+            const firstLines = Math.max(1, parseInt(s2.pickerPreviewLines) || 1);
+            const lastLines = Math.max(0, parseInt(s2.pickerPreviewLastLines) || 0);
+            let preview = '';
+            if (lastLines > 0) {
+                const allLines = raw.split('\n');
+                const head = allLines.slice(0, firstLines).join('\n');
+                const tail = allLines.length > firstLines
+                    ? allLines.slice(-lastLines).join('\n')
+                    : '';
+                preview = tail && tail !== head ? head + '\n…\n' + tail : head;
+            } else {
+                preview = raw.split('\n').slice(0, firstLines).join('\n');
+                if (preview.length < raw.length) preview += ' …';
+            }
+            textEl.textContent = preview;
 
             const infoCol = document.createElement('div');
             infoCol.className = 'scp-picker-info-col';
@@ -5944,7 +7385,31 @@ Tag as \`character-creation\`. Structure:
 
             row.addEventListener('click', e => {
                 const curIdx = parseInt(row.dataset.idx);
-                if (e.shiftKey && _pickerLastIdx >= 0) {
+                const curMsg = msgs[curIdx];
+
+                if (e.ctrlKey || e.metaKey) {
+                    // Ctrl+click: toggle all messages by same sender
+                    const targetState = !row.classList.contains('selected');
+                    body.querySelectorAll('.scp-picker-row').forEach(r => {
+                        const ri = parseInt(r.dataset.idx);
+                        const rm = msgs[ri];
+                        if (rm && rm.is_user === curMsg.is_user && rm.name === curMsg.name) {
+                            r.classList.toggle('selected', targetState);
+                            r.querySelector('.scp-picker-cb')?.classList.toggle('checked', targetState);
+                        }
+                    });
+                } else if (e.altKey) {
+                    // Alt+click: toggle all messages NOT from this sender
+                    const targetState = !row.classList.contains('selected');
+                    body.querySelectorAll('.scp-picker-row').forEach(r => {
+                        const ri = parseInt(r.dataset.idx);
+                        const rm = msgs[ri];
+                        if (rm && !(rm.is_user === curMsg.is_user && rm.name === curMsg.name)) {
+                            r.classList.toggle('selected', targetState);
+                            r.querySelector('.scp-picker-cb')?.classList.toggle('checked', targetState);
+                        }
+                    });
+                } else if (e.shiftKey && _pickerLastIdx >= 0) {
                     const lo = Math.min(_pickerLastIdx, curIdx);
                     const hi = Math.max(_pickerLastIdx, curIdx);
                     const targetState = !row.classList.contains('selected');
@@ -6367,43 +7832,27 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         wrap.className = `scp-msg ${isUser ? 'scp-msg-user' : 'scp-msg-assistant'}`;
         wrap.dataset.id = msg.id;
 
+        const avatarWrap = document.createElement('div');
+        avatarWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0';
+
         const avatar = document.createElement('div');
         avatar.className = 'scp-msg-avatar';
         avatar.innerHTML = isUser ? I.user : I.bot;
 
+        const tokenCountEl = document.createElement('div');
+        tokenCountEl.className = 'scp-msg-token-count';
+        tokenCountEl.textContent = '…';
+        _updateMsgTokenCount({ querySelector: () => tokenCountEl, isConnected: true }, msg.content);
+
+        avatarWrap.appendChild(avatar);
+        avatarWrap.appendChild(tokenCountEl);
+
         const body = document.createElement('div');
         body.className = 'scp-msg-body';
 
-        let reasoning = null;
-        let displayText = msg.content;
-        if (!isUser) {
-            if (msg.reasoning !== undefined) {
-                reasoning = msg.reasoning || null;
-            } else {
-                const d = getDisplayContent(msg.content, getSettings());
-                reasoning = d.reasoning;
-                displayText = d.content;
-            }
-        }
-
-        if (reasoning !== null) {
-            const rBlock = document.createElement('details');
-            rBlock.className = 'scp-reasoning-block';
-            const summary = document.createElement('summary');
-            summary.className = 'scp-reasoning-summary';
-            summary.textContent = 'Reasoning';
-            const rc = document.createElement('div');
-            rc.className = 'scp-reasoning-content';
-            rc.innerHTML = renderMarkdown(reasoning);
-            rBlock.appendChild(summary);
-            rBlock.appendChild(rc);
-            body.appendChild(rBlock);
-        }
-
         const content = document.createElement('div');
         content.className = 'scp-msg-content';
-        content.innerHTML = renderMarkdown(displayText);
-        postProcessHTMLBlocks(content);
+        body.appendChild(content);
 
         const meta = document.createElement('div');
         meta.className = 'scp-msg-meta';
@@ -6425,7 +7874,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         actions.appendChild(makeBtn(I.refresh, 'Regen', '', () => onRegen(wrap, msg)));
         actions.appendChild(makeBtn(I.trash, 'Delete', 'scp-msg-btn-danger', () => onDelete(wrap, msg)));
 
-        // Star button
         const isStarred = isMessageStarred(msg.id);
         const starBtn = makeBtn(isStarred ? I.starFill : I.star, isStarred ? 'Unstar' : 'Star message', `scp-msg-btn-star${isStarred ? ' starred' : ''}`, () => {
             const nowStarred = toggleStarMessage(msg.id);
@@ -6443,9 +7891,229 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             actions.appendChild(continueBtn);
         }
 
-        body.appendChild(content); body.appendChild(actions); body.appendChild(meta);
-        wrap.appendChild(avatar); wrap.appendChild(body);
+        body.appendChild(actions); body.appendChild(meta);
+
+        // Swipe bar
+        if (!isUser) {
+            const swipeBar = document.createElement('div');
+            swipeBar.className = 'scp-swipe-bar';
+            swipeBar.style.display = 'none';
+
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'scp-swipe-btn scp-swipe-prev';
+            prevBtn.innerHTML = I.chevronLeft;
+            prevBtn.title = 'Previous swipe';
+            prevBtn.disabled = true;
+
+            const counter = document.createElement('span');
+            counter.className = 'scp-swipe-counter';
+
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'scp-swipe-btn scp-swipe-next';
+            nextBtn.innerHTML = I.chevronRight;
+            nextBtn.title = 'New swipe (regenerate)';
+
+            prevBtn.addEventListener('click', async () => {
+                if (prevBtn.disabled || _generating) return;
+                const session = getCurrentSession();
+                if (!getSwipesForMsg(session, msg.id)) return;
+                
+                const bdy = wrap.querySelector('.scp-msg-body');
+                if (bdy) {
+                    bdy.classList.remove('scp-swipe-anim-right', 'scp-swipe-anim-left');
+                    bdy.classList.add('scp-swipe-anim-out-right'); 
+                    await new Promise(r => setTimeout(r, 150));
+                }
+                
+                if (navigateSwipe(session, msg.id, -1)) {
+                    if (bdy) {
+                        bdy.classList.remove('scp-swipe-anim-out-right');
+                        void bdy.offsetWidth;
+                        bdy.classList.add('scp-swipe-anim-left'); 
+                    }
+                    _renderMsgBodyContent(wrap, session.messages.find(m => m.id === msg.id));
+                    updateSwipeBar(wrap, session, msg.id);
+                }
+            });
+
+            nextBtn.addEventListener('click', async () => {
+                if (nextBtn.disabled || _generating) return;
+                const session = getCurrentSession();
+                const msgData = session.messages.find(m => m.id === msg.id);
+                if (!msgData) return;
+                
+                if (msgData.swipeIndex !== undefined && msgData.swipeIndex < (msgData.swipes?.length || 1) - 1) {
+                    const bdy = wrap.querySelector('.scp-msg-body');
+                    if (bdy) {
+                        bdy.classList.remove('scp-swipe-anim-right', 'scp-swipe-anim-left');
+                        bdy.classList.add('scp-swipe-anim-out-left'); 
+                        await new Promise(r => setTimeout(r, 150));
+                    }
+
+                    if (navigateSwipe(session, msg.id, 1)) {
+                        if (bdy) {
+                            bdy.classList.remove('scp-swipe-anim-out-left');
+                            void bdy.offsetWidth;
+                            bdy.classList.add('scp-swipe-anim-right'); 
+                        }
+                        _renderMsgBodyContent(wrap, session.messages.find(m => m.id === msg.id));
+                        updateSwipeBar(wrap, session, msg.id);
+                    }
+                } else {
+                    _runSwipeRegen(session, msg.id, wrap);
+                }
+            });
+
+            swipeBar.appendChild(prevBtn);
+            swipeBar.appendChild(counter);
+            swipeBar.appendChild(nextBtn);
+            body.appendChild(swipeBar);
+        }
+
+        wrap.appendChild(avatarWrap); wrap.appendChild(body);
+        _renderMsgBodyContent(wrap, msg);
+        
         return wrap;
+    }
+
+    async function _runSwipeRegen(session, msgId, wrapEl) {
+        if (_generating) return;
+        const msgData = session.messages.find(m => m.id === msgId);
+        if (!msgData) return;
+
+        if (!msgData.swipes) {
+            msgData.swipes = [{ content: msgData.content, reasoning: msgData.reasoning || null }];
+            msgData.swipeIndex = 0;
+        }
+
+        _generating = true;
+        const settings = getEffectiveSettings();
+        setGeneratingState(true);
+
+        const body = wrapEl.querySelector('.scp-msg-body');
+        if (body) {
+            body.classList.remove('scp-swipe-anim-right', 'scp-swipe-anim-left');
+            body.classList.add('scp-swipe-anim-out-left');
+            await new Promise(r => setTimeout(r, 150));
+        }
+
+        const placeholderContent = '';
+        msgData.swipes.push({ content: placeholderContent, reasoning: null });
+        msgData.swipeIndex = msgData.swipes.length - 1;
+        msgData.content = placeholderContent;
+        msgData.reasoning = null;
+        saveSessionsToMetadata();
+
+        updateSwipeBar(wrapEl, session, msgId);
+
+        let streamContentEl = wrapEl.querySelector('.scp-msg-content');
+        if (streamContentEl) streamContentEl.innerHTML = '';
+        const rBlock = wrapEl.querySelector('.scp-reasoning-block');
+        if (rBlock) rBlock.style.display = 'none';
+        
+        wrapEl.querySelectorAll('.scp-lb-proposal-card').forEach(c => c.remove());
+        wrapEl.querySelectorAll('.scp-msg-hist-wrap').forEach(c => c.remove());
+
+        if (body) {
+            body.classList.remove('scp-swipe-anim-out-left');
+            void body.offsetWidth;
+            body.classList.add('scp-swipe-anim-right');
+        }
+
+        let cursorEl = null;
+        let streamAccumText = '';
+        let streamAccumReasoning = null;
+
+        const cleanupCursor = () => { if (cursorEl?.parentNode) cursorEl.remove(); cursorEl = null; };
+
+        const onChunk = (text, reasoning) => {
+            streamAccumText = text;
+            streamAccumReasoning = reasoning;
+            if (!cursorEl) {
+                cursorEl = document.createElement('span');
+                cursorEl.className = 'scp-stream-cursor';
+                const bar = document.getElementById('scp-thinking-bar');
+                if (bar) bar.style.display = 'flex';
+                document.getElementById('scp-thinking-text') && (document.getElementById('scp-thinking-text').textContent = 'Streaming…');
+            }
+            if (streamContentEl) {
+                const { content: disp } = getDisplayContent(text, settings);
+                streamContentEl.innerHTML = renderMarkdown(disp);
+                if (text) streamContentEl.appendChild(cursorEl);
+            }
+            smartScrollToBottom();
+        };
+
+        try {
+            const messagesForRegen = [];
+            const tempSession = { ...session, messages: session.messages.filter(m => m.id !== msgId) };
+            const builtMessages = await assembleMessages(tempSession, settings, null);
+            const fullPromptText = builtMessages.map(m => m.content).join('\n');
+            const tokensIn = await estimateTokens(fullPromptText);
+
+            const result = await callGenerate(tempSession, settings, null, onChunk);
+            cleanupCursor();
+
+            if (result === null) {
+                msgData.swipes.pop();
+                msgData.swipeIndex = msgData.swipes.length - 1;
+                msgData.content = msgData.swipes[msgData.swipeIndex]?.content || '';
+                msgData.reasoning = msgData.swipes[msgData.swipeIndex]?.reasoning || null;
+                saveSessionsToMetadata();
+                _renderMsgBodyContent(wrapEl, msgData);
+                updateSwipeBar(wrapEl, session, msgId);
+                return;
+            }
+
+            const { text: rawText, reasoning: fullReasoning } = result;
+            const fullText = normalizeCharNamesInBlock(rawText);
+
+            msgData.swipes[msgData.swipeIndex] = { content: fullText, reasoning: fullReasoning || null };
+            msgData.content = fullText;
+            msgData.reasoning = fullReasoning || null;
+            saveSessionsToMetadata();
+
+            _renderMsgBodyContent(wrapEl, msgData);
+            updateSwipeBar(wrapEl, session, msgId);
+
+            if (tokensIn > 0) recordStat(_SM.tokIn, tokensIn);
+            const tokensOut = await estimateTokens(fullText);
+            if (tokensOut > 0) recordStat(_SM.tokOut, tokensOut);
+            recordStat(_SM.regen);
+            updateMsgCount(session);
+            playCompletionSound();
+
+        } catch(err) {
+            cleanupCursor();
+            msgData.swipes.pop();
+            msgData.swipeIndex = msgData.swipes.length - 1;
+            msgData.content = msgData.swipes[msgData.swipeIndex]?.content || '';
+            msgData.reasoning = msgData.swipes[msgData.swipeIndex]?.reasoning || null;
+            saveSessionsToMetadata();
+            _renderMsgBodyContent(wrapEl, msgData);
+            updateSwipeBar(wrapEl, session, msgId);
+
+            if (_abortController?.signal?.aborted || err?.message === 'userStopped') {} 
+            else { showGenerationError(err); }
+        } finally {
+            _generating = false;
+            setGeneratingState(false);
+        }
+    }
+
+    function _refreshSwipeBars(session) {
+        const c = $('scp-messages');
+        if (!c) return;
+        c.querySelectorAll('.scp-swipe-bar').forEach(bar => { bar.style.display = 'none'; });
+        if (_generating) return;
+        const lastId = getLastAssistantMsgId(session);
+        if (!lastId) return;
+        const lastEl = c.querySelector(`.scp-msg[data-id="${lastId}"]`);
+        if (!lastEl) return;
+        const swipeBar = lastEl.querySelector('.scp-swipe-bar');
+        if (!swipeBar) return;
+        updateSwipeBar(lastEl, session, lastId);
+        swipeBar.style.display = '';
     }
 
     let _userScrolledUp = false;
@@ -6480,6 +8148,186 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (all.length) all[all.length - 1].classList.add('scp-msg-last-assistant');
     }
 
+    // ─── Swipe Management ────────────────────────────────────────────────────────
+
+    function getLastAssistantMsgId(session) {
+        for (let i = session.messages.length - 1; i >= 0; i--) {
+            const m = session.messages[i];
+            if (m.role === 'user') return null;
+            if (m.role === 'assistant' && !m.isLBHistory && !m.isCharEditHistory && !m.isChatEditHistory) {
+                return m.id;
+            }
+        }
+        return null;
+    }
+
+    function getSwipesForMsg(session, msgId) {
+        const msg = session.messages.find(m => m.id === msgId);
+        if (!msg) return null;
+        if (!msg.swipes) msg.swipes = [{ content: msg.content, reasoning: msg.reasoning || null }];
+        if (msg.swipeIndex === undefined) msg.swipeIndex = 0;
+        return msg;
+    }
+
+    function addSwipe(session, msgId, content, reasoning = null) {
+        const msg = getSwipesForMsg(session, msgId);
+        if (!msg) return;
+        msg.swipes.push({ content, reasoning: reasoning || null });
+        msg.swipeIndex = msg.swipes.length - 1;
+        msg.content = content;
+        msg.reasoning = reasoning || null;
+        saveSessionsToMetadata();
+    }
+
+    function navigateSwipe(session, msgId, dir) {
+        const msg = getSwipesForMsg(session, msgId);
+        if (!msg || msg.swipes.length < 2) return false;
+        const newIdx = msg.swipeIndex + dir;
+        if (newIdx < 0 || newIdx >= msg.swipes.length) return false;
+        msg.swipeIndex = newIdx;
+        msg.content = msg.swipes[newIdx].content;
+        msg.reasoning = msg.swipes[newIdx].reasoning || null;
+        saveSessionsToMetadata();
+        updateMsgCount(session);
+        return true;
+    }
+
+    function updateSwipeBar(msgEl, session, msgId) {
+        const bar = msgEl.querySelector('.scp-swipe-bar');
+        if (!bar) return;
+        const msg = session.messages.find(m => m.id === msgId);
+        if (!msg) return;
+        if (!msg.swipes) {
+            msg.swipes = [{ content: msg.content, reasoning: msg.reasoning || null }];
+            msg.swipeIndex = 0;
+        }
+        const total = msg.swipes.length;
+        const cur = (msg.swipeIndex ?? 0) + 1;
+        const prevBtn = bar.querySelector('.scp-swipe-prev');
+        const nextBtn = bar.querySelector('.scp-swipe-next');
+        const counter = bar.querySelector('.scp-swipe-counter');
+        if (prevBtn) prevBtn.disabled = cur <= 1 || _generating;
+        if (nextBtn) nextBtn.disabled = _generating;
+        if (counter) counter.innerHTML = `<span>${cur}</span>/${total}`;
+        bar.style.display = '';
+    }
+
+    function _renderMsgBodyContent(msgEl, msg) {
+        const settings = getSettings();
+        let displayText = msg.content;
+        let reasoning = null;
+        if (msg.reasoning !== undefined) {
+            reasoning = msg.reasoning || null;
+        } else {
+            const d = getDisplayContent(msg.content, settings);
+            reasoning = d.reasoning;
+            displayText = d.content;
+        }
+
+        const body = msgEl.querySelector('.scp-msg-body');
+        if (!body) return;
+
+        msgEl.querySelectorAll('.scp-lb-proposal-card').forEach(c => c.remove());
+        msgEl.querySelectorAll('.scp-char-proposal-card').forEach(c => c.remove());
+        msgEl.querySelectorAll('.scp-char-creation-card').forEach(c => c.remove());
+        msgEl.querySelectorAll('.scp-chat-proposal-card').forEach(c => c.remove());
+        msgEl.querySelectorAll('.scp-msg-hist-wrap').forEach(c => c.remove());
+
+        let rBlock = msgEl.querySelector('.scp-reasoning-block');
+        if (reasoning) {
+            if (!rBlock) {
+                rBlock = document.createElement('details');
+                rBlock.className = 'scp-reasoning-block';
+                rBlock.innerHTML = `<summary class="scp-reasoning-summary">Reasoning</summary><div class="scp-reasoning-content"></div>`;
+                body.insertBefore(rBlock, body.firstChild);
+            }
+            rBlock.querySelector('.scp-reasoning-content').innerHTML = renderMarkdown(reasoning);
+        } else if (rBlock) {
+            rBlock.remove();
+        }
+
+        const contentEl = msgEl.querySelector('.scp-msg-content');
+        
+        if (msg.attachments && msg.attachments.length > 0) {
+            const attWrap = document.createElement('div');
+            attWrap.className = 'scp-msg-attachments';
+            msg.attachments.forEach(att => {
+                const badge = document.createElement('div');
+                badge.className = 'scp-msg-att-badge';
+                if (att.isImage) {
+                    badge.innerHTML = `<img src="${att.dataUrl}"> <span>${escHtml(att.name)}</span>`;
+                    badge.onclick = () => _openImageLightbox(att);
+                } else {
+                    badge.innerHTML = `<i class="fa-solid fa-file"></i> <span>${escHtml(att.name)}</span>`;
+                    badge.onclick = () => _openTextLightbox(att);
+                }
+                attWrap.appendChild(badge);
+            });
+            body.insertBefore(attWrap, body.firstChild);
+        }
+        if (contentEl) {
+            const lbChanges = parseLBChangesFromText(msg.content);
+            const charChanges = parseCharChangesFromText(msg.content);
+            const charCreation = parseCharCreationFromText(msg.content);
+            const chatChanges = parseChatChangesFromText(msg.content);
+            const needsStrip = lbChanges?.length || charChanges?.length || charCreation || chatChanges?.length;
+
+            if (needsStrip) {
+                let stripped = msg.content;
+                if (lbChanges?.length) stripped = stripLBChangesBlock(stripped);
+                if (charChanges?.length) stripped = stripCharChangesBlock(stripped);
+                if (charCreation) stripped = stripCharCreationBlock(stripped);
+                if (chatChanges?.length) stripped = stripChatChangesBlock(stripped);
+                
+                contentEl.innerHTML = renderMarkdown(getDisplayContent(stripped, settings).content);
+                postProcessHTMLBlocks(contentEl);
+                
+                if (lbChanges?.length) renderProposalCard(lbChanges, msgEl);
+                if (charChanges?.length) renderCharProposalCard(charChanges, msgEl);
+                if (charCreation) renderCharCreationCard(charCreation, msgEl);
+                if (chatChanges?.length) renderChatProposalCard(chatChanges, msgEl);
+            } else {
+                contentEl.innerHTML = renderMarkdown(getDisplayContent(displayText, settings).content);
+                postProcessHTMLBlocks(contentEl);
+            }
+        }
+
+        const currentSwipe = msg.swipes?.[msg.swipeIndex || 0];
+        if (currentSwipe?.historyLines?.length) {
+            const hw = document.createElement('div');
+            hw.className = 'scp-msg-hist-wrap';
+            
+            const cEl = document.createElement('div');
+            cEl.className = 'scp-msg-content scp-lb-history-content';
+            cEl.style.cssText = 'margin-top:10px; padding:8px 12px; background:var(--scp-accent-bg); border:1px solid var(--scp-accent-dim); border-radius:6px;';
+            renderLBHistoryContent({ appliedLines: currentSwipe.historyLines }, cEl);
+            hw.appendChild(cEl);
+            
+            const swipeBar = body.querySelector('.scp-swipe-bar');
+            if (swipeBar) body.insertBefore(hw, swipeBar);
+            else body.appendChild(hw);
+        }
+
+        _updateMsgTokenCount(msgEl, msg.content, true);
+    }
+
+    let _tokenCountCache = new Map();
+
+    function _updateMsgTokenCount(msgEl, content, forceRecalc = false) {
+        const el = msgEl.querySelector ? msgEl.querySelector('.scp-msg-token-count') : null;
+        if (!el) return;
+        if (!forceRecalc) {
+            const cached = _tokenCountCache.get(content);
+            if (cached !== undefined) { el.textContent = `${cached}t`; return; }
+        } else {
+            el.textContent = '\u2026';
+        }
+        estimateTokens(content).then(n => {
+            _tokenCountCache.set(content, n);
+            if (el.isConnected) el.textContent = `${n}t`;
+        });
+    }
+
     function renderSession(session) {
         clearSearchHighlights();
         _searchMatches = [];
@@ -6506,32 +8354,12 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             } else {
                 const el = createMsgEl(msg, handleCopy, handleEdit, handleDelete, handleMessageRegen);
                 c.appendChild(el);
-                if (msg.role === 'assistant') {
-                    const lbChanges = parseLBChangesFromText(msg.content);
-                    const charChanges = parseCharChangesFromText(msg.content);
-                    const charCreation = parseCharCreationFromText(msg.content);
-                    const needsStrip = lbChanges?.length || charChanges?.length || charCreation;
-                    if (needsStrip) {
-                        const contentEl = el.querySelector('.scp-msg-content');
-                        if (contentEl) {
-                            let stripped = msg.content;
-                            if (lbChanges?.length) stripped = stripLBChangesBlock(stripped);
-                            if (charChanges?.length) stripped = stripCharChangesBlock(stripped);
-                            if (charCreation) stripped = stripCharCreationBlock(stripped);
-                            const { content } = getDisplayContent(stripped, getSettings());
-                            contentEl.innerHTML = renderMarkdown(content);
-                            postProcessHTMLBlocks(contentEl);
-                        }
-                        if (lbChanges?.length) renderProposalCard(lbChanges, el);
-                        if (charChanges?.length) renderCharProposalCard(charChanges, el);
-                        if (charCreation) renderCharCreationCard(charCreation, el);
-                    }
-                }
             }
         }
         updateMsgCount(session);
         scrollToBottom();
         _refreshContinueBtns();
+        _refreshSwipeBars(session);
     }
 
     function appendMsgEl(msg) {
@@ -6539,49 +8367,14 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (!c) return;
         c.querySelector('.scp-empty-state')?.remove();
 
-        if (msg.role === 'assistant') {
-            document.querySelectorAll('.scp-lb-proposal-card').forEach(card => {
-                const prevSib = card.previousElementSibling;
-                if (!prevSib || !prevSib.dataset.id) card.remove();
-            });
-            document.querySelectorAll('.scp-char-proposal-card').forEach(card => {
-                const prevSib = card.previousElementSibling;
-                if (!prevSib || !prevSib.dataset.id) card.remove();
-            });
-            document.querySelectorAll('.scp-char-creation-card').forEach(card => {
-                const prevSib = card.previousElementSibling;
-                if (!prevSib || !prevSib.dataset.id) card.remove();
-            });
-        }
-
         const el = createMsgEl(msg, handleCopy, handleEdit, handleDelete, handleMessageRegen);
         c.appendChild(el);
         clearTimeout(_tokenCalcTid);
-        updateMsgCount(getCurrentSession());
+        const session = getCurrentSession();
+        updateMsgCount(session);
         scrollToBottom();
         _refreshContinueBtns();
-
-        if (msg.role === 'assistant') {
-            const lbChanges = parseLBChangesFromText(msg.content);
-            const charChanges = parseCharChangesFromText(msg.content);
-            const charCreation = parseCharCreationFromText(msg.content);
-            const needsStrip = lbChanges?.length || charChanges?.length || charCreation;
-            if (needsStrip) {
-                const contentEl = el.querySelector('.scp-msg-content');
-                if (contentEl) {
-                    let stripped = msg.content;
-                    if (lbChanges?.length) stripped = stripLBChangesBlock(stripped);
-                    if (charChanges?.length) stripped = stripCharChangesBlock(stripped);
-                    if (charCreation) stripped = stripCharCreationBlock(stripped);
-                    const { content } = getDisplayContent(stripped, getSettings());
-                    contentEl.innerHTML = renderMarkdown(content);
-                    postProcessHTMLBlocks(contentEl);
-                }
-                if (lbChanges?.length) renderProposalCard(lbChanges, el);
-                if (charChanges?.length) renderCharProposalCard(charChanges, el);
-                if (charCreation) renderCharCreationCard(charCreation, el);
-            }
-        }
+        _refreshSwipeBars(session);
 
         if (_searchOpen && _searchQuery.trim()) {
             const newMarks = _applyHighlightsInRoot(el);
@@ -6598,8 +8391,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         document.querySelector(`.scp-lb-proposal-card[data-for="${msgId}"]`)?.remove();
         document.querySelector(`.scp-char-proposal-card[data-for="${msgId}"]`)?.remove();
         document.querySelector(`.scp-char-creation-card[data-for="${msgId}"]`)?.remove();
+        document.querySelector(`.scp-chat-proposal-card[data-for="${msgId}"]`)?.remove();
         el.remove();
         _refreshContinueBtns();
+        _refreshSwipeBars(getCurrentSession());
     }
 
     function removeMsgElAndBelow(msgId) {
@@ -6611,19 +8406,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 document.querySelector(`.scp-lb-proposal-card[data-for="${el.dataset.id}"]`)?.remove();
                 document.querySelector(`.scp-char-proposal-card[data-for="${el.dataset.id}"]`)?.remove();
                 document.querySelector(`.scp-char-creation-card[data-for="${el.dataset.id}"]`)?.remove();
+                document.querySelector(`.scp-chat-proposal-card[data-for="${el.dataset.id}"]`)?.remove();
                 el.remove();
             }
         }
-        c.querySelectorAll('.scp-lb-proposal-card').forEach(card => {
-            if (!card.previousElementSibling) card.remove();
-        });
-        c.querySelectorAll('.scp-char-proposal-card').forEach(card => {
-            if (!card.previousElementSibling) card.remove();
-        });
-        c.querySelectorAll('.scp-char-creation-card').forEach(card => {
-            if (!card.previousElementSibling) card.remove();
-        });
+        c.querySelectorAll('.scp-lb-proposal-card').forEach(card => { if (!card.previousElementSibling) card.remove(); });
+        c.querySelectorAll('.scp-char-proposal-card').forEach(card => { if (!card.previousElementSibling) card.remove(); });
+        c.querySelectorAll('.scp-char-creation-card').forEach(card => { if (!card.previousElementSibling) card.remove(); });
+        c.querySelectorAll('.scp-chat-proposal-card').forEach(card => { if (!card.previousElementSibling) card.remove(); });
         _refreshContinueBtns();
+        _refreshSwipeBars(getCurrentSession());
     }
 
     function removeMsgElAfter(msgId) {
@@ -6634,27 +8426,33 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 document.querySelector(`.scp-lb-proposal-card[data-for="${el.dataset.id}"]`)?.remove();
                 document.querySelector(`.scp-char-proposal-card[data-for="${el.dataset.id}"]`)?.remove();
                 document.querySelector(`.scp-char-creation-card[data-for="${el.dataset.id}"]`)?.remove();
+                document.querySelector(`.scp-chat-proposal-card[data-for="${el.dataset.id}"]`)?.remove();
                 el.remove();
             }
             if (el.dataset.id === msgId) found = true;
         }
         _refreshContinueBtns();
+        _refreshSwipeBars(getCurrentSession());
     }
 
     let _tokenCalcTid = null;
 
     async function estimateTokens(text) {
         if (!text) return 0;
+        let str = text;
+        if (Array.isArray(text)) {
+            str = text.map(t => t.type === 'text' ? t.text : '').join('\n');
+        }
         const ctx = SillyTavern.getContext();
         try {
-            if (typeof ctx.getTokenCount === 'function') return ctx.getTokenCount(text);
-            if (typeof window.getTokenCount === 'function') return window.getTokenCount(text);
+            if (typeof ctx.getTokenCount === 'function') return ctx.getTokenCount(str);
+            if (typeof window.getTokenCount === 'function') return window.getTokenCount(str);
         } catch (_) {}
         try {
             const res = await fetch('/api/tokencount', {
                 method: 'POST',
                 headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text })
+                body: JSON.stringify({ text: str })
             });
             if (res.ok) {
                 const data = await res.json();
@@ -6663,7 +8461,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 if (typeof data === 'number') return data;
             }
         } catch (_) {}
-        return Math.ceil(text.length / 3.5);
+        return Math.ceil(str.length / 3.5);
     }
 
     function updateMsgCount(session) {
@@ -6676,8 +8474,20 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             tel.textContent = '... tkns';
             _tokenCalcTid = setTimeout(async () => {
                 const settings = getEffectiveSettings();
-                const messages = await assembleMessages(session, settings, null);
-                const fullText = messages.map(m => m.content).join('\n');
+                const currentInput = document.getElementById('scp-input')?.value || '';
+                
+                const processedAtts = await _processAttachmentsBeforeSend(_pendingAttachments, true);
+                
+                const messages = await assembleMessages(session, settings, currentInput, processedAtts);
+                
+                const fullText = messages.map(m => {
+                    let c = m.content;
+                    if (Array.isArray(c)) {
+                        return c.map(part => part.type === 'text' ? part.text : '').join('\n');
+                    }
+                    return c;
+                }).join('\n');
+                
                 const count = await estimateTokens(fullText);
                 if (tel) tel.textContent = `~${count} tkns`;
             }, 600);
@@ -6756,11 +8566,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const restoreMessageDOM = (textToRender) => {
             const nc = document.createElement('div');
             nc.className = 'scp-msg-content';
-            let displayString = textToRender;
 
             const lbChanges = parseLBChangesFromText(textToRender);
             const charChanges = parseCharChangesFromText(textToRender);
             const charCreation = parseCharCreationFromText(textToRender);
+            const chatChanges = parseChatChangesFromText(textToRender);
             let stripped = textToRender;
             
             if (lbChanges?.length) { 
@@ -6777,8 +8587,13 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 stripped = stripCharCreationBlock(stripped); 
                 renderCharCreationCard(charCreation, wrapEl); 
             } else document.querySelector(`.scp-char-creation-card[data-for="${msg.id}"]`)?.remove();
+
+            if (chatChanges?.length) { 
+                stripped = stripChatChangesBlock(stripped); 
+                renderChatProposalCard(chatChanges, wrapEl); 
+            } else document.querySelector(`.scp-chat-proposal-card[data-for="${msg.id}"]`)?.remove();
             
-            displayString = getDisplayContent(stripped, getSettings()).content;
+            const displayString = getDisplayContent(stripped, getSettings()).content;
 
             nc.innerHTML = renderMarkdown(displayString);
             postProcessHTMLBlocks(nc);
@@ -6798,8 +8613,13 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 const newText = expandMacros(rawText);
                 updateMessage(session, msg.id, newText);
                 msg.content = newText;
+                if (msg.swipes && msg.swipeIndex !== undefined) {
+                    msg.swipes[msg.swipeIndex] = { content: newText, reasoning: msg.reasoning || null };
+                    saveSessionsToMetadata();
+                }
                 recordStat(_SM.edit);
                 restoreMessageDOM(newText);
+                _updateMsgTokenCount(wrapEl, newText, true);
             });
         }
 
@@ -6809,8 +8629,13 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const newText = expandMacros(rawText);
             updateMessage(session, msg.id, newText);
             msg.content = newText;
+            if (msg.swipes && msg.swipeIndex !== undefined) {
+                msg.swipes[msg.swipeIndex] = { content: newText, reasoning: msg.reasoning || null };
+                saveSessionsToMetadata();
+            }
             recordStat(_SM.edit);
             restoreMessageDOM(newText);
+            _updateMsgTokenCount(wrapEl, newText, true);
             
             truncateAfter(session, msg.id);
             removeMsgElAfter(msg.id);
@@ -7046,7 +8871,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     let _generating = false;
 
 
-    async function runGenerate(session, userText, addUserMsg = true) {
+    async function runGenerate(session, userText, addUserMsg = true, processedAtts = null) {
         if (_generating) return;
         _generating = true;
         const settings = getEffectiveSettings();
@@ -7125,25 +8950,24 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         };
 
         try {
-            if (addUserMsg && userText) {
-                appendMsgEl(addMessage(session, 'user', userText));
+            if (addUserMsg && (userText || (processedAtts && processedAtts.length))) {
+                const msgObj = addMessage(session, 'user', userText, { 
+                    attachments: processedAtts || []
+                });
+                appendMsgEl(msgObj);
                 recordStat(_SM.msg);
             }
 
             const fullMessages = await assembleMessages(session, settings, null);
             const fullPromptText = fullMessages.map(m => m.content).join('\n');
-            
             const tokensIn = await estimateTokens(fullPromptText);
-            
+
             _dbgAdd('GEN_START', {
                 src: settings.connectionSource,
                 profile: settings.connectionProfileId || null,
                 maxTokens: settings.maxTokens,
                 streaming: settings.forceStreaming,
                 ctxDepth: settings.contextDepth,
-                histLimit: settings.localHistoryLimit,
-                hasOverrides: hasSessionOverrides(),
-                overrides: hasSessionOverrides() ? getSessionOverrides() : null,
                 tokensIn
             });
 
@@ -7183,16 +9007,19 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 const lbChanges = parseLBChangesFromText(fullText);
                 const charChanges = parseCharChangesFromText(fullText);
                 const charCreation = parseCharCreationFromText(fullText);
-                const needsStrip = lbChanges?.length || charChanges?.length || charCreation;
+                const chatChanges = parseChatChangesFromText(fullText);
+                const needsStrip = lbChanges?.length || charChanges?.length || charCreation || chatChanges?.length;
                 if (needsStrip) {
                     let stripped = fullText;
                     if (lbChanges?.length) stripped = stripLBChangesBlock(stripped);
                     if (charChanges?.length) stripped = stripCharChangesBlock(stripped);
                     if (charCreation) stripped = stripCharCreationBlock(stripped);
+                    if (chatChanges?.length) stripped = stripChatChangesBlock(stripped);
                     if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(stripped); postProcessHTMLBlocks(streamContentEl); }
                     if (lbChanges?.length) renderProposalCard(lbChanges, streamMsgEl);
                     if (charChanges?.length) renderCharProposalCard(charChanges, streamMsgEl);
                     if (charCreation) renderCharCreationCard(charCreation, streamMsgEl);
+                    if (chatChanges?.length) renderChatProposalCard(chatChanges, streamMsgEl);
                 } else {
                     if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(fullText); postProcessHTMLBlocks(streamContentEl); }
                 }
@@ -7204,12 +9031,24 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 } else if (!fullReasoning && streamReasoningBlockEl) {
                     streamReasoningBlockEl.style.display = 'none';
                 }
+
+                if (msg) {
+                    msg.swipes = [{ content: fullText, reasoning: fullReasoning || null }];
+                    msg.swipeIndex = 0;
+                    saveSessionsToMetadata();
+                }
+                _updateMsgTokenCount(streamMsgEl, fullText);
             } else {
-                appendMsgEl(addMessage(session, 'assistant', fullText, { reasoning: fullReasoning || null }));
+                const newMsg = addMessage(session, 'assistant', fullText, { reasoning: fullReasoning || null });
+                newMsg.swipes = [{ content: fullText, reasoning: fullReasoning || null }];
+                newMsg.swipeIndex = 0;
+                saveSessionsToMetadata();
+                appendMsgEl(newMsg);
             }
 
+            _refreshSwipeBars(session);
+
             if (tokensIn > 0) recordStat(_SM.tokIn, tokensIn);
-            
             const tokensOut = await estimateTokens(fullText);
             if (tokensOut > 0) recordStat(_SM.tokOut, tokensOut);
 
@@ -7218,30 +9057,22 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         } catch (err) {
             cleanupCursor();
-            _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack });
-            console.error(`[${EXT_DISPLAY}]`, err);
-            
-            let errorSummary = err.message || String(err);
-            let fullError = err.stack || err.message || String(err);
-            
-            if (typeof err === 'object' && !err.stack && !err.message) {
-                try { 
-                    errorSummary = "API or Network Error";
-                    fullError = JSON.stringify(err, null, 2); 
-                } catch(e) {}
+            if (_abortController?.signal?.aborted || err?.message === 'userStopped') {
+                _generating = false;
+                setGeneratingState(false);
+                return;
             }
             
-            showCustomDialog({
-                type: 'alert',
-                title: 'Generation Error',
-                htmlMessage: `
-                    <div style="color:var(--scp-danger); margin-bottom: 10px; font-weight: 600; font-size: 14px; word-break: break-word; line-height: 1.4;">
-                        ${escHtml(errorSummary)}
-                    </div>
-                    <div style="font-size: 11px; margin-bottom: 4px; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.5px;">Technical Details / Stack Trace</div>
-                    <textarea style="width:100%; height:130px; background:rgba(0,0,0,0.4); color:var(--scp-text-muted); border:1px solid rgba(255,255,255,0.15); padding:8px; border-radius:6px; font-family:var(--scp-font, monospace); resize:vertical; font-size:11px;" readonly onclick="this.select()">${escHtml(fullError)}</textarea>
-                `
-            });
+            const inputEl = document.getElementById('scp-input');
+            if (inputEl && inputEl.value.trim() === '' && userText) {
+                inputEl.value = userText;
+                autoResize(inputEl);
+            }
+
+            _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack });
+            console.error(`[${EXT_DISPLAY}] Generation failed:`, err);
+            
+            showGenerationError(err);
         } finally {
             _generating = false;
             setGeneratingState(false);
@@ -7307,13 +9138,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const lbChanges = parseLBChangesFromText(fullCombined);
             const charChanges = parseCharChangesFromText(fullCombined);
             const charCreation = parseCharCreationFromText(fullCombined);
-            const needsStrip = lbChanges?.length || charChanges?.length || charCreation;
+            const chatChanges = parseChatChangesFromText(fullCombined);
+            const needsStrip = lbChanges?.length || charChanges?.length || charCreation || chatChanges?.length;
 
             if (needsStrip) {
                 let stripped = fullCombined;
                 if (lbChanges?.length) stripped = stripLBChangesBlock(stripped);
                 if (charChanges?.length) stripped = stripCharChangesBlock(stripped);
                 if (charCreation) stripped = stripCharCreationBlock(stripped);
+                if (chatChanges?.length) stripped = stripChatChangesBlock(stripped);
                 const { content: disp } = getDisplayContent(stripped, settings);
                 if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(disp); postProcessHTMLBlocks(streamContentEl); }
                 const msgEl = document.querySelector(`.scp-msg[data-id="${targetMsgId}"]`);
@@ -7321,6 +9154,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     if (lbChanges?.length) renderProposalCard(lbChanges, msgEl);
                     if (charChanges?.length) renderCharProposalCard(charChanges, msgEl);
                     if (charCreation) renderCharCreationCard(charCreation, msgEl);
+                    if (chatChanges?.length) renderChatProposalCard(chatChanges, msgEl);
                 }
             } else {
                 const { content: disp } = getDisplayContent(fullCombined, settings);
@@ -7350,17 +9184,35 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 if (isStreaming && streamAccumContinuation) {
                     const combined = _joinContinuation(originalContent, streamAccumContinuation);
                     targetMsg.content = combined;
+                    if (targetMsg.swipes && targetMsg.swipeIndex !== undefined) {
+                        targetMsg.swipes[targetMsg.swipeIndex] = { content: combined, reasoning: targetMsg.reasoning || null };
+                    }
                     saveSessionsToMetadata();
                     _applyFinalContinuation(combined);
+                    const targetMsgEl2 = document.querySelector(`.scp-msg[data-id="${targetMsgId}"]`);
+                    if (targetMsgEl2) _updateMsgTokenCount(targetMsgEl2, combined);
                 }
                 return;
             }
 
-            const { text: continuation } = result;
+            const { text: continuation, isMaxTokens } = result;
             const combined = _joinContinuation(originalContent, continuation);
+            
+            if (isMaxTokens) {
+                toastr.warning('Generation stopped: reached Max Response Tokens limit.', EXT_DISPLAY, { timeOut: 10000 });
+            }
+
             targetMsg.content = combined;
+
+            // Update swipe data
+            if (targetMsg.swipes && targetMsg.swipeIndex !== undefined) {
+                targetMsg.swipes[targetMsg.swipeIndex] = { content: combined, reasoning: targetMsg.reasoning || null };
+            }
             saveSessionsToMetadata();
             _applyFinalContinuation(combined);
+
+            const targetMsgEl = document.querySelector(`.scp-msg[data-id="${targetMsgId}"]`);
+            if (targetMsgEl) _updateMsgTokenCount(targetMsgEl, combined);
 
             if (tokensIn > 0) recordStat(_SM.tokIn, tokensIn);
             
@@ -7373,30 +9225,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         } catch (err) {
             cleanupCursor();
-            _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack });
-            console.error(`[${EXT_DISPLAY}]`, err);
-            
-            let errorSummary = err.message || String(err);
-            let fullError = err.stack || err.message || String(err);
-            
-            if (typeof err === 'object' && !err.stack && !err.message) {
-                try { 
-                    errorSummary = "API or Network Error";
-                    fullError = JSON.stringify(err, null, 2); 
-                } catch(e) {}
+            if (_abortController?.signal?.aborted || err?.message === 'userStopped') {
+                _generating = false;
+                setGeneratingState(false);
+                return;
             }
+            _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack });
+            console.error(`[${EXT_DISPLAY}] Continuation failed:`, err);
 
-            showCustomDialog({
-                type: 'alert',
-                title: 'Generation Error',
-                htmlMessage: `
-                    <div style="color:var(--scp-danger); margin-bottom: 10px; font-weight: 600; font-size: 14px; word-break: break-word; line-height: 1.4;">
-                        ${escHtml(errorSummary)}
-                    </div>
-                    <div style="font-size: 11px; margin-bottom: 4px; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.5px;">Technical Details / Stack Trace</div>
-                    <textarea style="width:100%; height:130px; background:rgba(0,0,0,0.4); color:var(--scp-text-muted); border:1px solid rgba(255,255,255,0.15); padding:8px; border-radius:6px; font-family:var(--scp-font, monospace); resize:vertical; font-size:11px;" readonly onclick="this.select()">${escHtml(fullError)}</textarea>
-                `
-            });
+            showGenerationError(err);
         } finally {
             _generating = false;
             setGeneratingState(false);
@@ -7475,6 +9312,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const soundType = s.completionSound || 'none';
         const vol = s.completionSoundVolume ?? 80;
         if (soundType === 'none') return;
+        if (s.completionSoundOnlyWhenUnfocused && document.hasFocus()) return;
 
         if (soundType.startsWith('custom_') && s.customSounds && s.customSounds[soundType]) {
             try {
@@ -7770,16 +9608,66 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (sendBtn) sendBtn.disabled = on;
         if (input) input.disabled = on;
         if (regenBtn) regenBtn.disabled = on;
-        if (!on) _refreshContinueBtns();
+        if (!on) {
+            _refreshContinueBtns();
+            _refreshSwipeBars(getCurrentSession());
+        }
     }
 
-    function handleSend() {
+    function showGenerationError(err) {
+        let errorSummary = err?.message || String(err);
+        let fullError = '';
+
+        if (err instanceof Error) {
+            fullError = err.stack || err.message;
+            if (err.cause) {
+                fullError += '\n\n--- CAUSE ---\n' + (err.cause.stack || err.cause.message || JSON.stringify(err.cause, null, 2));
+            }
+        } else if (typeof err === 'object') {
+            try {
+                errorSummary = "API or Network Error";
+                fullError = JSON.stringify(err, null, 2);
+            } catch(e) {
+                fullError = String(err);
+            }
+        } else {
+            fullError = String(err);
+        }
+
+        if (window.last_api_error && errorSummary.includes('userStopped') === false) {
+            fullError += '\n\n--- ST LAST API ERROR ---\n' + (typeof window.last_api_error === 'object' ? JSON.stringify(window.last_api_error, null, 2) : String(window.last_api_error));
+        }
+
+        showCustomDialog({
+            type: 'alert',
+            title: 'Generation Error',
+            htmlMessage: `
+                <div style="color:var(--scp-danger); margin-bottom: 10px; font-weight: 600; font-size: 14px; word-break: break-word; line-height: 1.4;">
+                    ${escHtml(errorSummary)}
+                </div>
+                <div style="font-size: 12px; margin-bottom: 8px; color: var(--scp-text-muted);">
+                    Please copy the technical details below to report the issue:
+                </div>
+                <textarea style="width:100%; height:160px; background:rgba(0,0,0,0.4); color:var(--scp-text-muted); border:1px solid rgba(255,255,255,0.15); padding:8px; border-radius:6px; font-family:var(--scp-font-mono, monospace); resize:vertical; font-size:11px; white-space:pre; word-wrap:normal; overflow-x:auto;" readonly onclick="this.select()">${escHtml(fullError)}</textarea>
+            `
+        });
+    }
+
+    async function handleSend() {
         const input = $('scp-input'); if (!input) return;
         const rawText = input.value.trim();
-        if (!rawText || _generating) return;
-        const text = expandMacros(rawText);
+        if (!rawText && !_pendingAttachments.length || _generating) return;
+        const text = expandMacros(rawText || '');
         input.value = ''; autoResize(input);
-        runGenerate(getCurrentSession(), text, true);
+        
+        const processedAtts = await _processAttachmentsBeforeSend(_pendingAttachments, false);
+        _pendingAttachments = [];
+        _renderAttachmentPreviews();
+        updateMsgCount(getCurrentSession()); 
+        
+        runGenerate(getCurrentSession(), text, true, processedAtts).catch(err => {
+            console.error(err);
+        });
     }
 
     function handleRegen() {
@@ -7800,7 +9688,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
     async function openInspector() {
         const sess = getCurrentSession(); const settings = getEffectiveSettings();
-        const messages = await assembleMessages(sess, settings, null);
+        const inputEl = document.getElementById('scp-input');
+        const pendingText = inputEl ? inputEl.value.trim() : '';
+        const processedAtts = await _processAttachmentsBeforeSend(_pendingAttachments, true);
+        
+        const messages = await assembleMessages(sess, settings, pendingText, processedAtts);
         const fmtEl = $('scp-ctx-formatted'); const jsonEl = $('scp-ctx-json');
         if (fmtEl) fmtEl.textContent = formatPayloadAsText(messages);
         if (jsonEl) jsonEl.textContent = JSON.stringify(messages, null, 2);
@@ -8021,54 +9913,131 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
     function makeIconDraggable(iconTarget) {
         let dragging = false;
+        let active = false;
         let offsetX = 0, offsetY = 0;
+        let startX = 0, startY = 0;
+        let _rafId = null;
+
+        let tx = 0, ty = 0;
+        let cx = 0, cy = 0;
+        let vx = 0, vy = 0;
+
+        let stretch = 0;
+        let vStretch = 0;
+        let angle = 0;
+
+        const tick = () => {
+            const isWobbly = getSettings().wobbleWindow !== false;
+
+            if (!active && !dragging &&
+                Math.abs(vx) < 0.05 && Math.abs(vy) < 0.05 &&
+                Math.abs(tx - cx) < 0.5 && Math.abs(ty - cy) < 0.5 &&
+                Math.abs(stretch) < 0.005 && Math.abs(vStretch) < 0.005) {
+                
+                iconTarget.style.transform = '';
+                iconTarget.style.left = `${tx}px`;
+                iconTarget.style.top = `${ty}px`;
+                _rafId = null;
+                vx = vy = stretch = vStretch = 0;
+                
+                localStorage.setItem(ICON_STORAGE_KEY, JSON.stringify({
+                    left: iconTarget.style.left,
+                    top: iconTarget.style.top,
+                }));
+                return;
+            }
+
+            if (isWobbly) {
+                const tension = 0.28;   
+                const friction = 0.62;  
+
+                const dx = tx - cx;
+                const dy = ty - cy;
+
+                vx = (vx + dx * tension) * friction;
+                vy = (vy + dy * tension) * friction;
+                cx += vx;
+                cy += vy;
+
+                const speed = Math.sqrt(vx * vx + vy * vy);
+                const targetStretch = Math.min(0.35, speed * 0.015);
+                
+                const sTension = 0.22;
+                const sFriction = 0.68;
+                const dStretch = targetStretch - stretch;
+                vStretch = (vStretch + dStretch * sTension) * sFriction;
+                stretch += vStretch;
+
+                if (speed > 0.5) {
+                    angle = Math.atan2(vy, vx) * (180 / Math.PI);
+                }
+
+                iconTarget.style.left = `${cx}px`;
+                iconTarget.style.top = `${cy}px`;
+                iconTarget.style.transform = `rotate(${angle}deg) scale(${1 + stretch}, ${1 - stretch}) rotate(${-angle}deg)`;
+            } else {
+                cx = tx; cy = ty;
+                vx = vy = stretch = vStretch = 0;
+                iconTarget.style.transform = '';
+                iconTarget.style.left = `${tx}px`;
+                iconTarget.style.top = `${ty}px`;
+            }
+
+            _rafId = requestAnimationFrame(tick);
+        };
 
         iconTarget.addEventListener('pointerdown', e => {
             if (e.pointerType === 'mouse' && e.button !== 0) return;
+            
             dragging = false;
+            active = true;
+            
             const r = iconTarget.getBoundingClientRect();
             offsetX = e.clientX - r.left;
             offsetY = e.clientY - r.top;
+            
+            startX = r.left;
+            startY = r.top;
+            
+            cx = r.left;
+            cy = r.top;
+            tx = cx;
+            ty = cy;
+            vx = vy = stretch = vStretch = 0;
+
             iconTarget.setPointerCapture(e.pointerId);
             e.preventDefault();
         });
 
         iconTarget.addEventListener('pointermove', e => {
             if (!iconTarget.hasPointerCapture(e.pointerId)) return;
-            const r = iconTarget.getBoundingClientRect();
-            const dx = e.clientX - r.left - offsetX;
-            const dy = e.clientY - r.top - offsetY;
             
-            if (!dragging && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+            const rawX = e.clientX - offsetX;
+            const rawY = e.clientY - offsetY;
+            
+            const viewportWidth = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+            const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            
+            tx = Math.max(0, Math.min(viewportWidth - 46, rawX));
+            ty = Math.max(0, Math.min(viewportHeight - 46, rawY));
+            
+            const moveDist = Math.sqrt((tx - startX) * (tx - startX) + (ty - startY) * (ty - startY));
+            if (!dragging && moveDist > 6) {
                 dragging = true;
                 iconTarget.classList.add('scp-icon-dragging');
             }
 
-            if (dragging) {
-                const viewportWidth = window.visualViewport ? window.visualViewport.width : window.innerWidth;
-                const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-                
-                const x = Math.max(0, Math.min(viewportWidth - 46, e.clientX - offsetX));
-                const y = Math.max(0, Math.min(viewportHeight - 46, e.clientY - offsetY));
-                
-                iconTarget.style.left = `${x}px`;
-                iconTarget.style.top = `${y}px`;
-                iconTarget.style.bottom = 'auto';
-                iconTarget.style.right = 'auto';
-            }
+            if (!_rafId) _rafId = requestAnimationFrame(tick);
         });
 
         iconTarget.addEventListener('pointerup', e => {
             if (iconTarget.hasPointerCapture(e.pointerId)) {
                 iconTarget.releasePointerCapture(e.pointerId);
             }
+            active = false;
             iconTarget.classList.remove('scp-icon-dragging');
             
             if (dragging) {
-                localStorage.setItem(ICON_STORAGE_KEY, JSON.stringify({
-                    left: iconTarget.style.left,
-                    top: iconTarget.style.top,
-                }));
                 dragging = false;
             } else {
                 toggleVisibility();
@@ -8080,6 +10049,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 iconTarget.releasePointerCapture(e.pointerId);
             }
             dragging = false;
+            active = false;
             iconTarget.classList.remove('scp-icon-dragging');
         });
 
@@ -8087,6 +10057,313 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     }
 
     // ─── Theme ──────────────────────────────────────────────────────────────────
+    
+    function buildBackgroundSettingsUI(container) {
+        if (!container) return;
+        container.innerHTML = '';
+        const s = getSettings();
+        if (!s.customBackgrounds) s.customBackgrounds = {};
+
+        const isSP = container.id === 'scp-sp-bg-settings';
+
+        // TYPE SELECTOR
+        const typeRow = document.createElement('div');
+        typeRow.className = isSP ? 'scp-sp-field' : '';
+        
+        const typeLbl = document.createElement(isSP ? 'label' : 'b');
+        typeLbl.className = isSP ? 'scp-sp-label' : '';
+        if (!isSP) typeLbl.style.cssText = 'font-size:11px;color:#888;display:block;margin-bottom:4px';
+        typeLbl.textContent = 'Background Type';
+        
+        const typeWrap = document.createElement('div');
+        typeWrap.style.cssText = 'display:flex;gap:6px;align-items:center';
+        
+        const typeSel = document.createElement('select');
+        typeSel.className = isSP ? 'scp-sp-select text_pole' : 'text_pole';
+        typeSel.style.flex = '1';
+        
+        const renderDropdown = () => {
+            typeSel.innerHTML = '<option value="none">None</option>';
+            if (Object.keys(s.customBackgrounds).length > 0) {
+                const groupCustom = document.createElement('optgroup');
+                groupCustom.label = 'Custom Backgrounds';
+                for (const [key, bg] of Object.entries(s.customBackgrounds)) {
+                    const opt = document.createElement('option');
+                    opt.value = key; opt.textContent = bg.name;
+                    groupCustom.appendChild(opt);
+                }
+                typeSel.appendChild(groupCustom);
+            }
+            typeSel.value = s.windowBg || 'none';
+        };
+        renderDropdown();
+        typeWrap.appendChild(typeSel);
+        typeRow.appendChild(typeLbl); typeRow.appendChild(typeWrap);
+        container.appendChild(typeRow);
+
+        // ACTIONS
+        const customActionsWrap = document.createElement('div');
+        customActionsWrap.style.cssText = isSP ? 'display:flex;gap:6px;margin-top:6px' : 'display:flex;gap:6px;margin-top:6px;align-items:center';
+        
+        const uploadBtn = document.createElement('button');
+        uploadBtn.className = isSP ? 'scp-action-btn' : 'menu_button interactable';
+        uploadBtn.innerHTML = `<i class="fa-solid fa-upload"></i><span>Upload</span>`;
+        if (!isSP) uploadBtn.style.flex = '1';
+
+        uploadBtn.addEventListener('click', () => {
+            const inp = document.createElement('input');
+            inp.type = 'file'; inp.accept = 'image/*,video/mp4,video/webm';
+            inp.onchange = async () => {
+                const file = inp.files?.[0]; if (!file) return;
+                if (file.size > 25 * 1024 * 1024) { toastr.warning('File too large (>25MB).', EXT_DISPLAY); return; }
+                const isVideo = file.type.startsWith('video/');
+                const dataUrl = await _fileToDataUrl(file).catch(() => null);
+                if (!dataUrl) return;
+                
+                const s2 = getSettings();
+                const id = 'bg_' + Date.now();
+                s2.customBackgrounds[id] = { name: file.name, dataUrl, isVideo, fit: 'cover' };
+                s2.windowBg = id;
+                saveSettings();
+                
+                const allContainers = [document.getElementById('scp-bg-settings'), document.getElementById('scp-sp-bg-settings')].filter(Boolean);
+                allContainers.forEach(c => buildBackgroundSettingsUI(c));
+                applyWindowBackground();
+            };
+            inp.click();
+        });
+
+        const urlBtn = document.createElement('button');
+        urlBtn.className = isSP ? 'scp-action-btn' : 'menu_button interactable';
+        urlBtn.innerHTML = `<i class="fa-solid fa-link"></i><span>URL</span>`;
+        if (!isSP) urlBtn.style.flex = '1';
+
+        urlBtn.addEventListener('click', async () => {
+            const url = await showCustomDialog({ type: 'prompt', title: 'Add Background', message: 'Enter direct URL to image or video:', placeholder: 'https://...' });
+            if (url && url.trim()) {
+                const s2 = getSettings();
+                const id = 'bg_' + Date.now();
+                const isVideo = url.endsWith('.mp4') || url.endsWith('.webm');
+                s2.customBackgrounds[id] = { name: 'URL Background', dataUrl: url.trim(), isVideo, fit: 'cover' };
+                s2.windowBg = id;
+                saveSettings();
+                const allContainers = [document.getElementById('scp-bg-settings'), document.getElementById('scp-sp-bg-settings')].filter(Boolean);
+                allContainers.forEach(c => buildBackgroundSettingsUI(c));
+                applyWindowBackground();
+            }
+        });
+
+        const renameBtn = document.createElement('button');
+        renameBtn.className = isSP ? 'scp-action-btn' : 'menu_button interactable';
+        renameBtn.innerHTML = `<i class="fa-solid fa-pen"></i><span>Rename</span>`;
+        if (!isSP) renameBtn.style.flex = '1';
+
+        renameBtn.addEventListener('click', async () => {
+            const val = typeSel.value;
+            if (val === 'none') return;
+            const bg = s.customBackgrounds[val];
+            const newName = await showCustomDialog({ type: 'prompt', title: 'Rename Background', message: 'New name:', defaultValue: bg.name });
+            if (newName && newName.trim()) {
+                s.customBackgrounds[val].name = newName.trim();
+                saveSettings();
+                const allContainers = [document.getElementById('scp-bg-settings'), document.getElementById('scp-sp-bg-settings')].filter(Boolean);
+                allContainers.forEach(c => buildBackgroundSettingsUI(c));
+            }
+        });
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = isSP ? 'scp-action-btn scp-sp-danger-btn' : 'menu_button interactable';
+        deleteBtn.innerHTML = `<i class="fa-solid fa-trash"></i><span>Delete</span>`;
+        if (!isSP) deleteBtn.style.flex = '1';
+
+        deleteBtn.addEventListener('click', async () => {
+            const val = typeSel.value;
+            if (val === 'none') return;
+            const ok = await showCustomDialog({ type: 'confirm', title: 'Delete Background', message: 'Delete this background?' });
+            if (!ok) return;
+            const s2 = getSettings();
+            delete s2.customBackgrounds[val];
+            s2.windowBg = 'none';
+            saveSettings();
+            const allContainers = [document.getElementById('scp-bg-settings'), document.getElementById('scp-sp-bg-settings')].filter(Boolean);
+            allContainers.forEach(c => buildBackgroundSettingsUI(c));
+            applyWindowBackground();
+        });
+        
+        customActionsWrap.appendChild(uploadBtn);
+        customActionsWrap.appendChild(urlBtn);
+        customActionsWrap.appendChild(renameBtn);
+        customActionsWrap.appendChild(deleteBtn);
+        container.appendChild(customActionsWrap);
+
+        // EXTRA SETTINGS (Fit & Dim)
+        const extraWrap = document.createElement('div');
+        extraWrap.style.cssText = 'margin-top:12px';
+
+        const fitRow = document.createElement('div');
+        fitRow.className = isSP ? 'scp-sp-field' : '';
+        const fitLbl = document.createElement('label');
+        fitLbl.className = isSP ? 'scp-sp-label' : '';
+        if (!isSP) fitLbl.style.cssText = 'font-size:11px;color:#888;display:block;margin-bottom:4px';
+        fitLbl.textContent = 'Image/Video Fit';
+        const fitSel = document.createElement('select');
+        fitSel.className = isSP ? 'scp-sp-select text_pole' : 'text_pole';
+        ['cover', 'contain', 'fill', 'center'].forEach(f => {
+            const opt = document.createElement('option'); opt.value = f; opt.textContent = f; fitSel.appendChild(opt);
+        });
+        
+        const currentBgData = s.customBackgrounds[s.windowBg];
+        fitSel.value = currentBgData?.fit || 'cover';
+        
+        fitSel.addEventListener('change', () => {
+            if (s.windowBg !== 'none' && s.customBackgrounds[s.windowBg]) {
+                s.customBackgrounds[s.windowBg].fit = fitSel.value;
+                saveSettings();
+                const allContainers = [document.getElementById('scp-bg-settings'), document.getElementById('scp-sp-bg-settings')].filter(Boolean);
+                allContainers.forEach(c => { const s = c.querySelector('select[id$="fit-sel"]'); if(s) s.value = fitSel.value; });
+                applyWindowBackground();
+            }
+        });
+        fitSel.id = isSP ? 'scp-sp-fit-sel' : 'scp-fit-sel';
+        fitRow.appendChild(fitLbl); fitRow.appendChild(fitSel);
+        extraWrap.appendChild(fitRow);
+
+        const dimRow = document.createElement('div');
+        dimRow.className = isSP ? 'scp-sp-field' : '';
+        dimRow.style.marginTop = '8px';
+        const dimLbl = document.createElement('label');
+        dimLbl.className = isSP ? 'scp-sp-label' : '';
+        if (!isSP) dimLbl.style.cssText = 'font-size:11px;color:#888;display:block;margin-bottom:4px';
+        dimLbl.textContent = 'Darkness Overlay';
+        const dimFlex = document.createElement('div');
+        dimFlex.className = isSP ? 'scp-sp-row' : '';
+        if (!isSP) dimFlex.style.cssText = 'display:flex;align-items:center;gap:10px';
+        
+        const dimSlider = document.createElement('input');
+        dimSlider.type = 'range'; dimSlider.min = '0'; dimSlider.max = '100';
+        dimSlider.className = isSP ? 'scp-slider' : 'neo-range-slider';
+        dimSlider.style.flex = '1'; dimSlider.value = s.windowBgDim ?? 50;
+        
+        const dimVal = document.createElement('span');
+        dimVal.style.cssText = isSP ? 'min-width:32px;text-align:right;font-size:11px;color:var(--scp-accent)' : 'font-size:12px;min-width:34px;text-align:right;color:var(--SmartThemeQuoteColor,#a99bfb)';
+        dimVal.textContent = `${dimSlider.value}%`;
+
+        dimSlider.addEventListener('input', () => { dimVal.textContent = `${dimSlider.value}%`; });
+        dimSlider.addEventListener('change', () => {
+            getSettings().windowBgDim = parseInt(dimSlider.value); saveSettings();
+            const allContainers = [document.getElementById('scp-bg-settings'), document.getElementById('scp-sp-bg-settings')].filter(Boolean);
+            allContainers.forEach(c => { const s = c.querySelector('input[type="range"]'); if(s && s !== dimSlider) { s.value = dimSlider.value; s.nextElementSibling.textContent = `${dimSlider.value}%`; } });
+            applyWindowBackground();
+        });
+
+        dimFlex.appendChild(dimSlider); dimFlex.appendChild(dimVal);
+        dimRow.appendChild(dimLbl); dimRow.appendChild(dimFlex);
+        extraWrap.appendChild(dimRow);
+
+        container.appendChild(extraWrap);
+
+        const updateVisibility = () => {
+            const isNone = typeSel.value === 'none';
+            renameBtn.style.display = isNone ? 'none' : '';
+            deleteBtn.style.display = isNone ? 'none' : '';
+            extraWrap.style.display = isNone ? 'none' : 'block';
+        };
+        updateVisibility();
+
+        typeSel.addEventListener('change', () => {
+            getSettings().windowBg = typeSel.value;
+            saveSettings();
+            updateVisibility();
+            const allContainers = [document.getElementById('scp-bg-settings'), document.getElementById('scp-sp-bg-settings')].filter(Boolean);
+            allContainers.forEach(c => buildBackgroundSettingsUI(c));
+            applyWindowBackground();
+        });
+    }
+
+    function applyWindowBackground() {
+        if (!windowEl) return;
+        const s = getSettings();
+        const bgId = s.windowBg || 'none';
+        const dim = (s.windowBgDim ?? 50) / 100;
+
+        windowEl.style.removeProperty('--scp-bg-image');
+        windowEl.classList.remove('scp-has-bg');
+        
+        let mediaEl = document.getElementById('scp-bg-media');
+
+        if (bgId === 'none' || !s.customBackgrounds || !s.customBackgrounds[bgId]) {
+            if (mediaEl) mediaEl.remove();
+            return;
+        }
+
+        const bg = s.customBackgrounds[bgId];
+        const fit = bg.fit || 'cover';
+
+        const isVideo = bg.isVideo;
+        if (mediaEl) {
+            const isVideoTag = mediaEl.tagName.toLowerCase() === 'video';
+            if (isVideo !== isVideoTag) {
+                mediaEl.remove();
+                mediaEl = null;
+            }
+        }
+
+        if (!mediaEl) {
+            mediaEl = document.createElement(isVideo ? 'video' : 'img');
+            mediaEl.id = 'scp-bg-media';
+            if (isVideo) {
+                mediaEl.autoplay = true; 
+                mediaEl.loop = true; 
+                mediaEl.muted = true; 
+                mediaEl.playsInline = true;
+            }
+            windowEl.insertBefore(mediaEl, windowEl.firstChild);
+        }
+
+        mediaEl.className = `scp-bg-media bg-${fit}`;
+        if (mediaEl.src !== bg.dataUrl) mediaEl.src = bg.dataUrl;
+        
+        windowEl.style.setProperty('--scp-bg-dim', dim);
+        windowEl.classList.add('scp-has-bg');
+    }
+
+    function _setupAttachButton() {
+        const btn = document.getElementById('scp-attach-btn');
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+            const inp = document.createElement('input');
+            inp.type = 'file';
+            inp.multiple = true;
+            inp.accept = 'image/*,text/*,.pdf,.json,.txt,.md,.csv,.log,.js,.py,.html,.css';
+            inp.onchange = () => { if (inp.files?.length) _addAttachments(Array.from(inp.files)); };
+            inp.click();
+        });
+    }
+
+    function _setupBgUpload(btnId, inputId) {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+            const inp = document.createElement('input');
+            inp.type = 'file';
+            inp.accept = 'image/*,video/mp4,video/webm';
+            inp.onchange = async () => {
+                const file = inp.files[0];
+                if (!file) return;
+                if (file.size > 25 * 1024 * 1024) { toastr.warning('File is too large (>25MB). Use URL instead.', EXT_DISPLAY); return; }
+                const dataUrl = await _fileToDataUrl(file).catch(() => null);
+                if (dataUrl) {
+                    getSettings().windowBgUrl = dataUrl;
+                    saveSettings();
+                    const urlInput = document.getElementById(inputId);
+                    if (urlInput) urlInput.value = dataUrl;
+                    applyWindowBackground();
+                    _syncBgToOverlay();
+                }
+            };
+            inp.click();
+        });
+    }
 
     function applyCustomTheme(theme) {
         if (!theme) return;
@@ -8182,6 +10459,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         }
         windowEl.style.opacity = ((s.opacity || 95) / 100).toString();
         applyCustomTheme(s.customTheme || THEME_PRESETS.default);
+        applyWindowBackground();
     }
 
     // ─── Visibility ─────────────────────────────────────────────────────────────
@@ -8485,50 +10763,57 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
     // ─── Profile System ─────────────────────────────────────────────────────────
 
-    function isConfigProfileDirty() {
+    const _PROFILE_KEYS = [
+        'systemPrompt', 'includeSystemPrompt', 'includeAuthorsNote', 
+        'includeCharacterCard', 'includeUserPersonality', 'contextDepth', 
+        'localHistoryLimit', 'connectionSource', 'connectionProfileId', 'maxTokens',
+        'applyRegexToContext', 'reasoningTrimStrings', 'forceStreaming',
+        'charEditAIEnabled', 'charEditPrompt', 'lorebookAIManageEnabled',
+        'lorebookManagePrompt', 'lorebookAutoKeyword', 'lorebookSTScanDepth',
+        'lorebookCopilotScanDepth', 'chatEditAIEnabled', 'chatEditPrompt',
+    ];
+
+    let _profileSnapshot = null;
+
+    function _takeProfileSnapshot() {
         const s = getSettings();
-        if (!s.activeProfile || !s.profiles[s.activeProfile]) return false;
-        
-        const p = s.profiles[s.activeProfile];
-        const keys = [
-            'systemPrompt', 'includeSystemPrompt', 'includeAuthorsNote', 
-            'includeCharacterCard', 'includeUserPersonality', 'contextDepth', 
-            'localHistoryLimit', 'connectionSource', 'connectionProfileId', 'maxTokens',
-            'applyRegexToContext'
-        ];
-        
-        for (const k of keys) {
-            const valS = s[k] ?? false;
-            const valP = p[k] ?? false;
-            if (String(valS) !== String(valP)) return true;
+        _profileSnapshot = {};
+        for (const k of _PROFILE_KEYS) _profileSnapshot[k] = JSON.stringify(s[k]);
+        _profileSnapshot._charEditFields = JSON.stringify(s.charEditFields || {});
+    }
+
+    function isConfigProfileDirty() {
+        if (!_profileSnapshot) return false;
+        const s = getSettings();
+        for (const k of _PROFILE_KEYS) {
+            if (JSON.stringify(s[k]) !== _profileSnapshot[k]) return true;
         }
-        
+        if (JSON.stringify(s.charEditFields || {}) !== _profileSnapshot._charEditFields) return true;
         return false;
     }
 
     function saveProfile(name) {
         const s = getSettings();
-        s.profiles[name] = {
-            systemPrompt: s.systemPrompt, includeSystemPrompt: s.includeSystemPrompt,
-            includeAuthorsNote: s.includeAuthorsNote, includeCharacterCard: s.includeCharacterCard,
-            includeUserPersonality: s.includeUserPersonality, contextDepth: s.contextDepth,
-            localHistoryLimit: s.localHistoryLimit,
-            connectionSource: s.connectionSource, connectionProfileId: s.connectionProfileId,
-            maxTokens: s.maxTokens,
-            applyRegexToContext: s.applyRegexToContext,
-        };
-        s.activeProfile = name; saveSettings();
+        const p = {};
+        for (const k of _PROFILE_KEYS) p[k] = s[k];
+        p.charEditFields = JSON.parse(JSON.stringify(s.charEditFields || {}));
+        s.profiles[name] = p;
+        s.activeProfile = name; 
+        saveSettings();
     }
 
     function loadProfile(name) {
         const s = getSettings(); const p = s.profiles[name]; if (!p) return;
-        
-        const profileData = { ...p };
-        delete profileData.customTheme;
-        
-        Object.assign(s, profileData); s.activeProfile = name;
+        for (const k of _PROFILE_KEYS) {
+            if (p[k] !== undefined) s[k] = p[k];
+        }
+        if (p.charEditFields) s.charEditFields = JSON.parse(JSON.stringify(p.charEditFields));
+        s.activeProfile = name;
         saveSettings();
         if (typeof updateSettingsUI === 'function') updateSettingsUI();
+        _takeProfileSnapshot();
+        _configDirty = false;
+        _updateDirtyDots();
     }
 
     function deleteProfile(name) {
@@ -8549,7 +10834,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 includeUserPersonality: true, contextDepth: 15,
                 localHistoryLimit: 50,
                 connectionSource: 'default', connectionProfileId: '',
-                maxTokens: 2048,
+                maxTokens: 8200,
                 applyRegexToContext: true,
             };
             s.activeProfile = 'Default';
@@ -8900,17 +11185,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (ctx.ConnectionManagerRequestService && typeof ctx.ConnectionManagerRequestService.getSupportedProfiles === 'function') {
             profiles = ctx.ConnectionManagerRequestService.getSupportedProfiles();
         } else {
-            try {
-                if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
-                    const result = await ctx.executeSlashCommandsWithOptions('/profile-list');
-                    if (result && result.pipe) {
-                        const names = JSON.parse(result.pipe);
-                        profiles = names.map(n => ({ id: n, name: n }));
-                    }
-                }
-            } catch (e) {
-                console.warn(`[${EXT_DISPLAY}] Failed to fetch profiles`, e);
-            }
+            profiles = ctx.extensionSettings?.connectionManager?.profiles || [];
         }
 
         const s = getSettings(); 
@@ -8924,19 +11199,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 newOpt.textContent = p.name;
                 profSel.appendChild(newOpt);
             });
-        } else {
-            const nativeSel = document.getElementById('connection_profile');
-            if (nativeSel?.options) {
-                for (const opt of Array.from(nativeSel.options)) {
-                    if (opt.value && opt.value !== 'default' && opt.value !== 'gui') {
-                        const newOpt = document.createElement('option');
-                        const profileName = opt.textContent.trim();
-                        newOpt.value = opt.value;
-                        newOpt.textContent = profileName;
-                        profSel.appendChild(newOpt);
-                    }
-                }
-            }
         }
         if (Array.from(profSel.options).some(o => o.value === currentVal)) profSel.value = currentVal;
     }
@@ -8975,13 +11237,17 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         if (key === 'forceStreaming') {
             const streamVal = val === true ? 'on' : (val === false ? 'auto' : (val || 'auto'));
-            document.querySelectorAll('.scp-stream-btn').forEach(b => {
-                const active = b.dataset.stream === streamVal;
-                b.classList.toggle('active', active);
-                b.style.color = active ? 'var(--scp-accent)' : '';
-                b.style.borderColor = active ? 'var(--scp-accent-dim)' : '';
-                b.style.background = active ? 'var(--scp-accent-bg)' : '';
+            
+            document.querySelectorAll('.scp-stream-btn:not(.scp-ov-stream-btn)').forEach(b => {
+                b.classList.toggle('active', b.dataset.stream === streamVal);
             });
+
+            const ov = getSessionOverrides();
+            if (!('forceStreaming' in ov)) {
+                document.querySelectorAll('.scp-ov-stream-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.stream === streamVal);
+                });
+            }
             return;
         }
 
@@ -9002,6 +11268,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             charField_first_mes: 'scp-sp-ov-ce-first-mes',
             charField_mes_example: 'scp-sp-ov-ce-mes-example',
             charField_authors_note: 'scp-sp-ov-ce-authors-note',
+            charField_alternate_greetings: 'scp-sp-ov-ce-alt-greetings',
         };
 
         const ovId = ovIdMap[key];
@@ -9026,13 +11293,21 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 const dv = document.getElementById('scp-sp-ov-depth-val');
                 if (dv) dv.textContent = eff.contextDepth ?? 15;
             }
+            
+            if (key === 'charField_alternate_greetings') {
+                const picker = document.getElementById('scp-sp-ov-ce-alt-greetings-picker');
+                if (picker) {
+                    picker.style.display = ovEl && ovEl.checked ? '' : 'none';
+                    refreshAltGreetingsPickers();
+                }
+            }
         }
     }
     
     function updateSettingsUI() {
         const s = getSettings();
-        const setC = (id, k) => { const el = $(id); if (el) el.checked = !!s[k]; };
-        const setI = (id, k) => { const el = $(id); if (el) el.value = s[k] ?? ''; };
+        const setC = (id, key) => { const el = $(id); if (el) el.checked = !!s[key]; };
+        const setI = (id, key) => { const el = $(id); if (el) el.value = s[key] ?? ''; };
         
         setC('scp-enabled', 'enabled');
         setC('scp-hotkey-enabled', 'hotkeyEnabled');
@@ -9086,8 +11361,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const cs = $('scp-conn-source');
         if (cs) {
             cs.value = s.connectionSource ?? 'default';
-            const g = $('scp-profile-group');
-            if (g) g.style.display = cs.value === 'profile' ? '' : 'none';
+            const gGroup = $('scp-profile-group');
+            if (gGroup) gGroup.style.display = cs.value === 'profile' ? '' : 'none';
         }
         
         const spEl = $('scp-sysprompt');
@@ -9098,6 +11373,18 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         const wand = $('scp-wand-btn');
         if (wand) wand.style.display = s.enabled ? '' : 'none';
+        buildBackgroundSettingsUI(document.getElementById('scp-bg-settings'));
+
+        const pickerLinesEl = $('scp-picker-lines');
+        if (pickerLinesEl) pickerLinesEl.value = s.pickerPreviewLines ?? 1;
+        const pickerLastEl = $('scp-picker-last-lines');
+        if (pickerLastEl) pickerLastEl.value = s.pickerPreviewLastLines ?? 0;
+
+        const imageModeEl = $('scp-image-mode');
+        if (imageModeEl) imageModeEl.value = s.imageAnalysisMode || 'direct';
+
+        const soundUnfocusedEl = $('scp-sound-unfocused');
+        if (soundUnfocusedEl) soundUnfocusedEl.checked = !!s.completionSoundOnlyWhenUnfocused;
 
         if (typeof buildThemeEditor === 'function') buildThemeEditor();
         buildSoundSettingsUI($('scp-sound-settings'));
@@ -9111,6 +11398,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (lbAiStEl2) lbAiStEl2.checked = !!s.lorebookAIManageEnabled;
         const lbKwStEl2 = $('scp-lb-auto-kw-st');
         if (lbKwStEl2) lbKwStEl2.checked = !!s.lorebookAutoKeyword;
+
+        const chatEditEnabledStEl = $('scp-chat-edit-enabled-st');
+        if (chatEditEnabledStEl) chatEditEnabledStEl.checked = !!s.chatEditAIEnabled;
+        const chatEditPromptStEl = $('scp-chat-edit-prompt-st');
+        if (chatEditPromptStEl) chatEditPromptStEl.value = s.chatEditPrompt || DEFAULT_CHAT_EDIT_DIRECTIVE.trim();
     }
 
     function setupSettingsHandlers() {
@@ -9177,14 +11469,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const btn = $(id); if (!btn) return;
             btn.addEventListener('click', () => {
                 const val = btn.dataset.stream;
-                getSettings().forceStreaming = val; saveSettings();
-                stUpdateStreamBtns(val);
-                document.querySelectorAll('.scp-stream-btn:not(#scp-st-stream-auto):not(#scp-st-stream-on):not(#scp-st-stream-off)').forEach(b => {
-                    b.classList.toggle('active', b.dataset.stream === val);
-                    b.style.color = b.dataset.stream === val ? 'var(--scp-accent)' : '';
-                    b.style.borderColor = b.dataset.stream === val ? 'var(--scp-accent-dim)' : '';
-                    b.style.background = b.dataset.stream === val ? 'var(--scp-accent-bg)' : '';
-                });
+                getSettings().forceStreaming = val; 
+                saveSettings();
+                syncOverlayUI('forceStreaming', val);
+                _markDirty('config');
             });
         });
         
@@ -9259,6 +11547,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 const val = charEditPromptEl.value;
                 getSettings().charEditPrompt = (val.trim() === DEFAULT_CHAR_EDIT_DIRECTIVE.trim()) ? '' : val;
                 saveSettings();
+                _markDirty('config');
             });
         }
         
@@ -9273,8 +11562,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 saveSettings(); updateMsgCount(getCurrentSession());
                 const ovEl = document.getElementById(`scp-sp-ce-${fieldKey.replace(/_/g, '-')}`);
                 if (ovEl) ovEl.checked = el.checked;
+                _markDirty('config');
             });
-
             syncOverlayUI('charField_' + fieldKey, el.checked);
         };
         bGCharFieldST('scp-ce-description', 'description');
@@ -9294,6 +11583,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             if (!ok) return;
             getSettings().charEditPrompt = '';
             saveSettings();
+            _markDirty('config');
             const el = $('scp-char-edit-prompt');
             if (el) el.value = DEFAULT_CHAR_EDIT_DIRECTIVE.trim();
             const ovEl = $('scp-sp-char-edit-prompt');
@@ -9371,7 +11661,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 includeUserPersonality: true, contextDepth: 15,
                 localHistoryLimit: 50,
                 connectionSource: 'default', connectionProfileId: '',
-                maxTokens: 2048,
+                maxTokens: 8200,
             };
             saveSettings(); refreshProfilesDropdown();
             loadProfile(n);
@@ -9482,6 +11772,120 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const el = $('scp-lb-manage-prompt'); if (el) el.value = DEFAULT_LB_MANAGE_PROMPT;
             saveSettings(); toastr.success('Lorebook prompt reset.', EXT_DISPLAY);
         });
+
+        // Chat Edit handlers (ST drawer)
+        const chatEditEnabledStEl = $('scp-chat-edit-enabled-st');
+        if (chatEditEnabledStEl) {
+            chatEditEnabledStEl.checked = !!getSettings().chatEditAIEnabled;
+            chatEditEnabledStEl.addEventListener('change', () => {
+                getSettings().chatEditAIEnabled = chatEditEnabledStEl.checked; saveSettings();
+                const spEl2 = document.getElementById('scp-sp-chat-edit-enabled');
+                if (spEl2) spEl2.checked = chatEditEnabledStEl.checked;
+                updateMsgCount(getCurrentSession());
+            });
+        }
+        const chatEditPromptStEl = $('scp-chat-edit-prompt-st');
+        if (chatEditPromptStEl) {
+            chatEditPromptStEl.value = getSettings().chatEditPrompt || DEFAULT_CHAT_EDIT_DIRECTIVE.trim();
+            chatEditPromptStEl.addEventListener('input', () => {
+                const val = chatEditPromptStEl.value;
+                getSettings().chatEditPrompt = (val.trim() === DEFAULT_CHAT_EDIT_DIRECTIVE.trim()) ? '' : val;
+                saveSettings();
+                _markDirty('config');
+                const spEl2 = document.getElementById('scp-sp-chat-edit-prompt');
+                if (spEl2) spEl2.value = chatEditPromptStEl.value;
+            });
+        }
+        $('scp-reset-chat-edit-prompt-st')?.addEventListener('click', async () => {
+            const ok = await showCustomDialog({ type: 'confirm', title: 'Reset Chat Edit Prompt', message: 'Reset to default?' });
+            if (!ok) return;
+            getSettings().chatEditPrompt = ''; saveSettings(); _markDirty('config');
+            if (chatEditPromptStEl) chatEditPromptStEl.value = DEFAULT_CHAT_EDIT_DIRECTIVE.trim();
+            const spEl2 = document.getElementById('scp-sp-chat-edit-prompt');
+            if (spEl2) spEl2.value = DEFAULT_CHAT_EDIT_DIRECTIVE.trim();
+            toastr.success('Chat edit prompt reset.', EXT_DISPLAY);
+        });
+
+        // ── NEW SETTINGS ──
+
+        // Sound unfocused (ST)
+        const soundUnfocusedEl = $('scp-sound-unfocused');
+        if (soundUnfocusedEl) {
+            soundUnfocusedEl.checked = !!getSettings().completionSoundOnlyWhenUnfocused;
+            soundUnfocusedEl.addEventListener('change', () => {
+                getSettings().completionSoundOnlyWhenUnfocused = soundUnfocusedEl.checked;
+                saveSettings();
+                const spEl = document.getElementById('scp-sp-sound-unfocused');
+                if (spEl) spEl.checked = soundUnfocusedEl.checked;
+            });
+        }
+
+        // Background (ST)
+        const _bindBg = (typeId, urlId, urlGrpId, dimId, dimGrpId, dimValId) => {
+            const typeEl = $(typeId);
+            const urlEl = $(urlId);
+            const urlGrp = $(urlGrpId);
+            const dimEl = $(dimId);
+            const dimGrp = $(dimGrpId);
+            const dimValEl = $(dimValId);
+            const s2 = getSettings();
+            if (typeEl) {
+                typeEl.value = s2.windowBgType || 'none';
+                typeEl.addEventListener('change', () => {
+                    getSettings().windowBgType = typeEl.value;
+                    saveSettings();
+                    if (urlGrp) urlGrp.style.display = typeEl.value !== 'none' ? '' : 'none';
+                    if (dimGrp) dimGrp.style.display = typeEl.value !== 'none' ? '' : 'none';
+                    applyWindowBackground();
+                    _syncBgToOverlay();
+                });
+            }
+            if (urlEl) {
+                urlEl.value = s2.windowBgUrl || '';
+                urlEl.addEventListener('input', () => {
+                    getSettings().windowBgUrl = urlEl.value;
+                    saveSettings();
+                    applyWindowBackground();
+                    _syncBgToOverlay();
+                });
+            }
+            if (dimEl) {
+                dimEl.value = s2.windowBgDim ?? 50;
+                if (dimValEl) dimValEl.textContent = `${dimEl.value}%`;
+                dimEl.addEventListener('input', () => {
+                    if (dimValEl) dimValEl.textContent = `${dimEl.value}%`;
+                });
+                dimEl.addEventListener('change', () => {
+                    getSettings().windowBgDim = parseInt(dimEl.value);
+                    saveSettings();
+                    applyWindowBackground();
+                    _syncBgToOverlay();
+                });
+            }
+        };
+        _bindBg('scp-bg-type','scp-bg-url','scp-bg-url-group','scp-bg-dim','scp-bg-dim-group','scp-bg-dim-val');
+
+        bindInput('scp-picker-lines', 'pickerPreviewLines', Number);
+        bindInput('scp-picker-last-lines', 'pickerPreviewLastLines', Number);
+
+        bindSelect('scp-image-mode', 'imageAnalysisMode', () => {
+            const spEl = document.getElementById('scp-sp-image-mode');
+            if (spEl) spEl.value = getSettings().imageAnalysisMode;
+        });
+
+        _setupBgUpload('scp-bg-upload-btn', 'scp-bg-url');
+    }
+
+    function _syncBgToOverlay() {
+        const s = getSettings();
+        const bgType = s.windowBgType || 'none';
+        ['scp-sp-bg-type','scp-bg-type'].forEach(id => { const el = document.getElementById(id); if (el) el.value = bgType; });
+        ['scp-sp-bg-url','scp-bg-url'].forEach(id => { const el = document.getElementById(id); if (el) el.value = s.windowBgUrl || ''; });
+        ['scp-sp-bg-dim','scp-bg-dim'].forEach(id => { const el = document.getElementById(id); if (el) el.value = s.windowBgDim ?? 50; });
+        ['scp-sp-bg-dim-val','scp-bg-dim-val'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = `${s.windowBgDim ?? 50}%`; });
+        [['scp-sp-bg-url-group','scp-bg-url-group'],['scp-sp-bg-dim-group','scp-bg-dim-group']].forEach(([a,b]) => {
+            [a,b].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = bgType !== 'none' ? '' : 'none'; });
+        });
     }
 
     function openSettingsPanel() {
@@ -9497,6 +11901,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         buildQPSetManager(document.getElementById('scp-sp-qp-set-manager'), () => {
             buildQPSettingsUI(document.getElementById('scp-sp-qp-container'));
         });
+
         buildPromptPresetManager(
             document.getElementById('scp-sp-prompt-preset-manager'),
             () => document.getElementById('scp-sp-ov-sysprompt')?.value || '',
@@ -9507,6 +11912,21 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 ta.dispatchEvent(new Event('input', { bubbles: true }));
             }
         );
+        buildPromptPresetManager(document.getElementById('scp-sp-ov-char-preset-manager'), 
+            () => document.getElementById('scp-sp-ov-char-edit-prompt')?.value || '', 
+            (text) => { const ta = document.getElementById('scp-sp-ov-char-edit-prompt'); if(ta) { ta.value = text; ta.dispatchEvent(new Event('input', {bubbles:true})); } }, 
+            'charEditPromptPresets');
+
+        buildPromptPresetManager(document.getElementById('scp-sp-ov-lb-preset-manager'), 
+            () => document.getElementById('scp-sp-ov-lb-manage-prompt')?.value || '', 
+            (text) => { const ta = document.getElementById('scp-sp-ov-lb-manage-prompt'); if(ta) { ta.value = text; ta.dispatchEvent(new Event('input', {bubbles:true})); } }, 
+            'lbEditPromptPresets');
+
+        buildPromptPresetManager(document.getElementById('scp-sp-ov-chat-preset-manager'), 
+            () => document.getElementById('scp-sp-ov-chat-edit-prompt')?.value || '', 
+            (text) => { const ta = document.getElementById('scp-sp-ov-chat-edit-prompt'); if(ta) { ta.value = text; ta.dispatchEvent(new Event('input', {bubbles:true})); } }, 
+            'chatEditPromptPresets');
+
         overlay.style.display = 'flex';
         updateSessionOverrideIndicator();
         overlay.querySelectorAll('.scp-sp-tab').forEach(t => t.classList.toggle('active', t.dataset.sptab === 'global'));
@@ -9547,23 +11967,29 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (spGhOpVal) spGhOpVal.textContent = `${s.ghostModeOpacity ?? 15}%`;
         gC('scp-sp-ghost-hotkey-enabled', s.ghostModeHotkeyEnabled);
         g('scp-sp-ghost-hotkey', s.ghostModeHotkey);
+        
+        // Force Streaming global
         gC('scp-sp-force-streaming', s.forceStreaming);
         const streamVal = s.forceStreaming === true ? 'on' : (s.forceStreaming === false ? 'auto' : (s.forceStreaming || 'auto'));
-        document.querySelectorAll('.scp-stream-btn').forEach(b => {
-            b.classList.toggle('active', b.dataset.stream === streamVal);
-            b.style.color = b.dataset.stream === streamVal ? 'var(--scp-accent)' : '';
-            b.style.borderColor = b.dataset.stream === streamVal ? 'var(--scp-accent-dim)' : '';
-            b.style.background = b.dataset.stream === streamVal ? 'var(--scp-accent-bg)' : '';
+        document.querySelectorAll('.scp-stream-btn:not(.scp-ov-stream-btn)').forEach(b => {
+            const active = b.dataset.stream === streamVal;
+            b.classList.toggle('active', active);
+            b.style.color = '';
+            b.style.borderColor = '';
+            b.style.background = '';
         });
+        
         g('scp-sp-conn-source', s.connectionSource ?? 'default');
         const gCp = document.getElementById('scp-sp-global-profile-group');
         if (gCp) gCp.style.display = s.connectionSource === 'profile' ? '' : 'none';
         g('scp-sp-max-tokens', s.maxTokens);
         g('scp-sp-history-limit', s.localHistoryLimit);
+        
         const spDs = document.getElementById('scp-sp-depth-slider');
         const spDv = document.getElementById('scp-sp-depth-val');
         if (spDs) spDs.value = s.contextDepth ?? 15;
         if (spDv) spDv.textContent = s.contextDepth ?? 15;
+        
         gC('scp-sp-include-sysprompt', s.includeSystemPrompt);
         gC('scp-sp-include-persona', s.includeUserPersonality);
         gC('scp-sp-apply-regex', s.applyRegexToContext);
@@ -9586,10 +12012,13 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         gC('scp-sp-ce-authors-note', ceFields.authors_note !== false);
         gC('scp-sp-ce-alt-greetings', !!ceFields.alternate_greetings);
 
+        gC('scp-sp-chat-edit-enabled', s.chatEditAIEnabled);
+        g('scp-sp-chat-edit-prompt', s.chatEditPrompt || DEFAULT_CHAT_EDIT_DIRECTIVE.trim());
+
         refreshSPProfilesDropdown();
         updateSPConnProfileList();
 
-        // Session tab
+        // ── Session tab ──
         const ovDs = document.getElementById('scp-sp-ov-depth-slider');
         const ovDv = document.getElementById('scp-sp-ov-depth-val');
         if (ovDs) ovDs.value = eff.contextDepth ?? 15;
@@ -9601,11 +12030,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         
         g('scp-sp-ov-conn-profile', eff.connectionProfileId ?? '');
 
-        const ovi = (id, key) => { const el = document.getElementById(id); if (el) el.value = key in ov ? ov[key] ?? '' : ''; };
+        const ovi = (id, key) => { const el = document.getElementById(id); if (el) el.value = key in ov ? (ov[key] ?? '') : ''; };
         ovi('scp-sp-ov-max-tokens', 'maxTokens');
         ovi('scp-sp-ov-history-limit', 'localHistoryLimit');
         ovi('scp-sp-ov-reasoning-trim', 'reasoningTrimStrings');
         ovi('scp-sp-ov-sysprompt', 'systemPrompt');
+        
+        // AI Prompts overrides
+        ovi('scp-sp-ov-char-edit-prompt', 'charEditPrompt');
+        ovi('scp-sp-ov-lb-manage-prompt', 'lorebookManagePrompt');
+        ovi('scp-sp-ov-chat-edit-prompt', 'chatEditPrompt');
 
         gC('scp-sp-ov-include-sysprompt', eff.includeSystemPrompt);
         gC('scp-sp-ov-include-persona', eff.includeUserPersonality);
@@ -9631,8 +12065,40 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         ovCe('scp-sp-ov-ce-first-mes', 'charField_first_mes');
         ovCe('scp-sp-ov-ce-mes-example', 'charField_mes_example');
         ovCe('scp-sp-ov-ce-authors-note', 'charField_authors_note');
+        ovCe('scp-sp-ov-ce-alt-greetings', 'charField_alternate_greetings');
+
+        // Main ai modules overrides toggles
+        const ovC = (id, key) => {
+            const el = document.getElementById(id);
+            if (el) el.checked = key in ov ? !!ov[key] : !!eff[key];
+        };
+        ovC('scp-sp-ov-char-edit-enabled', 'charEditAIEnabled');
+        ovC('scp-sp-ov-lb-ai-enabled', 'lorebookAIManageEnabled');
+        ovC('scp-sp-ov-chat-edit-enabled', 'chatEditAIEnabled');
+        ovC('scp-sp-ov-lb-auto-kw', 'lorebookAutoKeyword');
+
+        const altGreetingsOvEl = document.getElementById('scp-sp-ov-ce-alt-greetings');
+        if (altGreetingsOvEl) {
+            const picker = document.getElementById('scp-sp-ov-ce-alt-greetings-picker');
+            if (picker) {
+                picker.style.display = altGreetingsOvEl.checked ? '' : 'none';
+                refreshAltGreetingsPickers();
+            }
+        }
 
         updateSPOverrideIndicators();
+
+        const spSoundUnf = document.getElementById('scp-sp-sound-unfocused');
+        if (spSoundUnf) spSoundUnf.checked = !!s.completionSoundOnlyWhenUnfocused;
+        
+        buildBackgroundSettingsUI(document.getElementById('scp-sp-bg-settings'));
+        
+        const spPl = document.getElementById('scp-sp-picker-lines');
+        if (spPl) spPl.value = s.pickerPreviewLines ?? 1;
+        const spPll = document.getElementById('scp-sp-picker-last-lines');
+        if (spPll) spPll.value = s.pickerPreviewLastLines ?? 0;
+        const spIm = document.getElementById('scp-sp-image-mode');
+        if (spIm) spIm.value = s.imageAnalysisMode || 'direct';
     }
 
     async function updateSPConnProfileList() {
@@ -9645,26 +12111,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         if (ctx.ConnectionManagerRequestService && typeof ctx.ConnectionManagerRequestService.getSupportedProfiles === 'function') {
             profiles = ctx.ConnectionManagerRequestService.getSupportedProfiles();
         } else {
-            try {
-                if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
-                    const result = await ctx.executeSlashCommandsWithOptions('/profile-list');
-                    if (result?.pipe) {
-                        const names = JSON.parse(result.pipe);
-                        profiles = names.map(n => ({ id: n, name: n }));
-                    }
-                }
-            } catch (_) {}
-        }
-
-        if (!profiles.length) {
-            const nativeSel = document.getElementById('connection_profile');
-            if (nativeSel?.options) {
-                for (const opt of Array.from(nativeSel.options)) {
-                    if (opt.value && opt.value !== 'default' && opt.value !== 'gui') {
-                        profiles.push({ id: opt.value, name: opt.textContent.trim() });
-                    }
-                }
-            }
+            profiles = ctx.extensionSettings?.connectionManager?.profiles || [];
         }
 
         selIds.forEach(sid => {
@@ -9686,7 +12133,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const sel = document.getElementById('scp-sp-profile-select'); if (!sel) return;
         const s = getSettings();
         if (!Object.keys(s.profiles).length) {
-            s.profiles['Default'] = { systemPrompt: DEFAULT_SYSTEM_PROMPT, includeSystemPrompt: true, includeAuthorsNote: true, includeCharacterCard: true, includeUserPersonality: true, contextDepth: 15, localHistoryLimit: 50, connectionSource: 'default', connectionProfileId: '', maxTokens: 2048, applyRegexToContext: true };
+            s.profiles['Default'] = { systemPrompt: DEFAULT_SYSTEM_PROMPT, includeSystemPrompt: true, includeAuthorsNote: true, includeCharacterCard: true, includeUserPersonality: true, contextDepth: 15, localHistoryLimit: 50, connectionSource: 'default', connectionProfileId: '', maxTokens: 8200, applyRegexToContext: true };
             s.activeProfile = 'Default'; saveSettings();
         }
         sel.innerHTML = '';
@@ -9717,7 +12164,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const overlay = document.getElementById('scp-settings-overlay');
         if (!overlay) return;
 
-        // Close
         document.getElementById('scp-sp-close')?.addEventListener('click', closeSettingsPanel);
         let _spMouseDown = null;
         overlay.addEventListener('mousedown', e => { _spMouseDown = e.target; });
@@ -9773,6 +12219,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             }
 
             syncOverlayUI(key, val);
+            _pruneMatchingOverrides();
 
             if (cb) cb(val);
         };
@@ -9833,11 +12280,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 b.style.background = b.dataset.stream === val ? 'var(--scp-accent-bg)' : '';
             });
         };
-        document.querySelectorAll('.scp-stream-btn').forEach(btn => {
+        document.querySelectorAll('.scp-stream-btn:not(.scp-ov-stream-btn)').forEach(btn => {
             btn.addEventListener('click', () => {
                 const val = btn.dataset.stream;
                 saveGlobal('forceStreaming', val, null);
-                updateStreamBtns(val);
             });
         });
 
@@ -9954,6 +12400,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 if (stEl) stEl.checked = el.checked;
                 
                 syncOverlayUI('charField_' + fieldKey, el.checked);
+                _markDirty('config');
             });
         };
         bGCheck('scp-sp-char-edit-enabled', 'charEditAIEnabled', () => updateMsgCount(getCurrentSession()));
@@ -9972,15 +12419,40 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const val = e.target.value;
             getSettings().charEditPrompt = (val.trim() === DEFAULT_CHAR_EDIT_DIRECTIVE.trim()) ? '' : val;
             saveSettings();
+            _markDirty('config');
         });
         document.getElementById('scp-sp-reset-char-edit-prompt')?.addEventListener('click', async () => {
             const ok = await showCustomDialog({ type: 'confirm', title: 'Reset Char Edit Prompt', message: 'Reset to built-in default prompt?' });
             if (!ok) return;
             getSettings().charEditPrompt = '';
             saveSettings();
+            _markDirty('config');
             const el = document.getElementById('scp-sp-char-edit-prompt');
             if (el) el.value = DEFAULT_CHAR_EDIT_DIRECTIVE.trim();
             toastr.success('Char edit prompt reset to default.', EXT_DISPLAY);
+        });
+        bGCheck('scp-sp-chat-edit-enabled', 'chatEditAIEnabled', () => {
+            updateMsgCount(getCurrentSession());
+            const stEl = document.getElementById('scp-chat-edit-enabled-st');
+            if (stEl) stEl.checked = getSettings().chatEditAIEnabled;
+        });
+        document.getElementById('scp-sp-chat-edit-prompt')?.addEventListener('input', e => {
+            const val = e.target.value;
+            getSettings().chatEditPrompt = (val.trim() === DEFAULT_CHAT_EDIT_DIRECTIVE.trim()) ? '' : val;
+            saveSettings();
+            _markDirty('config');
+            const stEl = document.getElementById('scp-chat-edit-prompt-st');
+            if (stEl) stEl.value = val;
+        });
+        document.getElementById('scp-sp-reset-chat-edit-prompt')?.addEventListener('click', async () => {
+            const ok = await showCustomDialog({ type: 'confirm', title: 'Reset Chat Edit Prompt', message: 'Reset to default?' });
+            if (!ok) return;
+            getSettings().chatEditPrompt = ''; saveSettings(); _markDirty('config');
+            const spEl = document.getElementById('scp-sp-chat-edit-prompt');
+            if (spEl) spEl.value = DEFAULT_CHAT_EDIT_DIRECTIVE.trim();
+            const stEl = document.getElementById('scp-chat-edit-prompt-st');
+            if (stEl) stEl.value = DEFAULT_CHAT_EDIT_DIRECTIVE.trim();
+            toastr.success('Chat edit prompt reset.', EXT_DISPLAY);
         });
 
         // Config profiles
@@ -10012,7 +12484,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const name = await showCustomDialog({ type: 'prompt', title: 'New Configuration', message: 'Name:', placeholder: 'New Config' });
             if (!name?.trim()) return;
             const n = name.trim(); const s = getSettings();
-            s.profiles[n] = { systemPrompt: DEFAULT_SYSTEM_PROMPT, includeSystemPrompt: true, includeAuthorsNote: true, includeCharacterCard: true, includeUserPersonality: true, contextDepth: 15, localHistoryLimit: 50, connectionSource: 'default', connectionProfileId: '', maxTokens: 2048, applyRegexToContext: true };
+            s.profiles[n] = { systemPrompt: DEFAULT_SYSTEM_PROMPT, includeSystemPrompt: true, includeAuthorsNote: true, includeCharacterCard: true, includeUserPersonality: true, contextDepth: 15, localHistoryLimit: 50, connectionSource: 'default', connectionProfileId: '', maxTokens: 8200, applyRegexToContext: true };
             saveSettings(); refreshSPProfilesDropdown(); refreshProfilesDropdown();
             loadProfile(n); syncSPFromSettings(); updateSettingsUI();
             const sel = document.getElementById('scp-sp-profile-select'); if (sel) sel.value = n;
@@ -10071,14 +12543,102 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             toastr.success('Sessions cleared.', EXT_DISPLAY);
         });
 
+        // Sound unfocused (overlay)
+        const spSoundUnfocusedEl = document.getElementById('scp-sp-sound-unfocused');
+        if (spSoundUnfocusedEl) {
+            spSoundUnfocusedEl.checked = !!getSettings().completionSoundOnlyWhenUnfocused;
+            spSoundUnfocusedEl.addEventListener('change', () => {
+                getSettings().completionSoundOnlyWhenUnfocused = spSoundUnfocusedEl.checked;
+                saveSettings();
+                const stEl = document.getElementById('scp-sound-unfocused');
+                if (stEl) stEl.checked = spSoundUnfocusedEl.checked;
+            });
+        }
+
+        // Background (overlay)
+        const spBgType = document.getElementById('scp-sp-bg-type');
+        const spBgUrl = document.getElementById('scp-sp-bg-url');
+        const spBgUrlGrp = document.getElementById('scp-sp-bg-url-group');
+        const spBgDim = document.getElementById('scp-sp-bg-dim');
+        const spBgDimGrp = document.getElementById('scp-sp-bg-dim-group');
+        const spBgDimVal = document.getElementById('scp-sp-bg-dim-val');
+        if (spBgType) {
+            spBgType.value = getSettings().windowBgType || 'none';
+            spBgType.addEventListener('change', () => {
+                getSettings().windowBgType = spBgType.value;
+                saveSettings();
+                if (spBgUrlGrp) spBgUrlGrp.style.display = spBgType.value !== 'none' ? '' : 'none';
+                if (spBgDimGrp) spBgDimGrp.style.display = spBgType.value !== 'none' ? '' : 'none';
+                applyWindowBackground();
+                _syncBgToOverlay();
+            });
+        }
+        if (spBgUrl) {
+            spBgUrl.value = getSettings().windowBgUrl || '';
+            spBgUrl.addEventListener('input', () => {
+                getSettings().windowBgUrl = spBgUrl.value;
+                saveSettings();
+                applyWindowBackground();
+                _syncBgToOverlay();
+            });
+        }
+        if (spBgDim) {
+            spBgDim.value = getSettings().windowBgDim ?? 50;
+            if (spBgDimVal) spBgDimVal.textContent = `${spBgDim.value}%`;
+            spBgDim.addEventListener('input', () => {
+                if (spBgDimVal) spBgDimVal.textContent = `${spBgDim.value}%`;
+            });
+            spBgDim.addEventListener('change', () => {
+                getSettings().windowBgDim = parseInt(spBgDim.value);
+                saveSettings();
+                applyWindowBackground();
+                _syncBgToOverlay();
+            });
+        }
+
+        // Picker lines (overlay)
+        const spPickerLines = document.getElementById('scp-sp-picker-lines');
+        if (spPickerLines) {
+            spPickerLines.value = getSettings().pickerPreviewLines ?? 1;
+            spPickerLines.addEventListener('input', () => {
+                getSettings().pickerPreviewLines = parseInt(spPickerLines.value) || 1;
+                saveSettings();
+                const stEl = document.getElementById('scp-picker-lines');
+                if (stEl) stEl.value = spPickerLines.value;
+            });
+        }
+        const spPickerLast = document.getElementById('scp-sp-picker-last-lines');
+        if (spPickerLast) {
+            spPickerLast.value = getSettings().pickerPreviewLastLines ?? 0;
+            spPickerLast.addEventListener('input', () => {
+                getSettings().pickerPreviewLastLines = parseInt(spPickerLast.value) || 0;
+                saveSettings();
+                const stEl = document.getElementById('scp-picker-last-lines');
+                if (stEl) stEl.value = spPickerLast.value;
+            });
+        }
+
+        // Image mode (overlay)
+        const spImgMode = document.getElementById('scp-sp-image-mode');
+        if (spImgMode) {
+            spImgMode.value = getSettings().imageAnalysisMode || 'direct';
+            spImgMode.addEventListener('change', () => {
+                getSettings().imageAnalysisMode = spImgMode.value;
+                saveSettings();
+                const stEl = document.getElementById('scp-image-mode');
+                if (stEl) stEl.value = spImgMode.value;
+            });
+        }
+
         // ── SESSION OVERRIDES ──
 
-        const syncOvClear = (key, newVal) => {
+        function syncOvClear(key, newVal) {
             let globalVal = getSettings()[key];
             if (key.startsWith('charField_')) {
                 const fKey = key.replace('charField_', '');
                 globalVal = (getSettings().charEditFields || {})[fKey] !== false;
             }
+
             const isDefault = (newVal === undefined || newVal === null || newVal === '')
                 ? true
                 : (typeof globalVal === 'boolean'
@@ -10090,7 +12650,31 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             
             updateSPOverrideIndicators();
             updateMsgCount(getCurrentSession());
-        };
+        }
+
+        function _pruneMatchingOverrides() {
+            const s = getSettings();
+            const bucket = getChatBucket();
+            let changed = false;
+            bucket.sessions.forEach(sess => {
+                if (!sess.overrides) return;
+                for (const key of Object.keys(sess.overrides)) {
+                    let globalVal = s[key];
+                    if (key.startsWith('charField_')) {
+                        const fKey = key.replace('charField_', '');
+                        globalVal = (s.charEditFields || {})[fKey] !== false;
+                    }
+                    if (sess.overrides[key] === globalVal) {
+                        delete sess.overrides[key];
+                        changed = true;
+                    }
+                }
+            });
+            if (changed) {
+                saveSessionsToMetadata();
+                updateSessionOverrideIndicator();
+            }
+        }
 
         const bindOvCheck = (spId, key) => {
             const el = document.getElementById(spId); if (!el) return;
@@ -10125,6 +12709,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         bindOvInput('scp-sp-ov-max-tokens', 'maxTokens', Number);
         bindOvInput('scp-sp-ov-history-limit', 'localHistoryLimit', Number);
         bindOvInput('scp-sp-ov-reasoning-trim', 'reasoningTrimStrings');
+        bindOvInput('scp-sp-ov-char-edit-prompt', 'charEditPrompt');
+        bindOvInput('scp-sp-ov-lb-manage-prompt', 'lorebookManagePrompt');
+        bindOvInput('scp-sp-ov-chat-edit-prompt', 'chatEditPrompt');
 
         const ovPrompt = document.getElementById('scp-sp-ov-sysprompt');
         if (ovPrompt) ovPrompt.addEventListener('input', () => syncOvClear('systemPrompt', ovPrompt.value || undefined));
@@ -10132,6 +12719,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         bindOvCheck('scp-sp-ov-include-sysprompt', 'includeSystemPrompt');
         bindOvCheck('scp-sp-ov-include-persona', 'includeUserPersonality');
         bindOvCheck('scp-sp-ov-apply-regex', 'applyRegexToContext');
+        bindOvCheck('scp-sp-ov-char-edit-enabled', 'charEditAIEnabled');
+        bindOvCheck('scp-sp-ov-lb-ai-enabled', 'lorebookAIManageEnabled');
+        bindOvCheck('scp-sp-ov-chat-edit-enabled', 'chatEditAIEnabled');
+        bindOvCheck('scp-sp-ov-ce-alt-greetings', 'charField_alternate_greetings');
+        bindOvCheck('scp-sp-ov-lb-auto-kw', 'lorebookAutoKeyword');
+        document.getElementById('scp-sp-ov-ce-alt-greetings')?.addEventListener('change', (e) => {
+            const picker = document.getElementById('scp-sp-ov-ce-alt-greetings-picker');
+            if (picker) { picker.style.display = e.target.checked ? '' : 'none'; refreshAltGreetingsPickers(); }
+        });
 
         document.querySelectorAll('.scp-ov-stream-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -10153,6 +12749,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         bindOvCheck('scp-sp-ov-ce-first-mes', 'charField_first_mes');
         bindOvCheck('scp-sp-ov-ce-mes-example', 'charField_mes_example');
         bindOvCheck('scp-sp-ov-ce-authors-note', 'charField_authors_note');
+        bindOvCheck('scp-sp-ov-ce-alt-greetings', 'charField_alternate_greetings');
 
         overlay.querySelectorAll('.scp-sp-ov-clear[data-ovkey]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -10177,6 +12774,14 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     charField_first_mes: ['scp-sp-ov-ce-first-mes'],
                     charField_mes_example: ['scp-sp-ov-ce-mes-example'],
                     charField_authors_note: ['scp-sp-ov-ce-authors-note'],
+                    charField_alternate_greetings: ['scp-sp-ov-ce-alt-greetings'],
+                    charEditAIEnabled: ['scp-sp-ov-char-edit-enabled'],
+                    charEditPrompt: ['scp-sp-ov-char-edit-prompt'],
+                    lorebookAIManageEnabled: ['scp-sp-ov-lb-ai-enabled'],
+                    lorebookManagePrompt: ['scp-sp-ov-lb-manage-prompt'],
+                    lorebookAutoKeyword: ['scp-sp-ov-lb-auto-kw'],
+                    chatEditAIEnabled: ['scp-sp-ov-chat-edit-enabled'],
+                    chatEditPrompt: ['scp-sp-ov-chat-edit-prompt'],
                 };
                 (elMap[key] || []).forEach(id => {
                     const el = document.getElementById(id); if (!el) return;
@@ -10225,6 +12830,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             updateMsgCount(getCurrentSession());
             toastr.success('Session overrides cleared.', EXT_DISPLAY);
         });
+
+        _setupBgUpload('scp-sp-bg-upload-btn', 'scp-sp-bg-url');
     }
 
     // ─── Window Event Listeners ─────────────────────────────────────────────────
@@ -10283,6 +12890,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         // Session dropdown
         $('scp-sess-trigger')?.addEventListener('click', e => {
             e.stopPropagation();
+            if (_generating) {
+                toastr.warning('Please wait for generation to finish.', EXT_DISPLAY);
+                return;
+            }
             const panel = $('scp-sess-panel'); const trigger = $('scp-sess-trigger');
             const isOpen = panel.classList.contains('open');
             panel.classList.toggle('open', !isOpen); trigger.classList.toggle('open', !isOpen);
@@ -10359,6 +12970,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             });
         }
         setupDepthClickEdit();
+        _setupAttachButton();
 
         // Actions
         $('scp-inspect-btn')?.addEventListener('click', openInspector);
@@ -10450,7 +13062,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         // Input
         const inputEl = $('scp-input');
         if (inputEl) {
-            inputEl.addEventListener('input', () => autoResize(inputEl));
+            inputEl.addEventListener('input', () => {
+                autoResize(inputEl);
+                updateMsgCount(getCurrentSession());
+            });
             inputEl.addEventListener('keydown', e => { 
                 if (e.key === 'Enter' && !e.shiftKey) { 
                     const isMobile = window.innerWidth <= 900 || ('ontouchstart' in window);
@@ -10488,6 +13103,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     // ─── Chat Change ─────────────────────────────────────────────────────────────
 
     function onChatChanged() {
+        if (_generating) {
+            _abortController?.abort();
+            _generating = false;
+            setGeneratingState(false);
+        }
         _lastChatLen = -1;
         _wiCache = {};
         closeFavoritesPanel();
@@ -10701,146 +13321,232 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         btn?.classList.remove('active');
     }
 
-    // ─── Generation & Streaming ──────────────────────────────────────────────────
+    // ─── File Attachments ────────────────────────────────────────────────────────
 
-    async function doCallGenerate(session, settings, pendingText, onChunk) {
-        const ctx = SillyTavern.getContext();
-        const messages = await assembleMessages(session, settings, pendingText);
-        const maxTokens = parseInt(settings.maxTokens) || 2048;
+    let _pendingAttachments = []; // [{id, name, type, dataUrl, isImage, file}]
 
-        const abort = new AbortController();
-        _abortController = abort;
+    function _attachmentId() { return `att_${Date.now()}_${Math.random().toString(36).slice(2,6)}`; }
 
-        let profileId = null;
-        let profiles = [];
-        if (ctx.ConnectionManagerRequestService && typeof ctx.ConnectionManagerRequestService.getSupportedProfiles === 'function') {
-            profiles = ctx.ConnectionManagerRequestService.getSupportedProfiles();
-        } else {
-            profiles = ctx.extensionSettings?.connectionManager?.profiles || [];
-        }
-
-        if (settings.connectionSource === 'profile' && settings.connectionProfileId) {
-            const found = profiles.find(p =>
-                p.id === settings.connectionProfileId || p.name === settings.connectionProfileId
-            );
-            if (found) {
-                profileId = found.id;
-            } else {
-                throw new Error(`Connection profile "${settings.connectionProfileId}" not found in Connection Manager.\nAvailable profiles: ${profiles.map(p => p.name).join(', ') || 'None'}`);
-            }
-        } else {
-            const nativeSel = document.getElementById('connection_profile');
-            if (nativeSel && nativeSel.value && nativeSel.value !== 'default' && nativeSel.value !== 'gui') {
-                profileId = nativeSel.value;
-            } else if (typeof window.connection_profile === 'string' && window.connection_profile !== 'default' && window.connection_profile !== 'gui') {
-                profileId = window.connection_profile;
-            } else {
-                try {
-                    const currentResult = await ctx.executeSlashCommandsWithOptions('/profile');
-                    const activeName = currentResult?.pipe?.trim();
-                    if (activeName) {
-                        const found = profiles.find(p => p.name === activeName || p.id === activeName);
-                        if (found) profileId = found.id;
-                    }
-                } catch(e) {}
-            }
-            
-            if (!profileId && profiles.length > 0) {
-                profileId = profiles[0].id;
-            }
-            
-            if (!profileId) {
-                throw new Error('Profile not found. Please select a valid profile in SillyTavern Connection Manager.');
-            }
-        }
-
-        const service = ctx.ConnectionManagerRequestService;
-        if (!service || typeof service.sendRequest !== 'function') {
-            throw new Error('ConnectionManagerRequestService not available. Please update SillyTavern.');
-        }
-
-        const stStreamToggle = document.getElementById('stream_toggle');
-        const streamSetting = settings.forceStreaming;
-        let useStream;
-        if (streamSetting === 'on' || streamSetting === true) {
-            useStream = true;
-        } else if (streamSetting === 'off') {
-            useStream = false;
-        } else {
-            useStream = !!(stStreamToggle?.checked);
-        }
-
-        let asyncGeneratorFn;
-        try {
-            asyncGeneratorFn = await service.sendRequest(profileId, messages, maxTokens, {
-                stream: useStream,
-                signal: abort.signal,
-            });
-        } catch (e) {
-            _abortController = null;
-            throw e;
-        }
-
-        let text = '';
-        let reasoning = null;
-        let reasoningStartMs = null;
-        let reasoningDone = false;
-
-        const isGen = typeof asyncGeneratorFn === 'function' ||
-            (asyncGeneratorFn != null && typeof asyncGeneratorFn[Symbol.asyncIterator] === 'function') ||
-            (asyncGeneratorFn != null && typeof asyncGeneratorFn.next === 'function');
-
-        if (!isGen) {
-            const value = asyncGeneratorFn;
-            if (typeof value === 'string') {
-                text = value.trim();
-            } else {
-                text = (value?.text || value?.content || value?.message?.content || '').trim();
-                reasoning = value?.state?.reasoning || value?.reasoning || null;
-            }
-            _abortController = null;
-            return { text, reasoning };
-        }
-
-        const gen = typeof asyncGeneratorFn === 'function' ? asyncGeneratorFn() : asyncGeneratorFn;
-
-        try {
-            while (true) {
-                if (abort.signal.aborted) { _abortController = null; return null; }
-                const { value, done } = await gen.next();
-                if (done) break;
-
-                text = value.text || '';
-                const newReasoning = value.state?.reasoning || null;
-
-                if (newReasoning) {
-                    if (reasoningStartMs === null) reasoningStartMs = performance.now();
-                    reasoning = newReasoning;
-                }
-                if (text && !reasoningDone && reasoning) {
-                    reasoningDone = true;
-                }
-
-                if (typeof onChunk === 'function') {
-                    const reasoningMs = reasoningStartMs !== null ? performance.now() - reasoningStartMs : null;
-                    onChunk(text, reasoning, reasoningMs, reasoningDone);
-                }
-            }
-        } catch (e) {
-            _abortController = null;
-            if (e?.message === 'userStopped' || abort.signal.aborted) return null;
-            throw e;
-        }
-
-        _abortController = null;
-        return { text: text.trim(), reasoning };
+    async function _fileToDataUrl(file) {
+        return new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload = () => res(r.result);
+            r.onerror = () => rej(new Error('Read failed'));
+            r.readAsDataURL(file);
+        });
     }
 
-    function callGenerate(session, settings, pendingText, onChunk) {
-        if (settings.connectionSource === 'profile' && settings.connectionProfileId) {
-            return withConnectionProfile(settings.connectionProfileId, () => doCallGenerate(session, settings, pendingText, onChunk));
+    async function _getCaptionViaExtension(file) {
+        const ctx = SillyTavern.getContext();
+        try {
+            const captionMod = await import('/scripts/extensions/image-captioning/index.js').catch(() => null);
+            if (captionMod && typeof captionMod.getCaptionForFile === 'function') {
+                const caption = await captionMod.getCaptionForFile(file, null, true);
+                return caption || '';
+            }
+        } catch (_) {}
+        try {
+            const dataUrl = await _fileToDataUrl(file);
+            const base64 = dataUrl.split(',')[1];
+            const res = await fetch('/api/extra/caption', {
+                method: 'POST',
+                headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: base64 }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                return data.caption || '';
+            }
+        } catch (_) {}
+        return '';
+    }
+
+    async function _processAttachmentsBeforeSend(atts, isPreview = false) {
+        const s = getSettings();
+        const mode = s.imageAnalysisMode || 'direct';
+        const processed = [];
+        for (const a of atts) {
+            if (a.isImage && mode === 'caption') {
+                if (isPreview) {
+                    processed.push({ ...a, sendAsText: true, textContent: `[Image "${a.name}" (caption will be generated on send)]` });
+                } else {
+                    let cap = await _getCaptionViaExtension(a.file).catch((e)=>{
+                        console.warn("[ST-Copilot] Captioning error:", e);
+                        return '';
+                    });
+                    if (!cap) toastr.warning(`Captioning failed for ${a.name}`, EXT_DISPLAY);
+                    processed.push({
+                        ...a,
+                        sendAsText: true,
+                        textContent: cap ? `[Image "${a.name}" caption: ${cap}]` : `[Image "${a.name}" (captioning failed)]`
+                    });
+                }
+            } else if (!a.isImage) {
+                let text = a.textContent;
+                if (!text && a.file) {
+                    try { text = await a.file.text(); } catch(e) { text = '(binary data or read error)'; }
+                }
+                processed.push({ ...a, sendAsText: true, textContent: text });
+            } else {
+                processed.push({ ...a });
+            }
         }
-        return doCallGenerate(session, settings, pendingText, onChunk);
+        return processed;
+    }
+
+    function _mergeContent(baseText, atts) {
+        if (!atts || !atts.length) return baseText;
+        const textParts = atts.filter(a => a.textContent).map(a => a.sendAsText ? a.textContent : `[Attached file "${a.name}"]\n${a.textContent}`);
+        const textPrefix = textParts.join('\n\n');
+        
+        let combinedText = '';
+        if (textPrefix && baseText) combinedText = `${textPrefix}\n\n${baseText}`;
+        else if (textPrefix) combinedText = textPrefix;
+        else combinedText = baseText;
+        
+        const imgBlocks = atts.filter(a => a.isImage && !a.sendAsText).map(a => ({ type: 'image_url', image_url: { url: a.dataUrl } }));
+        
+        if (imgBlocks.length > 0) {
+            return [...imgBlocks, { type: 'text', text: combinedText }];
+        }
+        return combinedText;
+    }
+
+    function _renderAttachmentPreviews() {
+        let previewBar = document.getElementById('scp-attachment-bar');
+        const inputRow = document.querySelector('.scp-input-row');
+        if (!inputRow) return;
+
+        if (!_pendingAttachments.length) {
+            previewBar?.remove();
+            return;
+        }
+
+        if (!previewBar) {
+            previewBar = document.createElement('div');
+            previewBar.id = 'scp-attachment-bar';
+            previewBar.className = 'scp-attachment-bar';
+            inputRow.parentNode.insertBefore(previewBar, inputRow);
+        }
+        previewBar.innerHTML = '';
+
+        for (const att of _pendingAttachments) {
+            const item = document.createElement('div');
+            item.className = 'scp-att-item';
+            item.dataset.id = att.id;
+
+            if (att.isImage) {
+                const img = document.createElement('img');
+                img.src = att.dataUrl;
+                img.className = 'scp-att-thumb';
+                img.title = att.name;
+                img.addEventListener('click', () => _openImageLightbox(att));
+                item.appendChild(img);
+            } else {
+                const icon = document.createElement('div');
+                icon.className = 'scp-att-icon';
+                icon.innerHTML = `<i class="fa-solid fa-file"></i>`;
+                icon.title = att.name;
+                item.appendChild(icon);
+                const lbl = document.createElement('div');
+                lbl.className = 'scp-att-label';
+                lbl.textContent = att.name.length > 14 ? att.name.slice(0, 12) + '…' : att.name;
+                item.appendChild(lbl);
+                item.addEventListener('click', () => _openTextLightbox(att));
+            }
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'scp-att-remove';
+            removeBtn.innerHTML = '×';
+            removeBtn.title = 'Remove';
+            removeBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                _pendingAttachments = _pendingAttachments.filter(a => a.id !== att.id);
+                _renderAttachmentPreviews();
+                updateMsgCount(getCurrentSession());
+            });
+            item.appendChild(removeBtn);
+            previewBar.appendChild(item);
+        }
+    }
+
+    let _lightboxEl = null;
+    let _lightboxScale = 1;
+    let _lightboxOrigin = { x: 0.5, y: 0.5 };
+
+    function _openImageLightbox(att) {
+        if (_lightboxEl) _lightboxEl.remove();
+        _lightboxScale = 1;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'scp-lightbox';
+        _lightboxEl = overlay;
+
+        const img = document.createElement('img');
+        img.src = att.dataUrl;
+        img.className = 'scp-lightbox-img';
+        img.style.transform = `scale(1)`;
+        img.style.transformOrigin = '50% 50%';
+
+        overlay.appendChild(img);
+        document.body.appendChild(overlay);
+
+        img.addEventListener('click', e => {
+            if (_lightboxScale >= 3) { _lightboxScale = 1; }
+            else { _lightboxScale = Math.min(3, _lightboxScale + 1); }
+            const rect = img.getBoundingClientRect();
+            const ox = ((e.clientX - rect.left) / rect.width * 100).toFixed(1);
+            const oy = ((e.clientY - rect.top) / rect.height * 100).toFixed(1);
+            img.style.transformOrigin = `${ox}% ${oy}%`;
+            img.style.transform = `scale(${_lightboxScale})`;
+            img.style.cursor = _lightboxScale > 1 ? 'zoom-out' : 'zoom-in';
+        });
+        overlay.addEventListener('click', e => {
+            if (e.target === overlay) { overlay.remove(); _lightboxEl = null; }
+        });
+        document.addEventListener('keydown', function onEsc(e) {
+            if (e.key === 'Escape') { overlay.remove(); _lightboxEl = null; document.removeEventListener('keydown', onEsc); }
+        });
+    }
+
+    async function _openTextLightbox(att) {
+        if (_lightboxEl) _lightboxEl.remove();
+        const overlay = document.createElement('div');
+        overlay.className = 'scp-lightbox';
+        _lightboxEl = overlay;
+        const pre = document.createElement('pre');
+        pre.className = 'scp-lightbox-text';
+        
+        let text = att.textContent;
+        if (!text && att.file) {
+            try { text = await att.file.text(); att.textContent = text; } 
+            catch(e) { text = 'Error reading file.'; }
+        }
+        pre.textContent = text || 'Loading...';
+        
+        overlay.appendChild(pre);
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); _lightboxEl = null; }});
+        document.addEventListener('keydown', function onEsc(e) { if (e.key === 'Escape') { overlay.remove(); _lightboxEl = null; document.removeEventListener('keydown', onEsc); }});
+    }
+
+    async function _addAttachments(files) {
+        for (const file of files) {
+            const isImage = file.type.startsWith('image/');
+            let dataUrl = null;
+            if (isImage) {
+                dataUrl = await _fileToDataUrl(file).catch(() => null);
+                if (!dataUrl) continue;
+            }
+            
+            _pendingAttachments.push({
+                id: _attachmentId(),
+                name: file.name, type: file.type, mimeType: file.type,
+                dataUrl, isImage, file, textContent: null,
+            });
+        }
+        _renderAttachmentPreviews();
+        updateMsgCount(getCurrentSession());
     }
 
     // ─── Init ────────────────────────────────────────────────────────────────────
@@ -10910,6 +13616,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         
         setupHotkey(); setupGhostHotkey(); addWandButton();
         checkChangelogAutoShow();
+        _takeProfileSnapshot();
         _dbgSnapshotSettings();
 
         window.addEventListener('message', e => {
@@ -10940,6 +13647,23 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     } catch(_) {}
                 });
             }
+        });
+
+        const preventSpinBug = e => {
+            if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'number') {
+                e.stopPropagation();
+            }
+        };
+        [
+            windowEl, 
+            document.getElementById('scp-settings-overlay'), 
+            document.getElementById('scp-lb-overlay'), 
+            document.getElementById('scp-picker-overlay')
+        ].filter(Boolean).forEach(el => {
+            el.addEventListener('mousedown', preventSpinBug);
+            el.addEventListener('mouseup', preventSpinBug);
+            el.addEventListener('pointerdown', preventSpinBug);
+            el.addEventListener('pointerup', preventSpinBug);
         });
 
         console.log(`[${EXT_DISPLAY}] Initialized.`);

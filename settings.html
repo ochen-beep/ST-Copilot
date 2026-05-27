@@ -50,6 +50,10 @@
                 <div class="scp-settings-flat-section">
                     <div class="scp-settings-flat-title"><i class="fa-solid fa-volume-high"></i> Completion Sound</div>
                     <div id="scp-sound-settings"></div>
+                    <label class="checkbox_label" style="margin-top:8px">
+                        <input id="scp-sound-unfocused" type="checkbox" />
+                        <span>Only play when window is not focused</span>
+                    </label>
                 </div>
 
                 <!-- ── Ghost Mode (original) ──────────────────── -->
@@ -228,6 +232,65 @@
                             <label style="font-size:11px; color:#888; display:block; margin:8px 0 3px">Copilot keytriggers scan depth</label>
                             <input id="scp-lb-copilot-scan-depth" type="number" class="text_pole" placeholder="6" min="0" max="200" />
                         </div>
+                    </div>
+                </div>
+
+                <!-- ── Chat Message AI Edits ──────────────────── -->
+                <div class="inline-drawer scp-settings-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b><i class="fa-solid fa-comments" style="margin-right:6px"></i>Chat Message AI Edits</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <label class="checkbox_label">
+                            <input id="scp-chat-edit-enabled-st" type="checkbox" />
+                            <span>Enable AI Chat Message Editing</span>
+                        </label>
+                        <label style="font-size:11px; color:#888; display:block; margin:10px 0 4px">
+                            AI Edit Prompt
+                            <span style="font-size:10px; opacity:.65"> — macros: <code style="font-size:10px;background:rgba(0,0,0,.3);padding:1px 4px;border-radius:3px">{{chat_edit_format}}, {{active_chat_ids}}</code></span>
+                        </label>
+                        <textarea id="scp-chat-edit-prompt-st" class="text_pole autoSetHeight" rows="5" style="font-size:12px; margin-top:4px; font-family:monospace"></textarea>
+                        <button id="scp-reset-chat-edit-prompt-st" class="menu_button interactable" style="margin-top:6px; align-self:flex-start">
+                            <i class="fa-solid fa-arrow-rotate-left"></i> Reset to Default
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ── Other ──────────────────────────────────── -->
+                <div class="inline-drawer scp-settings-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b><i class="fa-solid fa-ellipsis" style="margin-right:6px"></i>Other</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <!-- Window Background -->
+                        <div class="inline-drawer scp-settings-drawer">
+                            <div class="inline-drawer-toggle inline-drawer-header">
+                                <b><i class="fa-solid fa-image" style="margin-right:6px"></i>Window Background</b>
+                                <div class="inline-drawer-icon fa-solid fa-circle-down down"></div>
+                            </div>
+                            <div class="inline-drawer-content" id="scp-bg-settings">
+                                <!-- js injects here -->
+                            </div>
+                        </div>
+
+                        <!-- Context Message Picker -->
+                        <b style="font-size:12px">Context Message Picker</b>
+                        <label style="font-size:11px;color:#888;display:block;margin-top:6px;margin-bottom:4px">Preview: first N lines</label>
+                        <input id="scp-picker-lines" type="number" class="text_pole" min="1" max="20" placeholder="1">
+                        <label style="font-size:11px;color:#888;display:block;margin:8px 0 4px">Preview: last N lines (0 = off)</label>
+                        <input id="scp-picker-last-lines" type="number" class="text_pole" min="0" max="20" placeholder="0">
+
+                        <hr style="border:0;border-top:1px solid rgba(255,255,255,0.06);margin:14px 0">
+
+                        <!-- File Attachments -->
+                        <b style="font-size:12px">File Attachments</b>
+                        <label style="font-size:11px;color:#888;display:block;margin-top:6px;margin-bottom:4px">Image Analysis Mode</label>
+                        <select id="scp-image-mode" class="text_pole">
+                            <option value="direct">Direct (send to current API)</option>
+                            <option value="caption">Caption (use Image Captioning extension)</option>
+                        </select>
                     </div>
                 </div>
 

@@ -425,10 +425,21 @@
     border-radius: 8px; transition: background 0.15s; position: relative;
 }
 .scp-msg:hover .scp-msg-actions { opacity: 1; pointer-events: auto; }
-.scp-msg-user { background: var(--scp-msg-user-bg); flex-direction: row-reverse; text-align: right; }
-.scp-msg-user .scp-msg-body { align-items: flex-end; }
-.scp-msg-user .scp-code-block, .scp-msg-user .scp-table { text-align: left; }
-.scp-msg-assistant { background: var(--scp-msg-ai-bg); }
+.scp-msg-user { 
+    background: var(--scp-msg-user-bg); 
+    flex-direction: row-reverse; 
+    text-align: left; 
+}
+.scp-msg-user .scp-msg-body { 
+    align-items: flex-end; 
+    padding-left: 2.5%; 
+}
+.scp-msg-assistant { 
+    background: var(--scp-msg-ai-bg); 
+}
+.scp-msg-assistant .scp-msg-body {
+    padding-right: 3.5%;
+}
 
 .scp-msg-avatar {
     flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
@@ -493,6 +504,34 @@
 .scp-msg-btn-danger:hover { color: var(--scp-danger); background: rgba(255,92,92,0.08); border-color: rgba(255,92,92,0.3); }
 .scp-msg.is-editing .scp-msg-actions { display: none; }
 
+.scp-msg-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.scp-msg-att-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.1);
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.scp-msg-att-badge:hover {
+    background: rgba(255,255,255,0.05);
+}
+.scp-msg-att-badge img {
+    width: 20px;
+    height: 20px;
+    object-fit: cover;
+    border-radius: 3px;
+}
+
 .scp-edit-ta {
     width: 100%; background: var(--scp-input-bg); border: 1px solid var(--scp-accent-dim);
     border-radius: 6px; color: var(--scp-text); font-family: var(--scp-font);
@@ -556,6 +595,11 @@
     background: none; border: var(--scp-border); color: var(--scp-text-muted);
     font-family: var(--scp-font); transition: all 0.15s;
     line-height: 1; overflow: visible; box-sizing: border-box;
+}
+.scp-action-btn.active {
+    color: var(--scp-accent);
+    background: var(--scp-accent-bg);
+    border-color: var(--scp-accent-dim);
 }
 .scp-action-btn:hover { color: var(--scp-accent); background: var(--scp-accent-bg); border-color: var(--scp-accent-dim); }
 .scp-action-btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
@@ -1159,8 +1203,9 @@ ul.scp-list > li::before {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.88);
-    border: 1px solid rgba(255,255,255,0.35);
+    background: var(--scp-accent);
+    border: 1px solid var(--scp-accent-dim);
+    box-shadow: 0 0 4px var(--scp-accent-dim);
     z-index: 1;
     box-sizing: border-box;
 }
@@ -3847,7 +3892,77 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
 .scp-cl-entry-body ul { margin: 6px 0 6px 16px; padding: 0; list-style: disc; }
 .scp-cl-entry-body li { margin: 3px 0; }
 
-/* ── Streaming cursor ────────────────────────────────────────── */
+/* ── Message Token Count ──────────────────────────────────────── */
+.scp-msg-token-count {
+    font-size: 9px;
+    color: var(--scp-text-muted);
+    opacity: 0.55;
+    text-align: center;
+    margin-top: 4px;
+    letter-spacing: 0.03em;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+    pointer-events: none;
+    line-height: 1;
+}
+
+/* ── Swipes ───────────────────────────────────────────────────── */
+.scp-swipe-bar {
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; padding: 4px 8px 2px; flex-shrink: 0;
+}
+
+.scp-swipe-btn {
+    background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 5px;
+    color: var(--scp-text-muted); cursor: pointer;
+    width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; padding: 0; transition: all 0.15s; flex-shrink: 0;
+}
+.scp-swipe-btn:hover:not(:disabled) {
+    color: var(--scp-accent); background: var(--scp-accent-bg); border-color: var(--scp-accent-dim);
+}
+.scp-swipe-btn:disabled { opacity: 0.2; cursor: default; }
+
+.scp-swipe-counter {
+    font-size: 10px; color: var(--scp-text-muted); min-width: 36px;
+    text-align: center; font-variant-numeric: tabular-nums; user-select: none;
+}
+.scp-swipe-counter span { color: var(--scp-accent); }
+
+@keyframes scp-swipe-in-right {
+    from { opacity: 0; transform: translateX(18px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes scp-swipe-in-left {
+    from { opacity: 0; transform: translateX(-18px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes scp-swipe-out-right {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(18px); }
+}
+@keyframes scp-swipe-out-left {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(-18px); }
+}
+
+.scp-swipe-anim-right { animation: scp-swipe-in-right 0.22s cubic-bezier(0.34,1.2,0.64,1); }
+.scp-swipe-anim-left  { animation: scp-swipe-in-left  0.22s cubic-bezier(0.34,1.2,0.64,1); }
+.scp-swipe-anim-out-right { animation: scp-swipe-out-right 0.15s ease forwards; }
+.scp-swipe-anim-out-left  { animation: scp-swipe-out-left 0.15s ease forwards; }
+
+/* ── Chat Edit Proposal Card ─────────────────────────────────── */
+.scp-chat-proposal-card {
+    margin: 4px 0 8px 0;
+}
+
+/* ── Proposal card buttons text centering fix ──────────────── */
+.scp-lb-proposal-edit-toggle,
+.scp-lb-proposal-item-apply,
+.scp-lb-proposal-item-reject {
+    padding-bottom: 2px !important;
+}
+/* ── Streaming cursor (already exists, keep) ─────────────────── */
 @keyframes scp-cursor-blink {
     0%,100% { opacity: 1; }
     50%      { opacity: 0; }
@@ -3867,4 +3982,289 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
     .scp-fav-item { padding: 11px 10px; }
     .scp-fav-item-text { font-size: 13px; }
     .scp-changelog-modal-box { max-height: 90dvh; max-height: 90vh; }
+}
+/* ═══════════════════════════════════════════════════════════════
+   NEW FEATURES STYLES
+═══════════════════════════════════════════════════════════════ */
+
+/* ── 3-state lorebook check ──────────────────────────────────── */
+.scp-lb-book-check.excluded {
+    background: rgba(255,92,92,0.15) !important;
+    border-color: rgba(255,92,92,0.5) !important;
+}
+.scp-lb-book-check.excluded::after {
+    content: '✕';
+    font-size: 10px;
+    color: var(--scp-danger);
+    line-height: 1;
+}
+.scp-lb-book-item.lb-excluded {
+    opacity: 0.75;
+}
+.scp-lb-book-item.lb-excluded .scp-lb-book-name {
+    color: var(--scp-danger);
+    opacity: 0.8;
+}
+.scp-lb-entries.lb-entries-dimmed {
+    opacity: 0.45;
+    pointer-events: auto;
+    position: relative;
+}
+.scp-lb-entries.lb-entries-dimmed::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 6px,
+        rgba(255,255,255,0.02) 6px,
+        rgba(255,255,255,0.02) 12px
+    );
+    pointer-events: none;
+    border-radius: 4px;
+}
+
+/* ── Window custom background ────────────────────────────────── */
+.scp-window.scp-has-bg {
+    background: none !important;
+}
+.scp-window.scp-has-bg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--scp-radius);
+    background-image: var(--scp-bg-image, none);
+    background-size: cover;
+    background-position: center;
+    z-index: -2;
+}
+.scp-window.scp-has-bg::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--scp-radius);
+    background: rgba(0,0,0,var(--scp-bg-dim, 0.5));
+    z-index: -1;
+}
+
+/* ── Attachment bar ──────────────────────────────────────────── */
+.scp-attachment-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--scp-toolbar-bg);
+    border-top: var(--scp-border);
+    overflow-x: auto;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    flex-wrap: wrap;
+    max-height: 140px;
+}
+
+.scp-att-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+}
+
+.scp-att-thumb {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.15);
+    cursor: zoom-in;
+    transition: transform 0.15s, border-color 0.15s;
+}
+.scp-att-thumb:hover {
+    transform: scale(1.05);
+    border-color: var(--scp-accent-dim);
+}
+
+.scp-att-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--scp-text-muted);
+    font-size: 20px;
+}
+
+.scp-att-label {
+    font-size: 9px;
+    color: var(--scp-text-muted);
+    text-align: center;
+    max-width: 56px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scp-att-remove {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--scp-danger);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.scp-att-item:hover .scp-att-remove {
+    opacity: 1;
+}
+
+/* ── Attach button ───────────────────────────────────────────── */
+.scp-attach-btn {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    background: none;
+    border: var(--scp-border);
+    border-radius: 7px;
+    color: var(--scp-text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    padding: 0;
+}
+.scp-attach-btn:hover {
+    color: var(--scp-accent);
+    background: var(--scp-accent-bg);
+    border-color: var(--scp-accent-dim);
+}
+
+/* ── Lightbox ────────────────────────────────────────────────── */
+.scp-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 9999999;
+    background: rgba(0,0,0,0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: scp-modal-fade 0.15s ease;
+    backdrop-filter: blur(4px);
+    cursor: zoom-in;
+}
+.scp-lightbox-text {
+    width: 90vw;
+    height: 90vh;
+    background: var(--scp-bg);
+    color: var(--scp-text);
+    padding: 20px;
+    overflow: auto;
+    font-family: var(--scp-font-mono);
+    font-size: 12px;
+    border-radius: 8px;
+    border: var(--scp-border);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    box-sizing: border-box;
+    box-shadow: 0 0 60px rgba(0,0,0,0.8);
+}
+.scp-lightbox-img {
+    max-width: 92vw;
+    max-height: 92vh;
+    border-radius: 6px;
+    box-shadow: 0 0 60px rgba(0,0,0,0.8);
+    transition: transform 0.25s cubic-bezier(0.34,1.2,0.64,1), transform-origin 0.15s;
+    cursor: zoom-in;
+    user-select: none;
+}
+
+/* ── Picker multi-line preview ───────────────────────────────── */
+.scp-picker-text {
+    white-space: pre-wrap !important;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* ── Lorebook footer note ────────────────────────────────────── */
+.scp-lb-footer-note {
+    font-size: 10px;
+    color: var(--scp-danger);
+    opacity: 0.8;
+}
+
+/* ── Video Background ────────────────────────────────────────── */
+.scp-bg-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: -2;
+    border-radius: var(--scp-radius);
+    pointer-events: none;
+}
+
+/* ── Background Fit Modes ── */
+.scp-window.bg-cover::before, .scp-bg-video.bg-cover { object-fit: cover; background-size: cover; }
+.scp-window.bg-contain::before, .scp-bg-video.bg-contain { object-fit: contain; background-size: contain; background-repeat: no-repeat; }
+.scp-window.bg-fill::before, .scp-bg-video.bg-fill { object-fit: fill; background-size: 100% 100%; }
+.scp-window.bg-center::before, .scp-bg-video.bg-center { object-fit: none; background-position: center; background-repeat: no-repeat; }
+
+/* ── Media Background Engine ── */
+.scp-bg-media {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -2;
+    border-radius: var(--scp-radius);
+    pointer-events: none;
+}
+.scp-bg-media.bg-cover { object-fit: cover; }
+.scp-bg-media.bg-contain { object-fit: contain; }
+.scp-bg-media.bg-fill { object-fit: fill; }
+.scp-bg-media.bg-center { object-fit: none; }
+
+/* ── Stream Modes Settings Fix ── */
+.st-copilot-settings .scp-stream-btn {
+    background: rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    color: var(--SmartThemeBodyColorTextMuted, #888) !important;
+    padding: 6px 14px !important;
+    border-radius: 5px !important;
+    cursor: pointer !important;
+    font-size: 11px !important;
+    font-family: var(--primaryFontFamily, system-ui, sans-serif) !important;
+    transition: all 0.15s ease !important;
+}
+
+.st-copilot-settings .scp-stream-btn:hover {
+    border-color: rgba(255, 255, 255, 0.18) !important;
+    color: var(--SmartThemeBodyColorText, #e2e2e6) !important;
+}
+
+.st-copilot-settings .scp-stream-btn.active {
+    background: rgba(124, 109, 250, 0.12) !important;
+    border-color: rgba(124, 109, 250, 0.5) !important;
+    color: var(--SmartThemeQuoteColor, #a99bfb) !important;
+    font-weight: 600 !important;
+    box-shadow: 0 0 8px rgba(124, 109, 250, 0.15) !important;
 }
