@@ -30,6 +30,7 @@
           <label class="scp-sp-check"><input type="checkbox" id="scp-sp-enabled"><span>Enable ST-Copilot</span></label>
           <label class="scp-sp-check"><input type="checkbox" id="scp-sp-icon-persistent"><span>Always show floating icon</span></label>
           <label class="scp-sp-check"><input type="checkbox" id="scp-sp-wobble-window"><span>Wobbly window drag <span class="scp-sp-hint">(jelly physics on move)</span></span></label>
+          <label class="scp-sp-check" title="Disables heavy visual effects like blur, advanced shadows, and 3D animations to save CPU on low-end devices."><input type="checkbox" id="scp-sp-perf-mode"><span>Low Performance Mode (Save CPU)</span></label>
           <label class="scp-sp-check"><input type="checkbox" id="scp-sp-changelog-auto"><span>Show changelog on update</span></label>
           <button class="scp-action-btn" id="scp-sp-open-changelog" style="margin-top:4px;align-self:flex-start">${I.starFill}<span>What's New</span></button>
           <div class="scp-sp-row" style="gap:8px;margin-top:6px">
@@ -72,6 +73,7 @@
             <select id="scp-sp-profile-select"></select>
             <button class="scp-profile-icon-btn" id="scp-sp-profile-save" title="Save to profile"><i class="fa-solid fa-floppy-disk"></i></button>
             <button class="scp-profile-icon-btn" id="scp-sp-profile-create" title="New profile"><i class="fa-solid fa-plus"></i></button>
+            <button class="scp-profile-icon-btn" id="scp-sp-profile-duplicate" title="Duplicate profile"><i class="fa-solid fa-copy"></i></button>
             <button class="scp-profile-icon-btn" id="scp-sp-profile-rename" title="Rename"><i class="fa-solid fa-pen"></i></button>
             <button class="scp-profile-icon-btn danger" id="scp-sp-profile-delete" title="Delete"><i class="fa-solid fa-trash"></i></button>
           </div>
@@ -115,6 +117,7 @@
           <label class="scp-sp-check"><input type="checkbox" id="scp-sp-apply-regex"><span>Apply Regex to context <span class="scp-sp-hint">(ST Regex extension)</span></span></label>
           <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;gap:5px">
             <div class="scp-sp-label" style="margin-bottom:2px">Character fields sent to AI context</div>
+            <label class="scp-sp-check"><input type="checkbox" id="scp-sp-ce-tags"><span>Tags</span></label>
             <label class="scp-sp-check"><input type="checkbox" id="scp-sp-ce-description"><span>Description</span></label>
             <label class="scp-sp-check"><input type="checkbox" id="scp-sp-ce-personality"><span>Personality</span></label>
             <label class="scp-sp-check"><input type="checkbox" id="scp-sp-ce-scenario"><span>Scenario</span></label>
@@ -311,6 +314,10 @@
           </div>
           <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)">
             <div class="scp-sp-label" style="margin-bottom:5px">Character fields <span class="scp-sp-hint">(override global)</span></div>
+            <div class="scp-sp-ov-check-row">
+              <label class="scp-sp-check"><input type="checkbox" id="scp-sp-ov-ce-tags"><span>Tags</span></label>
+              <button class="scp-sp-ov-clear" data-ovkey="charField_tags" title="Clear override" disabled>↺</button>
+            </div>
             <div class="scp-sp-ov-check-row">
               <label class="scp-sp-check"><input type="checkbox" id="scp-sp-ov-ce-description"><span>Description</span></label>
               <button class="scp-sp-ov-clear" data-ovkey="charField_description" title="Clear override" disabled>↺</button>

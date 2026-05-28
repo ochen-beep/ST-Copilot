@@ -18,6 +18,14 @@
                         <input id="scp-icon-persistent" type="checkbox" />
                         <span>Always show floating icon</span>
                     </label>
+                    <label class="checkbox_label" style="margin-top:6px">
+                        <input id="scp-wobble-window" type="checkbox" />
+                        <span>Wobbly window drag (jelly physics)</span>
+                    </label>
+                    <label class="checkbox_label" style="margin-top:6px" title="Disables heavy visual effects like blur, advanced shadows, and 3D animations to save CPU on low-end devices.">
+                        <input id="scp-perf-mode" type="checkbox" />
+                        <span>Low Performance Mode (Save CPU)</span>
+                    </label>
                     <div style="margin-top:10px">
                         <b style="font-size:12px">Keyboard Shortcut</b>
                         <label class="checkbox_label" style="margin-top:6px">
@@ -86,6 +94,7 @@
                         <select id="scp-profile-select"></select>
                         <button class="scp-profile-icon-btn" id="scp-profile-save" title="Save settings to profile"><i class="fa-solid fa-floppy-disk"></i></button>
                         <button class="scp-profile-icon-btn" id="scp-profile-create-new" title="Create new default profile"><i class="fa-solid fa-plus"></i></button>
+                        <button class="scp-profile-icon-btn" id="scp-profile-duplicate" title="Duplicate profile"><i class="fa-solid fa-copy"></i></button>
                         <button class="scp-profile-icon-btn" id="scp-profile-rename" title="Rename"><i class="fa-solid fa-pen"></i></button>
                         <button class="scp-profile-icon-btn danger" id="scp-profile-delete" title="Delete"><i class="fa-solid fa-trash"></i></button>
                     </div>
@@ -141,6 +150,7 @@
                         <div style="margin-top:14px; border-top:1px solid rgba(255,255,255,.06); padding-top:12px; display:flex; flex-direction:column; gap:4px">
                             <b style="font-size:12px; margin-bottom:2px">Character fields sent to AI context:</b>
                             <label style="font-size:11px; color:#888; display:block; margin-bottom:4px">Controls what card data the AI receives, and populates <code style="font-size:10px;background:rgba(0,0,0,.3);padding:1px 4px;border-radius:3px">{{char_edit_fields}}</code> macro.</label>
+                            <label class="checkbox_label"><input id="scp-ce-tags" type="checkbox" /><span>Tags</span></label>
                             <label class="checkbox_label"><input id="scp-ce-description" type="checkbox" /><span>Description</span></label>
                             <label class="checkbox_label"><input id="scp-ce-personality" type="checkbox" /><span>Personality</span></label>
                             <label class="checkbox_label"><input id="scp-ce-scenario" type="checkbox" /><span>Scenario</span></label>

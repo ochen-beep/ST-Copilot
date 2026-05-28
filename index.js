@@ -32,24 +32,21 @@
     }
 
     function _dbgDiffSettings() {
-        clearTimeout(_DBG._diffTid);
-        _DBG._diffTid = setTimeout(() => {
-            if (!_DBG._snapshot) return;
-            try {
-                const cur = _dbgStrip(getSettings());
-                const diff = {};
-                const keys = new Set([...Object.keys(cur), ...Object.keys(_DBG._snapshot)]);
-                for (const k of keys) {
-                    if (JSON.stringify(cur[k]) !== JSON.stringify(_DBG._snapshot[k])) {
-                        diff[k] = { prev: _DBG._snapshot[k], now: cur[k] };
-                    }
+        if (!_DBG._snapshot) return;
+        try {
+            const cur = _dbgStrip(getSettings());
+            const diff = {};
+            const keys = new Set([...Object.keys(cur), ...Object.keys(_DBG._snapshot)]);
+            for (const k of keys) {
+                if (JSON.stringify(cur[k]) !== JSON.stringify(_DBG._snapshot[k])) {
+                    diff[k] = { prev: _DBG._snapshot[k], now: cur[k] };
                 }
-                if (Object.keys(diff).length) {
-                    _dbgAdd('SETTINGS_CHANGED', diff);
-                    _DBG._snapshot = JSON.parse(JSON.stringify(cur));
-                }
-            } catch(_) {}
-        }, 1500);
+            }
+            if (Object.keys(diff).length) {
+                _dbgAdd('SETTINGS_CHANGED', diff);
+                _DBG._snapshot = JSON.parse(JSON.stringify(cur));
+            }
+        } catch(_) {}
     }
 
     function _dbgSetupGlobalErrorHandlers() {
@@ -228,8 +225,9 @@ Generated \`character-edits\` or \`character-creation\` blocks are AUTO-DELETED 
 To maximize semantic density and prevent AI hallucinations, you MUST adhere to this framework:
 
 1. THE TAGS FIELD (\`tags\`):
-   - The Semantic Index. Provide an array of universally recognized, highly common tags (e.g., "Fantasy", "Villain", "Tsundere", "Slow Burn", "NSFW/SFW").
+   - The Semantic Index. Provide universally recognized, highly common tags (e.g., "Fantasy, Villain, Tsundere, Slow Burn, NSFW/SFW") strictly as a simple flat, comma-separated list of text.
    - Purpose: Immediate cognitive mapping and rapid differentiation. Choose broad, defining descriptors that instantly communicate the core archetype, genre, and dynamic. Strictly avoid hyper-specific, long, or obscure labels.
+   - Simply write the tags separated by commas, without quotes and brackets.
 
 2. THE DESCRIPTION FIELD (\`description\`):
    - The Factual Summary Block. Use XML tags (e.g., \`<appearance>\`, \`<mind>\`, \`<background>\`) for dense, scannable facts.
@@ -364,7 +362,7 @@ replacement text
     const CHAR_CREATE_FORMAT_BLOCK = `\`\`\`character-create
 {
   "name_suggestion": "Character Name",
-  "tags": ["tag1", "tag2"],
+  "tags": "tag1, tag2",
   "description": "Full character description",
   "personality": "Personality summary",
   "scenario": "Scenario / setting",
@@ -391,9 +389,20 @@ replacement text
     // ─── Changelog Data ──────────────────────────────────────────────────────────
     const CHANGELOG = [
     {
-        version: '2.7.0',
-        date: '6/15/2026',
+        version: '2.7.1',
+        date: '5/28/2026',
         announce: true,
+        notes: [
+            '<strong>Character Tagging</strong> — Added the ability to modify the "tags" field for already existing characters.',
+            '<strong>Low Performance Mode</strong> — Introduced a new toggle to optimize resource usage on lower-end hardware.',
+            '<strong>Session Stability</strong> — Completely overhauled the session saving system to prevent spontaneous session loss and data corruption.',
+            '<strong>General Optimization</strong> — Improved core logic for better performance and overall stability of ST-Copilot. Fixed AI Generation errors.'
+        ],
+    },
+    {
+        version: '2.7.0',
+        date: '5/27/2026',
+        announce: false,
         notes: [
             '<strong>Proposed Chat Edits</strong> — Bulk-modify, delete, or hide message ranges using natural language instructions.',
             '<strong>File Attachments & Vision</strong> — Support for text/image uploads with vision model integration and an internal previewer.',
@@ -840,6 +849,23 @@ replacement text
         return name;
     }
 
+    function getTagsForCharacter(char) {
+        if (!char) return [];
+        const ctx = SillyTavern.getContext();
+        const avatar = char.avatar;
+        if (!avatar) return [];
+        
+        const tagMap = ctx.tagMap || {};
+        const tagIds = tagMap[avatar];
+        if (!Array.isArray(tagIds)) return [];
+        
+        const allTags = ctx.tags || [];
+        return tagIds.map(id => {
+            const found = allTags.find(t => t.id === id);
+            return found ? found.name : null;
+        }).filter(Boolean);
+    }
+
     function getActiveLorebookNames() {
         const ctx = SillyTavern.getContext();
         const names = new Set();
@@ -1230,6 +1256,11 @@ replacement text
         const d = char.data || {};
         const parts = [];
 
+        const charTags = getTagsForCharacter(char);
+        if (getEffectiveCharField(settings, 'tags') && charTags.length) {
+            parts.push(`<tags>\n${charTags.join(', ')}\n</tags>`);
+        }
+
         const simple = {
             description: d.description || char.description,
             personality: d.personality || char.personality,
@@ -1259,7 +1290,7 @@ replacement text
 
     function buildCharEditAIInstructions(settings) {
         if (!settings.charEditAIEnabled) return '';
-        const baseFields = ['description', 'personality', 'scenario', 'first_mes', 'mes_example', 'authors_note', 'alternate_greetings'];
+        const baseFields = ['tags', 'description', 'personality', 'scenario', 'first_mes', 'mes_example', 'authors_note', 'alternate_greetings'];
         const fieldsList = baseFields.filter(k => getEffectiveCharField(settings, k));
         
         if (settings.includeUserPersonality && !fieldsList.includes('user_persona')) {
@@ -1297,6 +1328,33 @@ replacement text
         return `<chat_messages_editing: module>\n${base}\n</chat_message_editing: module>`;
     }
 
+    function _sanitizeProposedTags(value) {
+        if (typeof value !== 'string') return '';
+        let cleaned = value.trim();
+        
+        try {
+            const parsed = JSON.parse(cleaned);
+            if (Array.isArray(parsed)) {
+                return parsed.map(t => String(t).trim()).filter(Boolean).join(', ');
+            }
+            if (typeof parsed === 'string') {
+                cleaned = parsed.trim();
+            }
+        } catch (_) {}
+
+        cleaned = cleaned.replace(/^\[\s*|\]\s*$/g, '').trim();
+
+        const quotedMatches = [...cleaned.matchAll(/["']([^"']+)["']/g)].map(m => m[1].trim());
+        if (quotedMatches.length > 0) {
+            return quotedMatches.filter(Boolean).join(', ');
+        }
+
+        return cleaned.split(',')
+            .map(item => item.replace(/[\[\]"']/g, '').trim())
+            .filter(Boolean)
+            .join(', ');
+    }
+
     function parseCharChangesFromText(text) {
         let raw = null;
         const strict = text.match(/```character-changes\s*([\s\S]*?)```/);
@@ -1323,11 +1381,21 @@ replacement text
             let diffMatch;
             const patches = [];
             while ((diffMatch = diffRe.exec(content)) !== null) {
-                patches.push({ search: diffMatch[1], replace: diffMatch[2] });
+                let searchVal = diffMatch[1];
+                let replaceVal = diffMatch[2];
+                if (field === 'tags') {
+                    searchVal = _sanitizeProposedTags(searchVal);
+                    replaceVal = _sanitizeProposedTags(replaceVal);
+                }
+                patches.push({ search: searchVal, replace: replaceVal });
             }
             if (!patches.length) {
                 const searchOnly = content.match(/<<<<<<< (?:SEARCH|ANCHOR)\r?\n([\s\S]*?)\r?\n=+/);
-                if (searchOnly) patches.push({ search: searchOnly[1], replace: '' });
+                if (searchOnly) {
+                    let searchVal = searchOnly[1];
+                    if (field === 'tags') searchVal = _sanitizeProposedTags(searchVal);
+                    patches.push({ search: searchVal, replace: '' });
+                }
             }
             if (!patches.length) continue;
             if (!replaceByField[key]) {
@@ -1342,26 +1410,34 @@ replacement text
 
         const overwriteRe = /<overwrite\s+field="([^"]+)"(?:\s+index="(\d+)")?>([\s\S]*?)<\/overwrite>/g;
         while ((m = overwriteRe.exec(xml)) !== null) {
-            const item = { field: m[1], action: 'overwrite', value: m[3].trim() };
+            let val = m[3].trim();
+            if (m[1] === 'tags') val = _sanitizeProposedTags(val);
+            const item = { field: m[1], action: 'overwrite', value: val };
             if (m[2]) item.index = parseInt(m[2], 10);
             changes.push(item);
         }
 
         const appendRe = /<append\s+field="([^"]+)">([\s\S]*?)<\/append>/g;
         while ((m = appendRe.exec(xml)) !== null) {
-            changes.push({ field: m[1], action: 'append', value: m[2].trim() });
+            let val = m[2].trim();
+            if (m[1] === 'tags') val = _sanitizeProposedTags(val);
+            changes.push({ field: m[1], action: 'append', value: val });
         }
 
         const prependRe = /<prepend\s+field="([^"]+)"(?:\s+index="(\d+)")?>([\s\S]*?)<\/prepend>/g;
         while ((m = prependRe.exec(xml)) !== null) {
-            const item = { field: m[1], action: 'prepend', value: m[3].trim() };
+            let val = m[3].trim();
+            if (m[1] === 'tags') val = _sanitizeProposedTags(val);
+            const item = { field: m[1], action: 'prepend', value: val };
             if (m[2]) item.index = parseInt(m[2], 10);
             changes.push(item);
         }
 
         const appendTextRe = /<append_text\s+field="([^"]+)"(?:\s+index="(\d+)")?>([\s\S]*?)<\/append_text>/g;
         while ((m = appendTextRe.exec(xml)) !== null) {
-            const item = { field: m[1], action: 'append_text', value: m[3].trim() };
+            let val = m[3].trim();
+            if (m[1] === 'tags') val = _sanitizeProposedTags(val);
+            const item = { field: m[1], action: 'append_text', value: val };
             if (m[2]) item.index = parseInt(m[2], 10);
             changes.push(item);
         }
@@ -1438,11 +1514,17 @@ replacement text
         try {
             const data = JSON.parse(raw);
             if (typeof data !== 'object' || Array.isArray(data)) return null;
+            if (data.tags) {
+                data.tags = _sanitizeProposedTags(Array.isArray(data.tags) ? JSON.stringify(data.tags) : String(data.tags));
+            }
             return data;
         } catch (_) {}
         try {
             const data = JSON.parse(_repairJSON(raw));
             if (typeof data !== 'object' || Array.isArray(data)) return null;
+            if (data.tags) {
+                data.tags = _sanitizeProposedTags(Array.isArray(data.tags) ? JSON.stringify(data.tags) : String(data.tags));
+            }
             return data;
         } catch (_) { return null; }
     }
@@ -1540,13 +1622,15 @@ replacement text
 
     function getCharFieldValue(char, fieldId) {
         if (fieldId === 'user_persona') return getUserPersona();
+        if (fieldId === 'tags') return getTagsForCharacter(char).join(', ');
+        
         const d = char.data || {};
         if (fieldId === 'authors_note') return getAuthorsNote();
         if (fieldId === 'alternate_greetings') return d.alternate_greetings || [];
         return d[fieldId] || char[fieldId] || '';
     }
 
-   async function saveCharacterField(char, fieldId, newValue) {
+    async function saveCharacterField(char, fieldId, newValue) {
         const ctx = SillyTavern.getContext();
         
         if (fieldId === 'user_persona') {
@@ -1578,8 +1662,80 @@ replacement text
             else saveSettings();
             return;
         }
+
+        if (fieldId === 'tags') {
+            const newTagsNames = typeof newValue === 'string' 
+                ? newValue.split(',').map(t => t.trim()).filter(Boolean) 
+                : (Array.isArray(newValue) ? newValue : []);
+            
+            const avatar = char.avatar;
+            
+            // 1. Очистка старых тегов через оригинальную память ядра ST
+            if (ctx.tagMap && ctx.tags) {
+                const currentTagIds = ctx.tagMap[avatar] || [];
+                const toUnlink = currentTagIds.filter(id => {
+                    const tagObj = ctx.tags.find(t => t.id === id);
+                    if (!tagObj) return false;
+                    return !newTagsNames.some(n => n.toLowerCase() === tagObj.name.toLowerCase());
+                });
+
+                if (toUnlink.length > 0) {
+                    ctx.tagMap[avatar] = currentTagIds.filter(id => !toUnlink.includes(id));
+                    if (typeof ctx.saveSettingsDebounced === 'function') ctx.saveSettingsDebounced();
+                    else if (typeof window.saveSettingsDebounced === 'function') window.saveSettingsDebounced();
+                }
+            }
+            
+            // 2. Обновляем саму карточку персонажа (ОЗУ)
+            if (!char.data) char.data = {};
+            char.data.tags = newTagsNames;
+            char.tags = newTagsNames;
+            
+            // Записываем новые теги в файл на диск (ПЗУ) через edit-attribute
+            const payload = {
+                avatar_url: avatar,
+                ch_name: char.name || 'Unknown',
+                field: 'tags',
+                value: newTagsNames
+            };
+            
+            try {
+                const res = await fetch('/api/characters/edit-attribute', {
+                    method: 'POST',
+                    headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) console.warn("[ST-Copilot] Tags edit-attribute failed:", res.status);
+            } catch (e) { console.warn("[ST-Copilot] Failed to edit tags API:", e); }
+
+            // 3. Импорт новых тегов через ядро (создаст их, если их нет, и добавит в оригинальный tagMap)
+            if (typeof ctx.importTags === 'function') {
+                try {
+                    // Передаем 3 (tag_import_setting.ALL), чтобы принудительно создать новые теги
+                    await ctx.importTags(char, { importSetting: 3 }); 
+                } catch(e) { console.warn("[ST-Copilot] Failed to import tags via core context:", e); }
+            }
+
+            // 4. Обновляем UI (список персонажей)
+            const es = ctx.eventSource || window.eventSource;
+            const et = ctx.event_types || window.event_types;
+            if (es && et?.CHARACTER_EDITED) {
+                es.emit(et.CHARACTER_EDITED, { detail: { id: ctx.characterId, character: char } });
+                es.emit(et.CHARACTER_EDITED, { id: ctx.characterId, character: char });
+            }
+            return;
+        }
         
         if (!char.data) char.data = {};
+        
+        // Используем edit-attribute для безопасного перезаписывания любого поля, включая массивы (alternate_greetings)
+        const payload = { 
+            avatar_url: char.avatar, 
+            ch_name: char.name || 'Unknown',
+            field: fieldId,
+            value: newValue 
+        };
+
         if (fieldId === 'alternate_greetings') {
             char.data.alternate_greetings = newValue;
         } else {
@@ -1587,10 +1743,10 @@ replacement text
             char[fieldId] = newValue;
         }
         
-        const res = await fetch('/api/characters/merge-attributes', {
+        const res = await fetch('/api/characters/edit-attribute', {
             method: 'POST',
             headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ avatar: char.avatar, data: char.data }),
+            body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -1700,7 +1856,7 @@ replacement text
     function logCharEditHistory(changes, statusStr, afterMsgId = null) {
         if (!changes?.length) return;
         try {
-            const FIELD_LABELS = { description:'Description', personality:'Personality', scenario:'Scenario', first_mes:'First Message', mes_example:'Example Dialogue', authors_note:"Author's Note", user_persona:"User Persona", alternate_greetings:'Alternate Greetings' };
+            const FIELD_LABELS = { tags:'Tags', description:'Description', personality:'Personality', scenario:'Scenario', first_mes:'First Message', mes_example:'Example Dialogue', authors_note:"Author's Note", user_persona:"User Persona", alternate_greetings:'Alternate Greetings' };
             const session = getCurrentSession();
             const icon = statusStr === 'Applied' ? '✓' : (statusStr === 'Rejected' ? '✕' : '·');
             const actionText = statusStr === 'Applied' ? 'ACCEPTED' : (statusStr === 'Rejected' ? 'REJECTED' : 'DISMISSED (ignored)');
@@ -1755,18 +1911,6 @@ replacement text
         }
         xml += '```';
         return xml;
-    }
-
-    let _tagsModule = null;
-    async function loadTagsModule() {
-        if (_tagsModule !== null) return _tagsModule;
-        try {
-            _tagsModule = await import('/scripts/tags.js');
-        } catch (e) {
-            console.error('[ST-Copilot-Debug] Failed to import /scripts/tags.js dynamically:', e);
-            _tagsModule = null;
-        }
-        return _tagsModule;
     }
 
     async function createCharacterAPI(data) {
@@ -2053,8 +2197,8 @@ replacement text
         const persistState = () => {};
         const getPending = () => itemStates.filter(s => s === 'pending').length;
         const checkAllResolved = () => {
-            if (getPendingCount() > 0) return;
-            stripAndSave();
+            if (getPending() > 0) return;
+            syncBlockToMessage();
             card.remove(); 
             const msg = getCurrentSession().messages.find(m => m.id === msgEl.dataset.id);
             if (msg) _renderMsgBodyContent(msgEl, msg);
@@ -5115,6 +5259,7 @@ replacement text
         const s = extensionSettings[EXT_NAME];
         const defaults = {
             enabled: true,
+            performanceMode: false,
             windowVisible: false,
             minimized: false,
             windowX: null, windowY: null,
@@ -5127,7 +5272,7 @@ replacement text
             localHistoryLimit: 50,
             connectionSource: 'default',
             connectionProfileId: '',
-            maxTokens: 6048,
+            maxTokens: 8048,
             includeSystemPrompt: false,
             includeAuthorsNote: true,
             includeCharacterCard: true,
@@ -5173,6 +5318,7 @@ replacement text
             charEditAIEnabled: true,
             charEditPrompt: '',
             charEditFields: {
+                tags: true,
                 description: true,
                 personality: true,
                 scenario: true,
@@ -5184,7 +5330,7 @@ replacement text
             completionSound: 'none',
             completionSoundVolume: 80,
             completionSoundOnlyWhenUnfocused: false,
-            wobbleWindow: true,
+            wobbleWindow: false,
             altGreetingIndices: [],
             chatEditAIEnabled: true,
             chatEditPrompt: '',
@@ -6032,37 +6178,138 @@ replacement text
         return { charId, chatId };
     }
 
-    function saveSessionsToMetadata() {
+    // ─── Storage Subsystem ─────────────────────────────
+
+    let _inMemoryBucket = { activeSessionId: null, sessions: [] };
+    let _bucketDirty = false;
+    let _commitTimer = null;
+
+    async function saveSessionFile(file_id, payload) {
         const ctx = SillyTavern.getContext();
-        if (typeof ctx.saveMetadata === 'function') ctx.saveMetadata();
+        try {
+            const jsonStr = JSON.stringify(payload);
+            const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+            const res = await fetch('/api/files/upload', {
+                method: 'POST',
+                headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: file_id, data: b64 })
+            });
+            return res.ok;
+        } catch (e) {
+            console.error(`[${EXT_DISPLAY}] saveSessionFile error:`, e);
+            return false;
+        }
+    }
+
+    async function loadSessionFile(file_id) {
+        try {
+            const res = await fetch(`/user/files/${file_id}`);
+            if (!res.ok) return null;
+            return await res.json();
+        } catch (e) {
+            console.error(`[${EXT_DISPLAY}] loadSessionFile error:`, e);
+            return null;
+        }
+    }
+
+    async function initChatBucket() {
+        const ctx = SillyTavern.getContext();
+        if (!ctx.chatMetadata) ctx.chatMetadata = {};
+        const { charId, chatId } = getBindingKey();
+        const s = getSettings();
+        
+        let meta = ctx.chatMetadata.st_copilot;
+        const safeChatId = chatId.replace(/[^a-zA-Z0-9_-]/g, '_');
+        
+        let v0Data = null;
+        if (s.sessions && s.sessions[charId]) {
+            if (s.sessions[charId][chatId] && s.sessions[charId][chatId].sessions?.length > 0) {
+                v0Data = { ...s.sessions[charId][chatId] };
+                delete s.sessions[charId][chatId];
+            } else if (s.sessions[charId]['unified'] && s.sessions[charId]['unified'].sessions?.length > 0) {
+                v0Data = { ...s.sessions[charId]['unified'] };
+                delete s.sessions[charId]['unified'];
+            }
+            if (v0Data) saveSettings();
+        }
+
+        if (!meta && v0Data) {
+            meta = { activeSessionId: v0Data.activeSessionId, sessions: v0Data.sessions };
+        }
+
+        if (!meta) {
+            _inMemoryBucket = { activeSessionId: null, sessions: [] };
+            ctx.chatMetadata.st_copilot = { file_id: `copilot_sess_${safeChatId}_${Date.now()}.json` };
+            if (typeof ctx.saveMetadata === 'function') ctx.saveMetadata();
+            await commitBucketChanges(true);
+            return;
+        }
+
+        if (meta.file_id) {
+            const payload = await loadSessionFile(meta.file_id);
+            if (payload && payload.bucket) {
+                _inMemoryBucket = payload.bucket;
+            } else {
+                _inMemoryBucket = { activeSessionId: null, sessions: [] };
+                await commitBucketChanges(true);
+            }
+        } else if (meta.sessions) { 
+            _inMemoryBucket = { activeSessionId: meta.activeSessionId, sessions: meta.sessions };
+            ctx.chatMetadata.st_copilot = { file_id: `copilot_sess_${safeChatId}_${Date.now()}.json` };
+            delete meta.sessions;
+            delete meta.activeSessionId; 
+            if (typeof ctx.saveMetadata === 'function') ctx.saveMetadata();
+            await commitBucketChanges(true);
+        } else {
+            _inMemoryBucket = { activeSessionId: null, sessions: [] };
+            ctx.chatMetadata.st_copilot = { file_id: `copilot_sess_${safeChatId}_${Date.now()}.json` };
+            if (typeof ctx.saveMetadata === 'function') ctx.saveMetadata();
+            await commitBucketChanges(true);
+        }
+    }
+
+    async function commitBucketChanges(force = false) {
+        _bucketDirty = true;
+        
+        const doCommit = async () => {
+            if (!_bucketDirty) return;
+            const ctx = SillyTavern.getContext();
+            const { chatId } = getBindingKey();
+            let file_id = ctx.chatMetadata?.st_copilot?.file_id;
+            
+            if (!file_id) {
+                const safeChatId = chatId.replace(/[^a-zA-Z0-9_-]/g, '_');
+                file_id = `copilot_sess_${safeChatId}_${Date.now()}.json`;
+                if (!ctx.chatMetadata) ctx.chatMetadata = {};
+                ctx.chatMetadata.st_copilot = { file_id };
+                if (typeof ctx.saveMetadata === 'function') ctx.saveMetadata();
+            }
+            
+            const payload = {
+                _version: 2,
+                chat_id_reference: chatId,
+                updated_at: Date.now(),
+                bucket: _inMemoryBucket
+            };
+            
+            const success = await saveSessionFile(file_id, payload);
+            if (success) _bucketDirty = false;
+        };
+
+        if (force) {
+            await doCommit();
+        } else {
+            clearTimeout(_commitTimer);
+            _commitTimer = setTimeout(doCommit, 1000);
+        }
+    }
+
+    function saveSessionsToMetadata() {
+        commitBucketChanges();
     }
 
     function getChatBucket() {
-        const ctx = SillyTavern.getContext();
-        if (!ctx.chatMetadata) ctx.chatMetadata = {};
-        
-        if (!ctx.chatMetadata.st_copilot) {
-            ctx.chatMetadata.st_copilot = { activeSessionId: null, sessions: [] };
-            
-            const { charId, chatId } = getBindingKey();
-            const s = getSettings();
-            
-            if (s.sessions && s.sessions[charId]) {
-                if (s.sessions[charId][chatId] && s.sessions[charId][chatId].sessions?.length > 0) {
-                    ctx.chatMetadata.st_copilot.sessions = [...s.sessions[charId][chatId].sessions];
-                    ctx.chatMetadata.st_copilot.activeSessionId = s.sessions[charId][chatId].activeSessionId;
-                    delete s.sessions[charId][chatId];
-                    saveSettings();
-                } 
-                else if (s.sessions[charId]['unified'] && s.sessions[charId]['unified'].sessions?.length > 0) {
-                    ctx.chatMetadata.st_copilot.sessions = [...s.sessions[charId]['unified'].sessions];
-                    ctx.chatMetadata.st_copilot.activeSessionId = s.sessions[charId]['unified'].activeSessionId;
-                    delete s.sessions[charId]['unified'];
-                    saveSettings();
-                }
-            }
-        }
-        return ctx.chatMetadata.st_copilot;
+        return _inMemoryBucket;
     }
 
     function genId(prefix) { return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`; }
@@ -6547,6 +6794,37 @@ replacement text
 
         if (!profileId) {
             throw new Error('No active profile found. Please select a profile in the SillyTavern Connection Manager UI, or assign a specific profile in ST-Copilot settings.');
+        }
+
+        const activeProfile = profiles.find(p => p.id === profileId);
+        if (activeProfile) {
+            if (!activeProfile.api) {
+                if (typeof window.getGeneratingApi === 'function') {
+                    activeProfile.api = window.getGeneratingApi();
+                } else {
+                    const mainApi = ctx.main_api || ctx.mainApi || document.getElementById('main_api')?.value;
+                    if (mainApi === 'openai') {
+                        activeProfile.api = ctx.chatCompletionSettings?.chat_completion_source || 'openai';
+                    } else if (mainApi === 'textgenerationwebui') {
+                        activeProfile.api = ctx.textCompletionSettings?.type || 'textgenerationwebui';
+                    } else {
+                        activeProfile.api = mainApi;
+                    }
+                }
+            }
+            if (!activeProfile.model) {
+                if (typeof window.getGeneratingModel === 'function') {
+                    activeProfile.model = window.getGeneratingModel();
+                } else if (typeof ctx.getChatCompletionModel === 'function') {
+                    activeProfile.model = ctx.getChatCompletionModel();
+                } else {
+                    const sel = document.getElementById(`model_${activeProfile.api}_select`) || document.querySelector('select[id^="model_"]:visible');
+                    if (sel && sel.value) {
+                        activeProfile.model = sel.value;
+                    }
+                }
+            }
+            console.debug(`[ST-Copilot] Hydrated connection profile "${profileId}": api=${activeProfile.api}, model=${activeProfile.model}`);
         }
 
         const streamSetting = settings.forceStreaming;
@@ -7505,10 +7783,8 @@ replacement text
             }
         };
 
-        await loadAndInject('window');
-        await loadAndInject('lorebook_manager');
-        await loadAndInject('settings_overlay');
-        await loadAndInject('chat_picker');
+        const templates = ['window', 'lorebook_manager', 'settings_overlay', 'chat_picker'];
+        await Promise.all(templates.map(loadAndInject));
 
         windowEl = document.getElementById(WIN_ID);
         iconEl = document.getElementById(ICON_ID);
@@ -9856,7 +10132,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         handle.addEventListener('pointerdown', e => {
             if (e.target.closest('.scp-hbtn,.scp-tbtn,select,input,button,.scp-opacity-wrap,.scp-rh,.scp-sess-dropdown,.scp-sess-wrap')) return;
             
-            isWobbly = getSettings().wobbleWindow !== false;
+            isWobbly = getSettings().wobbleWindow !== false && !getSettings().performanceMode;
 
             if (_rafId && isWobbly) {
                 sl = cx; 
@@ -9977,7 +10253,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         let angle = 0;
 
         const tick = () => {
-            const isWobbly = getSettings().wobbleWindow !== false;
+            const isWobbly = getSettings().wobbleWindow !== false && !getSettings().performanceMode;
 
             if (!active && !dragging &&
                 Math.abs(vx) < 0.05 && Math.abs(vy) < 0.05 &&
@@ -10418,10 +10694,22 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     function applyCustomTheme(theme) {
         if (!theme) return;
         const targets = [windowEl, iconEl, document.getElementById('scp-lb-overlay'), document.getElementById('scp-diff-modal'), document.getElementById('scp-settings-overlay'), document.getElementById('scp-picker-overlay')].filter(Boolean);
+        const s = getSettings();
+        
         for (const [key, cssVar] of Object.entries(THEME_CSS_MAP)) {
             if (key === 'font') continue;
             if (theme[key] !== undefined && theme[key] !== '') {
-                targets.forEach(t => t.style.setProperty(cssVar, theme[key]));
+                let val = theme[key];
+                
+                if (s.performanceMode) {
+                    if (key === 'blur') val = 'none';
+                    if (key === 'shadow') val = '0 8px 24px rgba(0,0,0,0.85)';
+                    if (key === 'bg' && val.includes('rgba')) {
+                        val = val.replace(/,\s*0\.[0-8]\d*\)/, ', 0.96)');
+                    }
+                }
+
+                targets.forEach(t => t.style.setProperty(cssVar, val));
             }
         }
         const fontVal = (theme.font || '').trim();
@@ -10653,7 +10941,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         $('scp-sess-trigger')?.classList.remove('open');
     }
 
-    function refreshSessionDropdown() {
+    async function refreshSessionDropdown() {
         const bucket = getChatBucket();
         const nameEl = $('scp-sess-name'); const listEl = $('scp-sess-list');
         if (!nameEl || !listEl) return;
@@ -10726,19 +11014,45 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const s = getSettings();
         const orphanedSessions = [];
         const ctx2 = SillyTavern.getContext();
-        const currentCharName = ctx2.characters?.[ctx2.characterId]?.name;
-        const { charId } = getBindingKey();
+        const { charId, chatId } = getBindingKey();
         
+        const currentCharName = ctx2.characters?.[ctx2.characterId]?.name;
         if (charId !== 'global' && currentCharName && s.sessions[charId]) {
             for (const chId in s.sessions[charId]) {
                 const b = s.sessions[charId][chId];
                 if (b && b.sessions && b.sessions.length > 0) {
                     const validSessions = b.sessions.filter(sess => sess.messages && sess.messages.length > 0);
                     if (validSessions.length > 0) {
-                        orphanedSessions.push({ chId, sessions: validSessions });
+                        orphanedSessions.push({ chId, sessions: validSessions, source: 'legacy' });
                     }
                 }
             }
+        }
+
+        try {
+            const res = await fetch('/api/images/list', {
+                method: 'POST',
+                headers: { ...ctx2.getRequestHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ directory: '' })
+            }).catch(() => null);
+
+            if (res && res.ok) {
+                const data = await res.json();
+                const files = Array.isArray(data) ? data : (data.files || []);
+                const currentFileId = ctx2.chatMetadata?.st_copilot?.file_id;
+
+                for (const f of files) {
+                    const fname = typeof f === 'string' ? f : f.name;
+                    if (fname && fname.startsWith('copilot_sess_') && fname.endsWith('.json') && fname !== currentFileId) {
+                        const payload = await loadSessionFile(fname);
+                        if (payload && payload.chat_id_reference === chatId && payload.bucket?.sessions?.length) {
+                            orphanedSessions.push({ file_id: fname, sessions: payload.bucket.sessions, source: 'file' });
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[ST-Copilot] Orphan file scan failed', e);
         }
 
         if (orphanedSessions.length > 0) {
@@ -10758,19 +11072,27 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 const ok = await showCustomDialog({
                     type: 'confirm',
                     title: 'Recover Sessions',
-                    message: `Found ${totalOrphaned} session(s) belonging to this character from global storage. Move them permanently into THIS chat?`
+                    message: `Found ${totalOrphaned} session(s) belonging to this chat from storage. Move them permanently into THIS chat?`
                 });
                 if (!ok) return;
                 
-                orphanedSessions.forEach(orphan => {
+                for (const orphan of orphanedSessions) {
                     bucket.sessions.push(...orphan.sessions.map(sess => ({
                         ...sess, name: sess.name.endsWith('(Recovered)') ? sess.name : sess.name + ' (Recovered)'
                     })));
-                    delete s.sessions[charId][orphan.chId]; 
-                });
+                    
+                    if (orphan.source === 'legacy') {
+                        delete s.sessions[charId][orphan.chId]; 
+                    } else if (orphan.source === 'file') {
+                        await saveSessionFile(orphan.file_id, {
+                            _version: 2, chat_id_reference: chatId, updated_at: Date.now(),
+                            bucket: { activeSessionId: null, sessions: [] }
+                        });
+                    }
+                }
                 
-                saveSettings();
-                saveSessionsToMetadata();
+                if (orphanedSessions.some(o => o.source === 'legacy')) saveSettings();
+                await commitBucketChanges(true);
                 refreshSessionDropdown();
                 toastr.success('Sessions successfully recovered and moved to chat metadata!', EXT_DISPLAY);
             });
@@ -10972,6 +11294,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             <select id="scp-theme-profile-select"></select>
             <button class="scp-profile-icon-btn" id="scp-theme-save" title="Save current theme parameters"><i class="fa-solid fa-floppy-disk"></i></button>
             <button class="scp-profile-icon-btn" id="scp-theme-create" title="Create new theme from preset"><i class="fa-solid fa-plus"></i></button>
+            <button class="scp-profile-icon-btn" id="scp-theme-duplicate" title="Duplicate selected theme"><i class="fa-solid fa-copy"></i></button>
             <button class="scp-profile-icon-btn" id="scp-theme-rename" title="Rename selected theme"><i class="fa-solid fa-pen"></i></button>
             <button class="scp-profile-icon-btn danger" id="scp-theme-delete" title="Delete selected theme"><i class="fa-solid fa-trash"></i></button>
             <button class="scp-profile-icon-btn" id="scp-theme-export" title="Export theme to JSON file"><i class="fa-solid fa-file-export"></i></button>
@@ -11068,6 +11391,23 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             s2.savedThemes[n] = { ...s2.customTheme };
             s2.activeThemeProfile = n;
             saveSettings(); buildThemeEditor(containerOverride); toastr.success(`Created theme "${n}"`, EXT_DISPLAY);
+        });
+
+        profileRow.querySelector('#scp-theme-duplicate').addEventListener('click', async () => {
+            const val = sel.value;
+            if (!val) return;
+            const baseTheme = val.startsWith('__preset__') ? THEME_PRESETS[val.replace('__preset__', '')] : s.savedThemes[val];
+            if (!baseTheme) return;
+            
+            const defaultName = (val.startsWith('__preset__') ? THEME_PRESETS[val.replace('__preset__', '')].label : val) + ' (Copy)';
+            const name = await showCustomDialog({ type: 'prompt', title: 'Duplicate Theme', message: 'Name for the duplicated theme:', defaultValue: defaultName });
+            if (!name?.trim()) return;
+            const n = name.trim();
+            const s2 = getSettings();
+            s2.savedThemes[n] = JSON.parse(JSON.stringify(baseTheme));
+            s2.activeThemeProfile = n;
+            s2.customTheme = { ...s2.savedThemes[n] };
+            saveSettings(); buildThemeEditor(containerOverride); toastr.success(`Theme duplicated as "${n}"`, EXT_DISPLAY);
         });
 
         profileRow.querySelector('#scp-theme-rename').addEventListener('click', async () => {
@@ -11266,7 +11606,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             includeSystemPrompt: 'scp-sp-include-sysprompt',
             includeUserPersonality: 'scp-sp-include-persona',
             applyRegexToContext: 'scp-sp-apply-regex',
-            contextDepth: 'scp-sp-depth-slider'
+            contextDepth: 'scp-sp-depth-slider',
+            wobbleWindow: 'scp-sp-wobble-window',
+            performanceMode: 'scp-sp-perf-mode'
         };
         const gId = gIdMap[key];
         if (gId) {
@@ -11312,6 +11654,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             includeUserPersonality: 'scp-sp-ov-include-persona',
             applyRegexToContext: 'scp-sp-ov-apply-regex',
             contextDepth: 'scp-sp-ov-depth-slider',
+            charField_tags: 'scp-sp-ov-ce-tags',
             charField_description: 'scp-sp-ov-ce-description',
             charField_personality: 'scp-sp-ov-ce-personality',
             charField_scenario: 'scp-sp-ov-ce-scenario',
@@ -11372,6 +11715,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         setI('scp-depth-slider', 'contextDepth');
         setI('scp-reasoning-trim', 'reasoningTrimStrings');
         setI('scp-ghost-hotkey', 'ghostModeHotkey');
+        const wobbleEl = $('scp-wobble-window'); if (wobbleEl) wobbleEl.checked = s.wobbleWindow !== false;
+        setC('scp-perf-mode', 'performanceMode');
         setC('scp-char-edit-enabled', 'charEditAIEnabled');
 
         const fsVal = s.forceStreaming === true ? 'on' : (s.forceStreaming === false ? 'auto' : (s.forceStreaming || 'auto'));
@@ -11387,6 +11732,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         const ceFields = s.charEditFields || {};
         const setCe = (id, k) => { const el = $(id); if (el) el.checked = ceFields[k] !== false; };
+        setCe('scp-ce-tags', 'tags');
         setCe('scp-ce-description', 'description');
         setCe('scp-ce-personality', 'personality');
         setCe('scp-ce-scenario', 'scenario');
@@ -11527,6 +11873,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         });
         
         bindCheck('scp-icon-persistent', 'floatingIconPersistent', updateIconVisibility);
+        bindCheck('scp-wobble-window', 'wobbleWindow');
+        bindCheck('scp-perf-mode', 'performanceMode', () => {
+            applyCustomTheme(getSettings().customTheme || THEME_PRESETS.default);
+        });
 
         // Opacity slider (ST drawer)
         const opSlider = $('scp-opacity-slider');
@@ -11616,6 +11966,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             });
             syncOverlayUI('charField_' + fieldKey, el.checked);
         };
+        bGCharFieldST('scp-ce-tags', 'tags');
         bGCharFieldST('scp-ce-description', 'description');
         bGCharFieldST('scp-ce-personality', 'personality');
         bGCharFieldST('scp-ce-scenario', 'scenario');
@@ -11719,6 +12070,23 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             updateBindingSection(); toastr.success(`Created "${n}"`, EXT_DISPLAY);
         });
 
+        $('scp-profile-duplicate')?.addEventListener('click', async () => {
+            const sel = $('scp-profile-select');
+            if (!sel?.value) return toastr.info('No configuration selected.', EXT_DISPLAY);
+            const defaultName = sel.value + ' (Copy)';
+            const newName = await showCustomDialog({ type: 'prompt', title: 'Duplicate Configuration', message: 'Name for the new profile:', defaultValue: defaultName });
+            if (!newName?.trim()) return;
+            const n = newName.trim();
+            const s2 = getSettings();
+            const p = s2.profiles[sel.value];
+            if (!p) return;
+            s2.profiles[n] = JSON.parse(JSON.stringify(p));
+            saveSettings(); refreshProfilesDropdown(); refreshSPProfilesDropdown();
+            loadProfile(n);
+            const newSel = $('scp-profile-select'); if (newSel) newSel.value = n;
+            updateBindingSection(); toastr.success(`Duplicated as "${n}"`, EXT_DISPLAY);
+        });
+
         $('scp-profile-rename')?.addEventListener('click', async () => {
             const sel = $('scp-profile-select');
             if (!sel?.value) return toastr.info('No configuration selected.', EXT_DISPLAY);
@@ -11764,7 +12132,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         $('scp-open-window')?.addEventListener('click', showWindow);
         $('scp-download-debug')?.addEventListener('click', dbgDownload);
-        $('scp-clear-sessions')?.addEventListener('click', async () => {
+        const handleClearAllSessions = async () => {
             const ok = await showCustomDialog({ 
                 type: 'confirm', 
                 title: 'Clear All Sessions', 
@@ -11775,10 +12143,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             getSettings().sessions = {}; saveSettings(); 
             const ctx = SillyTavern.getContext();
             if (ctx.chatMetadata) delete ctx.chatMetadata.st_copilot;
-            saveSessionsToMetadata();
+            await initChatBucket();
             onChatChanged();
             toastr.success('Sessions cleared.', EXT_DISPLAY);
-        });
+        };
+        document.getElementById('scp-clear-sessions')?.addEventListener('click', handleClearAllSessions);
 
         updateProfilesList();
         buildThemeEditor();
@@ -12000,6 +12369,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         // Global tab
         gC('scp-sp-enabled', s.enabled);
+        gC('scp-sp-perf-mode', s.performanceMode);
         gC('scp-sp-hotkey-enabled', s.hotkeyEnabled);
         g('scp-sp-hotkey', s.hotkey);
         gC('scp-sp-icon-persistent', s.floatingIconPersistent);
@@ -12054,6 +12424,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         gC('scp-sp-char-edit-enabled', s.charEditAIEnabled);
         g('scp-sp-char-edit-prompt', s.charEditPrompt || DEFAULT_CHAR_EDIT_DIRECTIVE.trim());
         const ceFields = s.charEditFields || {};
+        gC('scp-sp-ce-tags', ceFields.tags !== false);
         gC('scp-sp-ce-description', ceFields.description !== false);
         gC('scp-sp-ce-personality', ceFields.personality !== false);
         gC('scp-sp-ce-scenario', ceFields.scenario !== false);
@@ -12109,6 +12480,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const el = document.getElementById(id);
             if (el) el.checked = k in ov ? !!ov[k] : !!(s.charEditFields || {})[k.replace('charField_', '')];
         };
+        ovCe('scp-sp-ov-ce-tags', 'charField_tags');
         ovCe('scp-sp-ov-ce-description', 'charField_description');
         ovCe('scp-sp-ov-ce-personality', 'charField_personality');
         ovCe('scp-sp-ov-ce-scenario', 'charField_scenario');
@@ -12256,6 +12628,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 charEditPrompt: 'scp-char-edit-prompt',
                 lorebookAIManageEnabled: 'scp-lb-ai-enabled-st',
                 lorebookAutoKeyword: 'scp-lb-auto-kw-st',
+                wobbleWindow: 'scp-wobble-window', performanceMode: 'scp-perf-mode',
             }[key]);
             if (stEl) {
                 if (stEl.type === 'checkbox') stEl.checked = !!val;
@@ -12294,6 +12667,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             if (!ss.enabled) hideWindow();
             updateIconVisibility();
             setupHotkey();
+        });
+        
+        bGCheck('scp-sp-perf-mode', 'performanceMode', () => {
+            applyCustomTheme(getSettings().customTheme || THEME_PRESETS.default);
         });
         
         bGCheck('scp-sp-hotkey-enabled', 'hotkeyEnabled', setupHotkey);
@@ -12454,6 +12831,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             });
         };
         bGCheck('scp-sp-char-edit-enabled', 'charEditAIEnabled', () => updateMsgCount(getCurrentSession()));
+        bGCharField('scp-sp-ce-tags', 'tags');
         bGCharField('scp-sp-ce-description', 'description');
         bGCharField('scp-sp-ce-personality', 'personality');
         bGCharField('scp-sp-ce-scenario', 'scenario');
@@ -12540,6 +12918,22 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const sel = document.getElementById('scp-sp-profile-select'); if (sel) sel.value = n;
             updateSPBindingSection(); toastr.success(`Created "${n}"`, EXT_DISPLAY);
         });
+        document.getElementById('scp-sp-profile-duplicate')?.addEventListener('click', async () => {
+            const sel = document.getElementById('scp-sp-profile-select');
+            if (!sel?.value) return toastr.info('No configuration selected.', EXT_DISPLAY);
+            const defaultName = sel.value + ' (Copy)';
+            const newName = await showCustomDialog({ type: 'prompt', title: 'Duplicate Configuration', message: 'Name for the new profile:', defaultValue: defaultName });
+            if (!newName?.trim()) return;
+            const n = newName.trim();
+            const s2 = getSettings();
+            const p = s2.profiles[sel.value];
+            if (!p) return;
+            s2.profiles[n] = JSON.parse(JSON.stringify(p));
+            saveSettings(); refreshSPProfilesDropdown(); refreshProfilesDropdown();
+            loadProfile(n); syncSPFromSettings(); updateSettingsUI();
+            const newSel = document.getElementById('scp-sp-profile-select'); if (newSel) newSel.value = n;
+            updateSPBindingSection(); toastr.success(`Duplicated as "${n}"`, EXT_DISPLAY);
+        });
         document.getElementById('scp-sp-profile-rename')?.addEventListener('click', async () => {
             const sel = document.getElementById('scp-sp-profile-select'); if (!sel?.value) return;
             const newName = await showCustomDialog({ type: 'prompt', title: 'Rename', message: 'New name:', defaultValue: sel.value });
@@ -12577,7 +12971,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         });
 
         document.getElementById('scp-sp-download-debug')?.addEventListener('click', dbgDownload);
-        document.getElementById('scp-sp-clear-sessions')?.addEventListener('click', async () => {
+        const handleClearAllSessions = async () => {
             const ok = await showCustomDialog({ 
                 type: 'confirm', 
                 title: 'Clear All Sessions', 
@@ -12588,10 +12982,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             getSettings().sessions = {}; saveSettings(); 
             const ctx = SillyTavern.getContext();
             if (ctx.chatMetadata) delete ctx.chatMetadata.st_copilot;
-            saveSessionsToMetadata();
+            await initChatBucket();
             onChatChanged();
             toastr.success('Sessions cleared.', EXT_DISPLAY);
-        });
+        };
+        document.getElementById('scp-sp-clear-sessions')?.addEventListener('click', handleClearAllSessions);
 
         // Sound unfocused (overlay)
         const spSoundUnfocusedEl = document.getElementById('scp-sp-sound-unfocused');
@@ -12793,6 +13188,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             });
         });
         
+        bindOvCheck('scp-sp-ov-ce-tags', 'charField_tags');
         bindOvCheck('scp-sp-ov-ce-description', 'charField_description');
         bindOvCheck('scp-sp-ov-ce-personality', 'charField_personality');
         bindOvCheck('scp-sp-ov-ce-scenario', 'charField_scenario');
@@ -12818,6 +13214,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     includeSystemPrompt: ['scp-sp-ov-include-sysprompt'],
                     includeUserPersonality: ['scp-sp-ov-include-persona'],
                     applyRegexToContext: ['scp-sp-ov-apply-regex'],
+                    charField_tags: ['scp-sp-ov-ce-tags'],
                     charField_description: ['scp-sp-ov-ce-description'],
                     charField_personality: ['scp-sp-ov-ce-personality'],
                     charField_scenario: ['scp-sp-ov-ce-scenario'],
@@ -13152,7 +13549,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
     // ─── Chat Change ─────────────────────────────────────────────────────────────
 
-    function onChatChanged() {
+    async function onChatChanged() {
         if (_generating) {
             _abortController?.abort();
             _generating = false;
@@ -13162,6 +13559,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         _wiCache = {};
         closeFavoritesPanel();
         updateCharBadge();
+        
+        await initChatBucket();
+        
         refreshSessionDropdown();
         renderSession(getCurrentSession());
         autoLoadBoundProfile();
