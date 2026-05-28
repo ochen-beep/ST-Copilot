@@ -1561,14 +1561,15 @@ replacement text
         const repl = replaceText || '';
 
         const createFuzzyRegex = (str) => {
-            const tokens = str.trim().split(/\s+/);
+            const tokens = str.trim().split(/[\s\-—_~*]+/);
             const regexParts = tokens.map(token => {
+                if (!token) return '';
                 let t = token.replace(/['"“”‘’`]/g, '"');
                 t = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 t = t.replace(/"/g, '[\'\\"“”‘’`]?');
                 return t;
-            });
-            return new RegExp(regexParts.join('\\s+'), 'i'); 
+            }).filter(Boolean);
+            return new RegExp(regexParts.join('(?:\\s|<[^>]+>|[\\*\\_\\~\\-.,;!?"\'\`])*'), 'i'); 
         };
 
         let sepIdx = srch.indexOf(' || ');
@@ -3864,7 +3865,8 @@ replacement text
             meta.appendChild(targetDescEl);
             
             const warnEl = document.createElement('div');
-            warnEl.style.cssText = 'font-size:10px;color:var(--scp-danger);margin-top:4px;width:100%;display:none';
+            warnEl.style.cssText = 'font-size:10px;color:var(--scp-danger);margin-top:4px;width:100%;display:none;cursor:pointer;';
+            warnEl.title = 'Click to open the edit panel and fix manually';
             meta.appendChild(warnEl);
 
             const btns = document.createElement('div');
@@ -4039,8 +4041,8 @@ replacement text
                         eInp.addEventListener('input', () => { change.msg_range[1] = parseInt(eInp.value)||0; refreshPreview(); refreshValidation(); updateTargetDesc(); });
                         rangeRow.append(sInp, eInp);
                         editPanel.appendChild(mkRow('Msg Range (Start - End)', rangeRow));
-                    } else if (change.msg_index !== undefined) {
-                        const idxInp = document.createElement('input'); idxInp.type='number'; idxInp.className='scp-lb-pe-input'; idxInp.value=change.msg_index;
+                    } else if (change.msg_index !== undefined || change.msg_id !== undefined) {
+                        const idxInp = document.createElement('input'); idxInp.type='number'; idxInp.className='scp-lb-pe-input'; idxInp.value=change.msg_index ?? change.msg_id;
                         idxInp.addEventListener('input', () => { change.msg_index = parseInt(idxInp.value)||0; refreshPreview(); refreshValidation(); updateTargetDesc(); });
                         editPanel.appendChild(mkRow('Message Index', idxInp));
                     }
@@ -4129,13 +4131,18 @@ replacement text
                 item.appendChild(editPanel);
 
                 if (editToggleBtn) {
-                    editToggleBtn.addEventListener('click', e => {
+                    const toggleEditPanel = (e) => {
                         e.stopPropagation();
                         const isOpen = editPanel.style.display !== 'none';
                         editPanel.style.display = isOpen ? 'none' : 'flex';
                         previewEl.style.display = isOpen ? '' : 'none';
                         editToggleBtn.classList.toggle('active', !isOpen);
                         if (!isOpen) rebuildEditPanel();
+                    };
+                    editToggleBtn.addEventListener('click', toggleEditPanel);
+                    
+                    warnEl.addEventListener('click', (e) => {
+                        if (editPanel.style.display === 'none') toggleEditPanel(e);
                     });
                 }
             }
