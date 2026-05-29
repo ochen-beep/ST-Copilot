@@ -10,7 +10,7 @@
     
     // ─── Debug Logger ────────────────────────────────────────────────────────────
     const _DBG = { log: [], MAX: 3000, sessionStart: new Date().toISOString(), _snapshot: null, _diffTid: null };
-    const _DBG_SKIP = new Set(['customTheme','savedThemes','sessions','starredMessages','stats','quickPromptSets','customSounds','completionSoundData','quickPrompts','profiles','promptPresets','altGreetingIndices']);
+    const _DBG_SKIP = new Set(['customTheme','savedThemes','sessions','starredMessages','stats','quickPromptSets','customSounds','completionSoundData','quickPrompts','profiles','promptPresets','altGreetingIndices','windowBgUrl','customBackgrounds']);
 
     function _dbgStrip(s) {
         const r = {};
@@ -66,6 +66,24 @@
         window.addEventListener('unhandledrejection', e => {
             _dbgAdd('UNHANDLED_REJECTION', { msg: String(e.reason), stack: e.reason?.stack });
         });
+
+        if (typeof toastr !== 'undefined') {
+            const origToastrError = toastr.error;
+            toastr.error = function(message, title, options) {
+                try {
+                    _dbgAdd('UI_ERROR_POPUP', { title: title || 'Error', message: String(message) });
+                } catch(_) {}
+                return origToastrError.apply(toastr, [message, title, options]);
+            };
+
+            const origToastrWarning = toastr.warning;
+            toastr.warning = function(message, title, options) {
+                try {
+                    _dbgAdd('UI_WARNING_POPUP', { title: title || 'Warning', message: String(message) });
+                } catch(_) {}
+                return origToastrWarning.apply(toastr, [message, title, options]);
+            };
+        }
     }
 
     function dbgDownload() {
@@ -388,6 +406,17 @@ replacement text
 
     // ─── Changelog Data ──────────────────────────────────────────────────────────
     const CHANGELOG = [
+    {
+        version: '2.7.2',
+        date: '5/29/2026',
+        announce: true,
+        notes: [
+            '<strong>Shortcuts Overlay</strong> — Introduced a dedicated "Shortcuts" configuration window in the settings panel.',
+            '<strong>Context-Aware Search</strong> — Refined the search shortcut to trigger exclusively when the Copilot window is active.',
+            '<strong>Character Factory Fixes</strong> — Resolved several bugs affecting character creation and metadata initialization.',
+            '<strong>Asset Optimization</strong> — Overhauled background storage logic for better performance and reduced storage overhead.'
+        ],
+    },
     {
         version: '2.7.1',
         date: '5/28/2026',
@@ -717,6 +746,7 @@ replacement text
     const EMBEDDED_BOOK_KEY = '__char_embedded__';
     let _lastActiveEntries = [];
     let _regexModule = false;
+    let _copilotActive = false;
 
     async function loadRegexModule() {
         if (_regexModule !== false) return _regexModule;
@@ -1671,7 +1701,6 @@ replacement text
             
             const avatar = char.avatar;
             
-            // 1. Очистка старых тегов через оригинальную память ядра ST
             if (ctx.tagMap && ctx.tags) {
                 const currentTagIds = ctx.tagMap[avatar] || [];
                 const toUnlink = currentTagIds.filter(id => {
@@ -1687,12 +1716,10 @@ replacement text
                 }
             }
             
-            // 2. Обновляем саму карточку персонажа (ОЗУ)
             if (!char.data) char.data = {};
             char.data.tags = newTagsNames;
             char.tags = newTagsNames;
             
-            // Записываем новые теги в файл на диск (ПЗУ) через edit-attribute
             const payload = {
                 avatar_url: avatar,
                 ch_name: char.name || 'Unknown',
@@ -1709,15 +1736,12 @@ replacement text
                 if (!res.ok) console.warn("[ST-Copilot] Tags edit-attribute failed:", res.status);
             } catch (e) { console.warn("[ST-Copilot] Failed to edit tags API:", e); }
 
-            // 3. Импорт новых тегов через ядро (создаст их, если их нет, и добавит в оригинальный tagMap)
             if (typeof ctx.importTags === 'function') {
                 try {
-                    // Передаем 3 (tag_import_setting.ALL), чтобы принудительно создать новые теги
                     await ctx.importTags(char, { importSetting: 3 }); 
                 } catch(e) { console.warn("[ST-Copilot] Failed to import tags via core context:", e); }
             }
 
-            // 4. Обновляем UI (список персонажей)
             const es = ctx.eventSource || window.eventSource;
             const et = ctx.event_types || window.event_types;
             if (es && et?.CHARACTER_EDITED) {
@@ -1729,7 +1753,6 @@ replacement text
         
         if (!char.data) char.data = {};
         
-        // Используем edit-attribute для безопасного перезаписывания любого поля, включая массивы (alternate_greetings)
         const payload = { 
             avatar_url: char.avatar, 
             ch_name: char.name || 'Unknown',
@@ -1844,6 +1867,7 @@ replacement text
                     successLog.push(change);
                 }
             } catch (e) {
+                console.error(`[ST-Copilot-Debug] Failed on char field "${field}":`, e);
                 toastr.error(`[CharEdit] Failed on "${field}": ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
             }
         }
@@ -1978,40 +2002,19 @@ replacement text
         if (foundChar) {
             _dbgAdd('CHAR_CREATE_CACHE_FOUND', { name: foundChar.name, tags: foundChar.tags });
 
-            const tagsMod = await loadTagsModule();
-            if (tagsMod) {
-                if (typeof tagsMod.importTags === 'function') {
-                    _dbgAdd('CHAR_CREATE_IMPORT_TAGS_CALL', { avatar: foundChar.avatar });
-                    try {
-                        let importSettingValue = tagsMod.tag_import_setting?.ALL;
-                        if (importSettingValue === undefined && tagsMod.tag_import_setting) {
-                            for (const key of Object.keys(tagsMod.tag_import_setting)) {
-                                if (key.toUpperCase() === 'ALL') {
-                                    importSettingValue = tagsMod.tag_import_setting[key];
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        if (importSettingValue === undefined) {
-                            importSettingValue = 2; 
-                        }
-
-                        const importResult = await tagsMod.importTags(foundChar, { importSetting: importSettingValue });
-                        _dbgAdd('CHAR_CREATE_IMPORT_TAGS_DONE', { result: importResult });
-                    } catch (importErr) {
-                        console.error('[ST-Copilot-Debug] Exception inside importTags():', importErr);
-                        _dbgAdd('CHAR_CREATE_IMPORT_TAGS_FAIL', { error: importErr.message, stack: importErr.stack });
-                    }
-                } else {
-                    console.warn('[ST-Copilot-Debug] tags.js was imported, but importTags() is not exported.');
-                    _dbgAdd('CHAR_CREATE_IMPORT_TAGS_MISSING', { keys: Object.keys(tagsMod) });
+            if (typeof ctx.importTags === 'function') {
+                try {
+                    const importResult = await ctx.importTags(foundChar, { importSetting: 3 });
+                    _dbgAdd('CHAR_CREATE_IMPORT_TAGS_DONE', { result: importResult });
+                } catch (importErr) {
+                    console.error('[ST-Copilot-Debug] Exception inside importTags():', importErr);
+                    _dbgAdd('CHAR_CREATE_IMPORT_TAGS_FAIL', { error: importErr.message, stack: importErr.stack });
                 }
             } else {
-                console.warn('[ST-Copilot-Debug] Skipping tag mapping because tags.js module failed to load.');
+                _dbgAdd('CHAR_CREATE_IMPORT_TAGS_MISSING', { reason: 'ctx.importTags is not a function' });
             }
         } else {
-            console.error(`[ST-Copilot-Debug] Character "${newAvatar}" is missing from ST cache! Check if file name matches.`);
+            console.error(`[ST-Copilot-Debug] Character "${newAvatar}" is missing from ST cache!`);
             _dbgAdd('CHAR_CREATE_CACHE_MISSING', { avatar: newAvatar });
         }
 
@@ -2149,6 +2152,7 @@ replacement text
                 toastr.success(`Character "${escHtml(editableData.name)}" created!`, EXT_DISPLAY);
                 card.remove();
             } catch (e) {
+                console.error('[ST-Copilot-Debug] Character creation UI error:', e);
                 toastr.error(`Failed: ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
                 createBtn.disabled = false;
                 createBtn.innerHTML = '<i class="fa-solid fa-user-plus"></i> Create Character';
@@ -3567,6 +3571,7 @@ replacement text
                 await _saveChatMessage(ctx, idx, msg);
                 successLog.push(change);
             } catch (e) {
+                console.error(`[ST-Copilot-Debug] ChatEdit Failed:`, e);
                 toastr.error(`[ChatEdit] Failed on change: ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
             }
         }
@@ -5275,6 +5280,8 @@ replacement text
             opacity: 95,
             hotkey: 'Alt+Shift+C',
             hotkeyEnabled: true,
+            searchHotkey: 'Ctrl+F',
+            searchHotkeyEnabled: true,
             contextDepth: 15,
             localHistoryLimit: 50,
             connectionSource: 'default',
@@ -7786,7 +7793,7 @@ replacement text
                 wrapper.innerHTML = parseTemplate(html);
                 while (wrapper.firstChild) document.body.appendChild(wrapper.firstChild);
             } else {
-                console.error(`[${EXT_DISPLAY}] Не удалось загрузить HTML: ${templateName}.html`);
+                console.error(`[${EXT_DISPLAY}] Couldn't load HTML: ${templateName}.html`);
             }
         };
 
@@ -9762,29 +9769,23 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         uploadBtn.addEventListener('click', () => {
             const inp = document.createElement('input');
-            inp.type = 'file'; inp.accept = 'audio/*';
-            inp.onchange = () => {
+            inp.type = 'file'; inp.accept = 'image/*,video/mp4,video/webm';
+            inp.onchange = async () => {
                 const file = inp.files?.[0]; if (!file) return;
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const s2 = getSettings();
-                    if (!s2.customSounds) s2.customSounds = {};
-                    const id = 'custom_' + Date.now();
-                    s2.customSounds[id] = {
-                        name: file.name,
-                        data: reader.result
-                    };
-                    s2.completionSound = id;
-                    saveSettings();
-                    renderDropdown();
-                    updateCustomActions();
-                    
-                    const otherContainers = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(c => c && c !== container);
-                    otherContainers.forEach(c => buildSoundSettingsUI(c));
-                    
-                    toastr.success('Sound uploaded.', EXT_DISPLAY);
-                };
-                reader.readAsDataURL(file);
+                if (file.size > 25 * 1024 * 1024) { toastr.warning('File too large (>25MB).', EXT_DISPLAY); return; }
+                const isVideo = file.type.startsWith('video/');
+                const url = await _uploadBackgroundToST(file).catch(() => null);
+                if (!url) { toastr.error('Failed to upload background', EXT_DISPLAY); return; }
+                
+                const s2 = getSettings();
+                const id = 'bg_' + Date.now();
+                s2.customBackgrounds[id] = { name: file.name, dataUrl: url, isVideo, fit: 'cover' };
+                s2.windowBg = id;
+                saveSettings();
+                
+                const allContainers = [document.getElementById('scp-bg-settings'), document.getElementById('scp-sp-bg-settings')].filter(Boolean);
+                allContainers.forEach(c => buildBackgroundSettingsUI(c));
+                applyWindowBackground();
             };
             inp.click();
         });
@@ -10673,6 +10674,27 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         });
     }
 
+    async function _uploadBackgroundToST(file) {
+        const formData = new FormData();
+        formData.append('avatar', file);
+        const ctx = SillyTavern.getContext();
+        const headers = ctx.getRequestHeaders();
+        delete headers['Content-Type'];
+        const res = await fetch('/api/backgrounds/upload', {
+            method: 'POST',
+            headers,
+            body: formData
+        });
+        if (res.ok) {
+            const text = await res.text();
+            let filename = text;
+            try { const j = JSON.parse(text); if (j.path) filename = j.path; } catch(e){}
+            if (!filename.startsWith('/')) filename = `/backgrounds/${filename}`;
+            return filename;
+        }
+        throw new Error('Background upload failed');
+    }
+
     function _setupBgUpload(btnId, inputId) {
         const btn = document.getElementById(btnId);
         if (!btn) return;
@@ -10684,14 +10706,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 const file = inp.files[0];
                 if (!file) return;
                 if (file.size > 25 * 1024 * 1024) { toastr.warning('File is too large (>25MB). Use URL instead.', EXT_DISPLAY); return; }
-                const dataUrl = await _fileToDataUrl(file).catch(() => null);
-                if (dataUrl) {
-                    getSettings().windowBgUrl = dataUrl;
+                const url = await _uploadBackgroundToST(file).catch(() => null);
+                if (url) {
+                    getSettings().windowBgUrl = url;
                     saveSettings();
                     const urlInput = document.getElementById(inputId);
-                    if (urlInput) urlInput.value = dataUrl;
+                    if (urlInput) urlInput.value = url;
                     applyWindowBackground();
                     _syncBgToOverlay();
+                } else {
+                    toastr.error('Failed to upload background.', EXT_DISPLAY);
                 }
             };
             inp.click();
@@ -10830,6 +10854,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const s = getSettings(); 
         s.minimized = true; 
         windowEl.style.display = 'none'; 
+        _copilotActive = false;
         saveSettings(); 
         updateIconVisibility();
     }
@@ -10838,6 +10863,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const s = getSettings(); 
         s.minimized = false; 
         windowEl.style.display = 'flex'; 
+        _copilotActive = true;
         saveSettings(); 
         updateIconVisibility();
         scrollToBottom(); 
@@ -10849,6 +10875,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         s.windowVisible = false; 
         s.minimized = false; 
         windowEl.style.display = 'none'; 
+        _copilotActive = false;
         saveSettings(); 
         updateIconVisibility();
     }
@@ -10859,6 +10886,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         s.windowVisible = true; 
         s.minimized = false;
         windowEl.style.display = 'flex';
+        _copilotActive = true;
         _userScrolledUp = false;
         saveSettings(); 
         updateIconVisibility();
@@ -10939,6 +10967,38 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             e.preventDefault(); toggleVisibility();
         };
         document.addEventListener('keydown', _hotkeyHandler);
+    }
+
+    let _searchHotkeyHandler = null;
+
+    function setupSearchHotkey() {
+        if (_searchHotkeyHandler) document.removeEventListener('keydown', _searchHotkeyHandler, true);
+        _searchHotkeyHandler = null;
+        const s = getSettings();
+        if (!s.enabled || !s.searchHotkeyEnabled || !s.searchHotkey) return;
+
+        const parts = s.searchHotkey.toLowerCase().split('+').map(p => p.trim());
+        const key = parts[parts.length - 1];
+        const needAlt = parts.includes('alt');
+        const needCtrl = parts.includes('ctrl') || parts.includes('control');
+        const needShift = parts.includes('shift');
+        const needMeta = parts.includes('meta') || parts.includes('cmd');
+
+        _searchHotkeyHandler = e => {
+            if (e.key.toLowerCase() !== key) return;
+            if (needAlt !== e.altKey || needCtrl !== e.ctrlKey || needShift !== e.shiftKey || needMeta !== e.metaKey) return;
+            
+            if (!_copilotActive) return;
+            
+            const win = document.getElementById(WIN_ID);
+            if (!win || win.style.display === 'none') return;
+            
+            e.preventDefault();
+            e.stopPropagation();
+            if (_searchOpen) { document.getElementById('scp-search-input')?.focus(); }
+            else openSearch();
+        };
+        document.addEventListener('keydown', _searchHotkeyHandler, true);
     }
 
     // ─── Session Dropdown ────────────────────────────────────────────────────────
@@ -11711,6 +11771,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         
         setC('scp-enabled', 'enabled');
         setC('scp-hotkey-enabled', 'hotkeyEnabled');
+        setC('scp-search-hotkey-enabled', 'searchHotkeyEnabled');
+        setI('scp-search-hotkey', 'searchHotkey');
         setC('scp-include-sysprompt', 'includeSystemPrompt');
         setC('scp-include-persona', 'includeUserPersonality');
         setC('scp-apply-regex', 'applyRegexToContext');
@@ -11922,6 +11984,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         }
         bindCheck('scp-ghost-hotkey-enabled', 'ghostModeHotkeyEnabled', setupGhostHotkey);
         bindInput('scp-ghost-hotkey', 'ghostModeHotkey', null, setupGhostHotkey);
+        bindCheck('scp-search-hotkey-enabled', 'searchHotkeyEnabled', setupSearchHotkey);
+        bindInput('scp-search-hotkey', 'searchHotkey', null, setupSearchHotkey);
         const reasoningTrimEl = $('scp-reasoning-trim');
         if (reasoningTrimEl) {
             reasoningTrimEl.value = getSettings().reasoningTrimStrings || '';
@@ -12375,6 +12439,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const gC = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
 
         // Global tab
+        gC('scp-sp-search-hotkey-enabled', s.searchHotkeyEnabled);
+        g('scp-sp-search-hotkey', s.searchHotkey);
         gC('scp-sp-enabled', s.enabled);
         gC('scp-sp-perf-mode', s.performanceMode);
         gC('scp-sp-hotkey-enabled', s.hotkeyEnabled);
@@ -12620,6 +12686,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             _markDirty('config');
             const stEl = document.getElementById({
                 enabled:'scp-enabled', hotkeyEnabled:'scp-hotkey-enabled', hotkey:'scp-hotkey',
+                searchHotkeyEnabled:'scp-search-hotkey-enabled', searchHotkey:'scp-search-hotkey',
                 floatingIconPersistent:'scp-icon-persistent', connectionSource:'scp-conn-source',
                 maxTokens:'scp-max-tokens', localHistoryLimit:'scp-history-limit',
                 contextDepth:'scp-depth-slider', includeSystemPrompt:'scp-include-sysprompt',
@@ -12682,6 +12749,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         
         bGCheck('scp-sp-hotkey-enabled', 'hotkeyEnabled', setupHotkey);
         bGInput('scp-sp-hotkey', 'hotkey', null, setupHotkey);
+
+        bGCheck('scp-sp-search-hotkey-enabled', 'searchHotkeyEnabled', setupSearchHotkey);
+        bGInput('scp-sp-search-hotkey', 'searchHotkey', null, setupSearchHotkey);
         
         bGCheck('scp-sp-icon-persistent', 'floatingIconPersistent', updateIconVisibility);
         bGCheck('scp-sp-wobble-window', 'wobbleWindow');
@@ -13295,6 +13365,21 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         makeResizable(windowEl);
         setupMessagesScrollTracking();
 
+        document.addEventListener('pointerdown', e => {
+            const win = document.getElementById(WIN_ID);
+            if (!win || win.style.display === 'none') {
+                _copilotActive = false;
+                return;
+            }
+            const clickedInside = win.contains(e.target) || 
+                                  e.target.closest('.scp-dialog-overlay') ||
+                                  document.getElementById('scp-settings-overlay')?.contains(e.target) ||
+                                  document.getElementById('scp-lb-overlay')?.contains(e.target) ||
+                                  document.getElementById('scp-picker-overlay')?.contains(e.target) ||
+                                  document.getElementById('scp-diff-modal')?.contains(e.target);
+            _copilotActive = !!clickedInside;
+        }, true);
+
         window.addEventListener('resize', () => {
             if (windowEl && windowEl.style.display !== 'none') {
                 const r = windowEl.getBoundingClientRect();
@@ -13494,19 +13579,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             });
         }
 
-        // Ctrl+F / Cmd+F opens search;
-        document.addEventListener('keydown', e => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-                const win = document.getElementById(WIN_ID);
-                if (!win || win.style.display === 'none') return;
-                const active = document.activeElement;
-                if (active && !win.contains(active) && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) return;
-                e.preventDefault();
-                e.stopPropagation();
-                if (_searchOpen) { document.getElementById('scp-search-input')?.focus(); }
-                else openSearch();
-            }
-        }, true);
         $('scp-stop-btn')?.addEventListener('click', () => {
             _abortController?.abort();
             const { stopGeneration } = SillyTavern.getContext();
@@ -14043,8 +14115,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         
         if (s.windowVisible && !s.minimized) {
             windowEl.style.display = 'flex';
+            _copilotActive = true;
         } else {
             windowEl.style.display = 'none';
+            _copilotActive = false;
         }
         
         updateIconVisibility();
@@ -14071,7 +14145,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             });
         }
         
-        setupHotkey(); setupGhostHotkey(); addWandButton();
+        setupHotkey(); setupSearchHotkey(); setupGhostHotkey(); addWandButton();
         checkChangelogAutoShow();
         _takeProfileSnapshot();
         _dbgSnapshotSettings();

@@ -33,16 +33,28 @@
           <label class="scp-sp-check" title="Disables heavy visual effects like blur, advanced shadows, and 3D animations to save CPU on low-end devices."><input type="checkbox" id="scp-sp-perf-mode"><span>Low Performance Mode (Save CPU)</span></label>
           <label class="scp-sp-check"><input type="checkbox" id="scp-sp-changelog-auto"><span>Show changelog on update</span></label>
           <button class="scp-action-btn" id="scp-sp-open-changelog" style="margin-top:4px;align-self:flex-start">${I.starFill}<span>What's New</span></button>
-          <div class="scp-sp-row" style="gap:8px;margin-top:6px">
-            <label class="scp-sp-check" style="flex:0 0 auto"><input type="checkbox" id="scp-sp-hotkey-enabled"><span>Shortcut</span></label>
-            <input type="text" class="scp-sp-input" id="scp-sp-hotkey" placeholder="Alt+Shift+C" style="flex:1">
-          </div>
-          <div class="scp-sp-field" style="margin-top:4px">
+          <div class="scp-sp-field" style="margin-top:8px">
             <label class="scp-sp-label">Window Opacity</label>
             <div class="scp-sp-row">
               <input type="range" class="scp-slider" id="scp-sp-opacity-slider" min="20" max="100" style="flex:1">
               <span id="scp-sp-opacity-val" style="min-width:32px;text-align:right;font-size:11px;color:var(--scp-accent)">95%</span>
             </div>
+          </div>
+        </div>
+
+        <div class="scp-sp-group">
+          <div class="scp-sp-group-title"><i class="fa-solid fa-keyboard"></i> Shortcuts</div>
+          <div class="scp-sp-row" style="gap:8px;margin-bottom:6px">
+            <label class="scp-sp-check" style="flex:0 0 120px"><input type="checkbox" id="scp-sp-hotkey-enabled"><span>Toggle Window</span></label>
+            <input type="text" class="scp-sp-input" id="scp-sp-hotkey" placeholder="Alt+Shift+C" style="flex:1">
+          </div>
+          <div class="scp-sp-row" style="gap:8px;margin-bottom:6px">
+            <label class="scp-sp-check" style="flex:0 0 120px"><input type="checkbox" id="scp-sp-search-hotkey-enabled"><span>Chat Search</span></label>
+            <input type="text" class="scp-sp-input" id="scp-sp-search-hotkey" placeholder="Ctrl+F" style="flex:1">
+          </div>
+          <div class="scp-sp-row" style="gap:8px">
+            <label class="scp-sp-check" style="flex:0 0 120px"><input type="checkbox" id="scp-sp-ghost-hotkey-enabled"><span>Ghost Mode</span></label>
+            <input type="text" class="scp-sp-input" id="scp-sp-ghost-hotkey" placeholder="Alt+Shift+G" style="flex:1">
           </div>
         </div>
 
@@ -60,10 +72,6 @@
               <input type="range" class="scp-slider" id="scp-sp-ghost-opacity" min="15" max="50" style="flex:1">
               <span id="scp-sp-ghost-opacity-val" style="min-width:32px;text-align:right;font-size:11px;color:var(--scp-accent)">15%</span>
             </div>
-          </div>
-          <div class="scp-sp-row" style="gap:8px;margin-top:4px">
-            <label class="scp-sp-check" style="flex:0 0 auto"><input type="checkbox" id="scp-sp-ghost-hotkey-enabled"><span>Shortcut</span></label>
-            <input type="text" class="scp-sp-input" id="scp-sp-ghost-hotkey" placeholder="Alt+Shift+G" style="flex:1">
           </div>
         </div>
 

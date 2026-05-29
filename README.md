@@ -113,7 +113,7 @@ A fully integrated, highly detailed theme editor.
 
 ---
 
-## 🚀 Installation
+## Installation
 
 1. Open SillyTavern and navigate to the **Extensions** menu (the plug icon).
 2. Click **Install Extension** and paste the link to this repository.
@@ -124,6 +124,18 @@ A fully integrated, highly detailed theme editor.
 
 ## 📜 Changelog History
 
+### V2.7.2
+*   **Shortcuts Overlay:** Added a dedicated "Shortcuts" configuration window in the settings panel for better accessibility.
+*   **Context-Aware Search:** Improved the search shortcut logic; it now triggers exclusively when the Copilot window is focused to prevent global key conflicts.
+*   **Character Factory Fixes:** Fixed critical bugs related to character creation and data integrity.
+*   **Asset Optimization:** Optimized background storage and handling for faster load times and reduced memory usage.
+
+### V2.7.1
+*   **Character Tagging:** Added the ability to modify the "tags" field for already existing characters.
+*   **Low Performance Mode:** Introduced a new toggle to optimize resource usage on lower-end hardware.
+*   **Session Stability:** Completely overhauled the session saving system to prevent spontaneous session loss and data corruption.
+*   **General Optimization:** Improved core logic for better performance and overall stability. Fixed AI Generation errors.
+
 ### V2.7.0
 *   **Proposed Chat Edits:** A powerful new way to bulk-modify, delete, or hide message ranges. Just ask Copilot to "change the name Elara to Sarah in the last 10 messages" or "hide all mentions of the tavern."
 *   **File Attachments & Vision:** Directly upload text files and images to Copilot. Features an internal viewer and supports both direct vision models and the Image Captioning extension.
@@ -133,6 +145,9 @@ A fully integrated, highly detailed theme editor.
 *   **Advanced Overrides & Sync:** Lorebook, Character, and Chat AI settings are now fully synced with Configuration Profiles and accessible via Session Overrides.
 *   **UX Improvements:** Added an "Always Off" state for Lorebooks, sender-based group selection in the Context Picker, and focus-aware completion sounds.
 *   **Refinements:** Optimized connection profile switching and fixed theme compatibility for list markers and hidden messages.
+
+<details>
+<summary><b>Previous Updates (v1.7.0 - v2.5.1)</b></summary>
 
 ### V2.5.1
 *   **Continue Button:** Added a dedicated button to continue the last Copilot message.
@@ -149,9 +164,6 @@ A fully integrated, highly detailed theme editor.
 *   **Lorebook Updates:** Added a "constant" parameter for proposed changes, and reorganized settings by moving the AI Edit and Keytrigger toggles to the main Settings window.
 *   **Mobile & Bug Fixes:** The Enter key on mobile keyboards now correctly inserts line breaks instead of sending messages. Fixed mobile UI headers, resolved user message duplication bugs, and redesigned system message outputs.
 *   *Note: The default Lorebook AI Edit prompt has been updated. Please reset your prompt to default in the settings to ensure compatibility!*
-
-<details>
-<summary><b>Previous Updates (v1.7.0 - v2.3.0)</b></summary>
 
 ### V2.3.0
 *   **Stream Support:** Added streaming support so you can see generations in real-time.

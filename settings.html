@@ -27,14 +27,6 @@
                         <span>Low Performance Mode (Save CPU)</span>
                     </label>
                     <div style="margin-top:10px">
-                        <b style="font-size:12px">Keyboard Shortcut</b>
-                        <label class="checkbox_label" style="margin-top:6px">
-                            <input id="scp-hotkey-enabled" type="checkbox" />
-                            <span>Enable shortcut to toggle window</span>
-                        </label>
-                        <input id="scp-hotkey" type="text" class="text_pole" placeholder="e.g. Alt+Shift+C" style="margin-top:5px" />
-                    </div>
-                    <div style="margin-top:10px">
                         <b style="font-size:12px">Window Opacity</b>
                         <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
                             <input type="range" id="scp-opacity-slider" class="neo-range-slider" min="20" max="100" style="flex:1">
@@ -54,7 +46,35 @@
                     </div>
                 </div>
 
-                <!-- ── Ghost Mode ──────────────────────────────── -->
+                <!-- ── Shortcuts ───────────────────────────────── -->
+                <div class="scp-settings-flat-section">
+                    <div class="scp-settings-flat-title"><i class="fa-solid fa-keyboard"></i> Shortcuts</div>
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                        <div>
+                            <label class="checkbox_label">
+                                <input id="scp-hotkey-enabled" type="checkbox" />
+                                <span>Toggle Window</span>
+                            </label>
+                            <input id="scp-hotkey" type="text" class="text_pole" placeholder="e.g. Alt+Shift+C" style="margin-top:5px" />
+                        </div>
+                        <div>
+                            <label class="checkbox_label">
+                                <input id="scp-search-hotkey-enabled" type="checkbox" />
+                                <span>Chat Search</span>
+                            </label>
+                            <input id="scp-search-hotkey" type="text" class="text_pole" placeholder="e.g. Ctrl+F" style="margin-top:5px" />
+                        </div>
+                        <div>
+                            <label class="checkbox_label">
+                                <input id="scp-ghost-hotkey-enabled" type="checkbox" />
+                                <span>Toggle Ghost Mode</span>
+                            </label>
+                            <input id="scp-ghost-hotkey" type="text" class="text_pole" placeholder="e.g. Alt+Shift+G" style="margin-top:5px" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Completion Sound ────────────────────────── -->
                 <div class="scp-settings-flat-section">
                     <div class="scp-settings-flat-title"><i class="fa-solid fa-volume-high"></i> Completion Sound</div>
                     <div id="scp-sound-settings"></div>
@@ -64,7 +84,7 @@
                     </label>
                 </div>
 
-                <!-- ── Ghost Mode (original) ──────────────────── -->
+                <!-- ── Ghost Mode ──────────────────────────────── -->
                 <div class="scp-settings-flat-section">
                     <div class="scp-settings-flat-title"><i class="fa-solid fa-ghost"></i> Ghost Mode</div>
                     <label style="font-size:11px; color:#888; display:block; margin-bottom:8px">
@@ -77,15 +97,8 @@
                             <span id="scp-ghost-opacity-val" style="font-size:12px;min-width:34px;text-align:right;color:var(--SmartThemeQuoteColor,#a99bfb)">15%</span>
                         </div>
                     </div>
-                    <div style="margin-top:10px">
-                        <b style="font-size:12px">Ghost Mode Shortcut</b>
-                        <label class="checkbox_label" style="margin-top:6px">
-                            <input id="scp-ghost-hotkey-enabled" type="checkbox" />
-                            <span>Enable ghost mode shortcut</span>
-                        </label>
-                        <input id="scp-ghost-hotkey" type="text" class="text_pole" placeholder="e.g. Alt+Shift+G" style="margin-top:5px" />
-                    </div>
                 </div>
+
 
                 <!-- ── Configuration Profiles ─────────────────── -->
                 <div class="scp-settings-flat-section">
