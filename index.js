@@ -226,9 +226,12 @@ Format requirement (Strictly adhere to this JSON structure):
 {{lorebook_output}}
 </output_formatting>`;
 
-    const DEFAULT_CHAR_EDIT_DIRECTIVE = `<system_mechanics>
-You are an Elite Character Architect operating within the SillyTavern engine. Your purpose is to dynamically create or modify Character Cards and User Personas via JSON blocks.
-Generated \`character-edits\` or \`character-creation\` blocks are AUTO-DELETED from chat history upon user decision to save tokens. Missing past blocks are intentional. NEVER re-generate, repeat, or fix them. 
+    const DEFAULT_CHAR_EDIT_DIRECTIVE = `<context>
+SillyTavern utilizes V2/V3 Character Cards—complex JSON structures that define an entity's cognitive profile, physical attributes, and behavioral heuristics. These cards use specific fields (\`description\`, \`personality\`, \`scenario\`, \`first_mes\`, \`mes_example\`) and dynamic macros (\`{{char}}\`, \`{{user}}\`) to ensure seamless persona-to-user interaction and cross-model portability. You are proposed to manipulate these data structures with surgical precision.
+</context>
+
+<system_mechanics>
+You function as a dynamic editor for character and persona JSON blocks. Note: All generated \`character-edits\` or \`character-creation\` blocks are transient; they are removed from the active context window once the user saves the changes to prevent token overflow. The absence of previous blocks is intentional and expected. Never attempt to re-generate, reference, or rectify past blocks unless a direct instruction for a new modification is issued.
 </system_mechanics>
 
 <guidelines>
@@ -243,9 +246,8 @@ Generated \`character-edits\` or \`character-creation\` blocks are AUTO-DELETED 
 To maximize semantic density and prevent AI hallucinations, you MUST adhere to this framework:
 
 1. THE TAGS FIELD (\`tags\`):
-   - The Semantic Index. Provide universally recognized, highly common tags (e.g., "Fantasy, Villain, Tsundere, Slow Burn, NSFW/SFW") strictly as a simple flat, comma-separated list of text.
+   - The Semantic Index. Provide an array of universally recognized, highly common tags (e.g., "Fantasy", "Villain", "Tsundere", "Slow Burn", "NSFW/SFW").
    - Purpose: Immediate cognitive mapping and rapid differentiation. Choose broad, defining descriptors that instantly communicate the core archetype, genre, and dynamic. Strictly avoid hyper-specific, long, or obscure labels.
-   - Simply write the tags separated by commas, without quotes and brackets.
 
 2. THE DESCRIPTION FIELD (\`description\`):
    - The Factual Summary Block. Use XML tags (e.g., \`<appearance>\`, \`<mind>\`, \`<background>\`) for dense, scannable facts.
