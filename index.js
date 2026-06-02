@@ -1779,7 +1779,7 @@ replacement text
         const domMap = {
             description: 'description_textarea',
             personality: 'personality_textarea',
-            scenario: 'scenario_textarea',
+            scenario: 'scenario_pole',
             first_mes: 'firstmessage_textarea',
             mes_example: 'mes_example_textarea'
         };
