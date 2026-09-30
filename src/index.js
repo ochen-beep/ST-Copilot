@@ -5,12 +5,13 @@ import { _dbgSetupGlobalErrorHandlers, _dbgAdd, dbgDownload, _dbgSnapshotSetting
 import { showCustomDialog, escHtml, autoResize, copyText } from './utils/util-dom.js';
 import { setupExternalWIChangeListener } from './features/feature-lorebook-engine.js';
 
-import { restoreWindowState, applyCustomTheme, applyWindowBackground, hideWindow, showWindow, minimize, toggleVisibility, makeDraggable, makeResizable, makeIconDraggable, updateIconVisibility, toggleGhostMode, setupGhostHotkey, setupHotkey, bringWindowToFront } from './ui/ui-window.js';
+import { restoreWindowState, applyCustomTheme, applyWindowBackground, hideWindow, showWindow, minimize, toggleVisibility, makeDraggable, makeResizable, toggleGhostMode, setupGhostHotkey, setupHotkey, bringWindowToFront } from './ui/ui-window.js';
+import { ensureLauncher, watchLauncherHost, refreshLauncher, applyMobileMode, initViewportSync, observeStChrome } from './ui/ui-launcher.js';
 import { setupSettingsPanelListeners, setupSettingsHandlers, updateSettingsUI, updateProfilesList, updateSPConnProfileList, _takeProfileSnapshot, openSettingsPanel, syncOverlayUI } from './ui/ui-settings.js';
 import { setupLorebookManagerListeners, openLorebookManager } from './features/feature-lorebook-ui.js';
 import { setupCharacterManagerListeners, openCharacterManager } from './features/feature-character-manager-ui.js';
 import { updateMemoryDot } from './features/feature-memory.js';
-import { setupChatPickerListeners, onChatChanged, updateDepthSlidersMax, renderSession, openSearch, navigateSearch, performSearch, closeSearch, openChatPicker, toggleSearchWholeWord, setupDepthClickEdit, updateMsgCount, setupSearchHotkey, setupMessagesScrollTracking } from './ui/ui-chat.js';
+import { setupChatPickerListeners, onChatChanged, updateDepthSlidersMax, renderSession, openSearch, navigateSearch, performSearch, closeSearch, openChatPicker, toggleSearchWholeWord, setupDepthClickEdit, updateMsgCount, setupSearchHotkey, setupMessagesScrollTracking, setupCodeBlockActions } from './ui/ui-chat.js';
 import { checkChangelogAutoShow, setupChangelogListeners, openChangelog, openFavoritesPanel, closeFavoritesPanel, openInspector, renderQuickPromptsBar } from './ui/ui-widgets.js';
 import { _setupAttachButton } from './features/feature-attachments.js';
 
@@ -78,11 +79,11 @@ export function refreshSessionDropdown() {
     const listEl = document.getElementById('scp-sess-list');
     if (!nameEl || !listEl) return;
     const activeSess = bucket.sessions.find(s => s.id === bucket.activeSessionId);
-    nameEl.textContent = activeSess?.name || 'No Sessions';
+    nameEl.textContent = activeSess?.name || 'Нет сессий';
     listEl.innerHTML = '';
     
     if (!bucket.sessions.length) {
-        listEl.innerHTML = `<div class="scp-sess-empty-label">No sessions — create one below</div>`;
+        listEl.innerHTML = `<div class="scp-sess-empty-label">Нет сессий — создайте новую ниже</div>`;
     } else {
         for (const sess of bucket.sessions) {
             const item = document.createElement('div');
@@ -96,14 +97,14 @@ export function refreshSessionDropdown() {
             item.appendChild(dot); item.appendChild(nameSpan); item.appendChild(count);
             if (sess.isTemporary) {
                 const badge = document.createElement('span'); badge.className = 'scp-sess-tmp-badge';
-                badge.title = 'Temporary session — will be deleted on switch'; badge.textContent = 'tmp';
+                badge.title = 'Временная сессия — будет удалена при переключении'; badge.textContent = 'tmp';
                 item.appendChild(badge);
             }
             
             if (sess.id === bucket.activeSessionId) {
                 const tmpBtn = document.createElement('button');
                 tmpBtn.className = `scp-sess-tmp-btn${sess.isTemporary ? ' active' : ''}`;
-                tmpBtn.title = sess.isTemporary ? 'Make permanent' : 'Make temporary';
+                tmpBtn.title = sess.isTemporary ? 'Сделать постоянной' : 'Сделать временной';
                 tmpBtn.innerHTML = '⏱';
                 tmpBtn.addEventListener('click', e => {
                     e.stopPropagation();
@@ -119,8 +120,8 @@ export function refreshSessionDropdown() {
                 if (actSess && actSess.isTemporary && actSess.id !== sess.id) {
                     const ok = await showCustomDialog({
                         type: 'confirm',
-                        title: 'Delete Temporary Session?',
-                        message: 'Your current session is temporary. Switching will permanently delete it. Continue?'
+                        title: 'Удалить временную сессию?',
+                        message: 'Текущая сессия временная. При переключении она будет удалена без возможности восстановления. Продолжить?'
                     });
                     if (!ok) return;
                 }
@@ -150,21 +151,20 @@ function addWandButton() {
 
 function attachWindowListeners() {
     const windowEl = document.getElementById(WIN_ID);
-    const iconEl = document.getElementById(ICON_ID);
     const modalEl = document.getElementById(MODAL_ID);
 
     if (windowEl) {
         makeDraggable(document.getElementById('scp-drag-handle'), windowEl);
         makeResizable(windowEl);
     }
-    
+
     document.addEventListener('pointerdown', e => {
         const win = document.getElementById(WIN_ID);
         if (!win || win.style.display === 'none') {
             state.copilotActive = false;
             return;
         }
-        const clickedInside = win.contains(e.target) || 
+        const clickedInside = win.contains(e.target) ||
                               e.target.closest('.scp-dialog-overlay') ||
                               document.getElementById('scp-settings-overlay')?.contains(e.target) ||
                               document.getElementById('scp-lb-overlay')?.contains(e.target) ||
@@ -190,38 +190,18 @@ function attachWindowListeners() {
                 }
             } catch(e) {}
         }
-        if (iconEl && iconEl.style.display !== 'none') {
-            const vw = window.innerWidth;
-            const vh = window.innerHeight;
-            const iconSize = 46;
-            const savedIconPos = localStorage.getItem(ICON_STORAGE_KEY);
-            if (savedIconPos) {
-                try {
-                    const pos = JSON.parse(savedIconPos);
-                    const left = parseFloat(pos.left);
-                    const top = parseFloat(pos.top);
-                    if (!isNaN(left) && !isNaN(top)) {
-                        let newLeft = Math.max(0, Math.min(left, vw - iconSize));
-                        let newTop = Math.max(0, Math.min(top, vh - iconSize));
-                        iconEl.style.left = `${newLeft}px`;
-                        iconEl.style.top = `${newTop}px`;
-                    }
-                } catch(e) {}
-            }
-        }
     });
 
     document.getElementById('scp-min-btn')?.addEventListener('click', () => minimize());
     document.getElementById('scp-close-btn')?.addEventListener('click', () => hideWindow());
     document.getElementById('scp-ext-settings-btn')?.addEventListener('click', () => openSettingsPanel());
-    if (iconEl) makeIconDraggable(iconEl);
 
     document.getElementById('scp-ghost-btn')?.addEventListener('click', () => toggleGhostMode());
 
     // Session dropdown
     document.getElementById('scp-sess-trigger')?.addEventListener('click', e => {
         e.stopPropagation();
-        if (state.generating) { toastr.warning('Please wait for generation to finish.', EXT_DISPLAY); return; }
+        if (state.generating) { toastr.warning('Пожалуйста, дождитесь окончания генерации.', EXT_DISPLAY); return; }
         const panel = document.getElementById('scp-sess-panel'); const trigger = document.getElementById('scp-sess-trigger');
         const isOpen = panel.classList.contains('open');
         panel.classList.toggle('open', !isOpen); trigger.classList.toggle('open', !isOpen);
@@ -251,13 +231,13 @@ function attachWindowListeners() {
         if (activeSess && activeSess.isTemporary) {
             const ok = await showCustomDialog({
                 type: 'confirm',
-                title: 'Delete Temporary Session?',
-                message: 'Your current session is temporary. Creating a new one will permanently delete it. Continue?'
+                title: 'Удалить временную сессию?',
+                message: 'Текущая сессия временная. Создание новой приведёт к её удалению без возможности восстановления. Продолжить?'
             });
             if (!ok) return;
         }
 
-        const defaultName = `Session ${bucket.sessions.length + 1}`;
+        const defaultName = `Сессия ${bucket.sessions.length + 1}`;
         const result = await showSessionDialog({ defaultName });
         if (result === null) return;
         
@@ -273,9 +253,9 @@ function attachWindowListeners() {
     document.getElementById('scp-rename-sess-btn')?.addEventListener('click', async () => {
         const sess = getCurrentSession();
         const oldName = sess.name;
-        const newName = await showCustomDialog({ type: 'prompt', title: 'Rename Session', message: 'New session name:', defaultValue: sess.name });
+        const newName = await showCustomDialog({ type: 'prompt', title: 'Переименовать сессию', message: 'Новое имя сессии:', defaultValue: sess.name });
         if (!newName?.trim() || newName.trim() === oldName) return;
-        sess.name = newName.trim(); 
+        sess.name = newName.trim();
         import('./session.js').then(m => m.saveSessionsToMetadata());
         refreshSessionDropdown();
         _dbgAdd('SESSION_RENAMED', { id: sess.id, oldName, newName: sess.name });
@@ -284,7 +264,7 @@ function attachWindowListeners() {
     document.getElementById('scp-del-sess-btn')?.addEventListener('click', async () => {
         const bucket = getChatBucket();
         if (!bucket.sessions.length) return;
-        const ok = await showCustomDialog({ type: 'confirm', title: 'Delete Session', message: 'Delete this session and all its messages? This cannot be undone.' });
+        const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить сессию', message: 'Удалить эту сессию и все её сообщения? Это действие нельзя отменить.' });
         if (!ok) return;
         const newSess = deleteCurrentSession();
         refreshSessionDropdown(); renderSession(newSess);
@@ -514,12 +494,12 @@ async function init() {
         } catch (e) {}
     }
     
-    restoreWindowState(document.getElementById(WIN_ID), document.getElementById(ICON_ID)); 
-    attachWindowListeners(); 
-    setupSettingsHandlers(); 
-    updateSettingsUI(); 
-    setupSettingsPanelListeners(); 
-    setupLorebookManagerListeners(); 
+    restoreWindowState(document.getElementById(WIN_ID));
+    attachWindowListeners();
+    setupSettingsHandlers();
+    updateSettingsUI();
+    setupSettingsPanelListeners();
+    setupLorebookManagerListeners();
     setupCharacterManagerListeners();
     setupExternalWIChangeListener();
     setupChatPickerListeners(); 
@@ -528,10 +508,11 @@ async function init() {
     setupGhostHotkey();
     setupHotkey();
     setupMessagesScrollTracking();
+    setupCodeBlockActions();
     
     const s = getSettings();
     const windowEl = document.getElementById(WIN_ID);
-    
+
     if (s.windowVisible && !s.minimized && windowEl) {
         windowEl.style.display = 'flex';
         state.copilotActive = true;
@@ -539,8 +520,14 @@ async function init() {
         windowEl.style.display = 'none';
         state.copilotActive = false;
     }
-    
-    updateIconVisibility(document.getElementById(ICON_ID));
+
+    // v2.10.0: inline launcher button + fullscreen mobile mode + viewport sync.
+    ensureLauncher({ onToggle: () => toggleVisibility() });
+    watchLauncherHost();
+    initViewportSync();
+    observeStChrome();
+    applyMobileMode();
+    refreshLauncher();
     bringWindowToFront();
     
     await onChatChanged();
