@@ -1,5 +1,29 @@
 import { _dbgAdd } from './util-debug.js';
 
+/**
+ * Итеративный Левенштейн с двумя строками-буферами (O(N) памяти).
+ * Используется для fuzzy match в applySearchReplaceToField и resolveCharacterByName.
+ */
+export function levenshtein(a, b) {
+    a = String(a); b = String(b);
+    if (a === b) return 0;
+    let l1 = a.length, l2 = b.length;
+    if (l1 === 0) return l2;
+    if (l2 === 0) return l1;
+    let prev = new Int32Array(l2 + 1);
+    let curr = new Int32Array(l2 + 1);
+    for (let j = 0; j <= l2; j++) prev[j] = j;
+    for (let i = 1; i <= l1; i++) {
+        curr[0] = i;
+        for (let j = 1; j <= l2; j++) {
+            const cost = (a.charAt(i - 1) === b.charAt(j - 1)) ? 0 : 1;
+            curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+        }
+        const temp = prev; prev = curr; curr = temp;
+    }
+    return prev[l2];
+}
+
 export function _repairJSON(raw) {
     let s = raw;
     s = s.replace(/,\s*([\}\]])/g, '$1');
@@ -73,25 +97,6 @@ export function applySearchReplaceToField(fieldContent, searchText, replaceText)
     const src = fieldContent;
     const srch = searchText || '';
     const repl = replaceText || '';
-
-    function levenshtein(a, b) {
-        if (a === b) return 0;
-        let l1 = a.length, l2 = b.length;
-        if (l1 === 0) return l2;
-        if (l2 === 0) return l1;
-        let prev = new Int32Array(l2 + 1);
-        let curr = new Int32Array(l2 + 1);
-        for (let j = 0; j <= l2; j++) prev[j] = j;
-        for (let i = 1; i <= l1; i++) {
-            curr[0] = i;
-            for (let j = 1; j <= l2; j++) {
-                let cost = (a.charAt(i - 1) === b.charAt(j - 1)) ? 0 : 1;
-                curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
-            }
-            let temp = prev; prev = curr; curr = temp;
-        }
-        return prev[l2];
-    }
 
     function getTokenSimilarity(t1, t2) {
         if (t1 === t2) return 1.0;

@@ -2,7 +2,7 @@ import { EXT_DISPLAY, CHAR_EDIT_FORMAT_BLOCK, CHAR_CREATE_FORMAT_BLOCK, DEFAULT_
 import { getSettings, getCurrentSession } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
 import { escHtml } from '../utils/util-dom.js';
-import { _sanitizeProposedTags, applySearchReplaceToField, _repairJSON, _ensureWrapped } from '../utils/util-text.js';
+import { _sanitizeProposedTags, applySearchReplaceToField, _repairJSON, _ensureWrapped, levenshtein } from '../utils/util-text.js';
 import { getTagsForCharacter, getUserPersona, getAuthorsNote } from '../utils/util-st.js';
 import { _getAspectEvolutiaCharFields, _getAspectEvolutiaPersonaFields } from '../integrations/integ-evolutia.js';
 
@@ -162,22 +162,6 @@ export function buildCharEditAIInstructions(settings) {
     return _ensureWrapped(`${base}${evolutiaDocs}`, 'character_management');
 }
 
-function _levenshtein(a, b) {
-    a = String(a); b = String(b);
-    const m = a.length, n = b.length;
-    if (!m) return n;
-    if (!n) return m;
-    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-    for (let i = 0; i <= m; i++) dp[i][0] = i;
-    for (let j = 0; j <= n; j++) dp[0][j] = j;
-    for (let i = 1; i <= m; i++) {
-        for (let j = 1; j <= n; j++) {
-            dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
-        }
-    }
-    return dp[m][n];
-}
-
 export function resolveCharacterByName(aiName, entities = null) {
     if (!aiName) return null;
     const ctx = SillyTavern.getContext();
@@ -204,7 +188,7 @@ export function resolveCharacterByName(aiName, entities = null) {
 
     let best = null, bestDist = Infinity;
     for (const e of list) {
-        const dist = _levenshtein(normAi, e.char.name.toLowerCase().trim());
+        const dist = levenshtein(normAi, e.char.name.toLowerCase().trim());
         if (dist < bestDist) { bestDist = dist; best = e.char; }
     }
     if (best && bestDist <= 2) return best;

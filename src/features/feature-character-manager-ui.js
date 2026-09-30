@@ -9,30 +9,30 @@ import {
 } from './feature-character-engine.js';
 
 const FIELD_GROUPS = [
-    { title: 'Identity', fields: [
-        { key: 'name', label: 'Name' },
-        { key: 'tags', label: 'Tags' },
-        { key: 'description', label: 'Description', multiline: true },
-        { key: 'personality', label: 'Personality', multiline: true },
+    { title: 'Личность', fields: [
+        { key: 'name', label: 'Имя' },
+        { key: 'tags', label: 'Теги' },
+        { key: 'description', label: 'Описание', multiline: true },
+        { key: 'personality', label: 'Характер', multiline: true },
     ]},
-    { title: 'Scene', fields: [
-        { key: 'scenario', label: 'Scenario', multiline: true },
-        { key: 'first_mes', label: 'First Message', multiline: true },
-        { key: 'mes_example', label: 'Example Dialogue', multiline: true },
+    { title: 'Сцена', fields: [
+        { key: 'scenario', label: 'Сценарий', multiline: true },
+        { key: 'first_mes', label: 'Первое сообщение', multiline: true },
+        { key: 'mes_example', label: 'Пример диалога', multiline: true },
     ]},
-    { title: 'Advanced', fields: [
-        { key: 'system_prompt', label: 'Main Prompt Override', multiline: true },
-        { key: 'post_history_instructions', label: 'Post-History Instructions', multiline: true },
+    { title: 'Расширенные', fields: [
+        { key: 'system_prompt', label: 'Переопределение основного промпта', multiline: true },
+        { key: 'post_history_instructions', label: 'Инструкции после истории', multiline: true },
     ]},
 ];
 
 const OV_FIELDS = [
-    { key: 'tags', label: 'Tags' }, { key: 'description', label: 'Description' },
-    { key: 'personality', label: 'Personality' }, { key: 'scenario', label: 'Scenario' },
-    { key: 'first_mes', label: 'First Message' }, { key: 'mes_example', label: 'Example Dialogue' },
-    { key: 'authors_note', label: "Author's Note" }, { key: 'system_prompt', label: 'Main Prompt Override' },
-    { key: 'post_history_instructions', label: 'Post-History Instructions' },
-    { key: 'alternate_greetings', label: 'Alternate Greetings' },
+    { key: 'tags', label: 'Теги' }, { key: 'description', label: 'Описание' },
+    { key: 'personality', label: 'Характер' }, { key: 'scenario', label: 'Сценарий' },
+    { key: 'first_mes', label: 'Первое сообщение' }, { key: 'mes_example', label: 'Пример диалога' },
+    { key: 'authors_note', label: 'Заметка автора' }, { key: 'system_prompt', label: 'Переопределение основного промпта' },
+    { key: 'post_history_instructions', label: 'Инструкции после истории' },
+    { key: 'alternate_greetings', label: 'Альтернативные приветствия' },
 ];
 
 // ─── Module State ─────────────────────────────────────────────────────────────
@@ -51,12 +51,12 @@ function _showUnsavedDialog(onSave, onDiscard) {
     overlay.style.zIndex = '2147483055';
     overlay.innerHTML = `
         <div class="scp-dialog-box">
-            <div class="scp-dialog-title">Unsaved Changes</div>
-            <div class="scp-dialog-msg">You have unsaved changes to character fields. What would you like to do?</div>
+            <div class="scp-dialog-title">Несохранённые изменения</div>
+            <div class="scp-dialog-msg">У вас есть несохранённые изменения полей персонажа. Что вы хотите сделать?</div>
             <div class="scp-dialog-btns">
-                <button class="scp-dialog-btn scp-dialog-cancel" id="_uc_cancel">Cancel</button>
-                <button class="scp-dialog-btn scp-dialog-cancel" id="_uc_discard" style="color:var(--scp-danger,#ff5c5c)">Discard</button>
-                <button class="scp-dialog-btn scp-dialog-ok" id="_uc_save">Save &amp; Exit</button>
+                <button class="scp-dialog-btn scp-dialog-cancel" id="_uc_cancel">Отмена</button>
+                <button class="scp-dialog-btn scp-dialog-cancel" id="_uc_discard" style="color:var(--scp-danger,#ff5c5c)">Отклонить</button>
+                <button class="scp-dialog-btn scp-dialog-ok" id="_uc_save">Сохранить и выйти</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
@@ -80,7 +80,7 @@ function _getPersonaEntity() {
     if (typeof avatar === 'object' && avatar !== null) {
         avatar = avatar.avatarId || avatar.avatar_id || avatar.user_avatar || avatar.userAvatar || avatar.id;
     }
-    return { id: '__persona__', name: ctx.name1 || 'User', avatar: avatar || '', isPersona: true };
+    return { id: '__persona__', name: ctx.name1 || 'Пользователь', avatar: avatar || '', isPersona: true };
 }
 
 function _avatarUrl(entity) {
@@ -130,12 +130,12 @@ function _buildCharListRow(entity, s) {
         const lock = document.createElement('span');
         lock.className = 'scp-char-row-lock';
         lock.innerHTML = I.lock;
-        lock.title = 'Adding Persona to context is managed in global settings.';
+        lock.title = 'Добавление персоны в контекст управляется в глобальных настройках.';
         row.appendChild(lock);
     } else {
         const cb = document.createElement('div');
         cb.className = `scp-char-row-cb${isCharacterExcluded(s, entity.id) ? '' : ' checked'}`;
-        cb.title = 'Include this character in AI context';
+        cb.title = 'Включать этого персонажа в контекст ИИ';
         cb.addEventListener('click', e => {
             e.stopPropagation();
             const wasIncluded = cb.classList.contains('checked');
@@ -189,7 +189,7 @@ function _renderCharList() {
     if (!charEntities.length) {
         const empty = document.createElement('div');
         empty.className = 'scp-char-list-empty';
-        empty.textContent = 'No characters found in this chat.';
+        empty.textContent = 'В этом чате персонажи не найдены.';
         listEl.appendChild(empty);
     }
 
@@ -218,14 +218,14 @@ function _buildBanner(entity) {
     nameEl.textContent = entity.name;
     const tokenEl = document.createElement('div');
     tokenEl.className = 'scp-char-banner-tokens';
-    tokenEl.textContent = '~… tkns total';
+    tokenEl.textContent = '~… токенов всего';
     info.appendChild(nameEl);
     info.appendChild(tokenEl);
 
     banner.appendChild(avatar);
     banner.appendChild(info);
 
-    _calcTotalTokens(entity).then(n => { if (tokenEl.isConnected) tokenEl.textContent = `~${n} tkns total`; });
+    _calcTotalTokens(entity).then(n => { if (tokenEl.isConnected) tokenEl.textContent = `~${n} токенов всего`; });
 
     return banner;
 }
@@ -258,9 +258,9 @@ function _buildFieldRow(fieldDef, getValueFn, onDirtyFn) {
         try {
             const apiMod = await import('../api.js');
             const n = await apiMod.estimateTokens(text);
-            if (tokenSpan.isConnected) tokenSpan.textContent = `[~${n} tkns]`;
+            if (tokenSpan.isConnected) tokenSpan.textContent = `[~${n} токенов]`;
         } catch (e) {
-            if (tokenSpan.isConnected) tokenSpan.textContent = `[Error]`;
+            if (tokenSpan.isConnected) tokenSpan.textContent = `[Ошибка]`;
         }
     };
 
@@ -284,7 +284,7 @@ function _buildCurrentInfoTab(entity, saveBtn, revertBtn) {
     pane.className = 'scp-char-pane scp-char-pane-info';
 
     const groups = entity.isPersona
-        ? [{ title: 'Identity', fields: [{ key: 'user_persona', label: 'Persona Description', multiline: true }] }]
+        ? [{ title: 'Личность', fields: [{ key: 'user_persona', label: 'Описание персоны', multiline: true }] }]
         : FIELD_GROUPS;
     const charRef = entity.isPersona ? null : entity.char;
     const dirty = {};
@@ -323,18 +323,18 @@ function _buildCurrentInfoTab(entity, saveBtn, revertBtn) {
         if (!Object.keys(dirty).length) return true;
         const origLabel = saveBtn.innerHTML;
         saveBtn.disabled = true;
-        saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i><span>Saving…</span>`;
+        saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i><span>Сохранение…</span>`;
         try {
             for (const [key, val] of Object.entries(dirty)) {
                 await saveCharacterField(charRef, key, val);
                 delete dirty[key];
             }
             _currentIsDirty = false;
-            toastr.success('Saved.', EXT_DISPLAY);
+            toastr.success('Сохранено.', EXT_DISPLAY);
             _renderCharDetail(entity);
             return true;
         } catch (e) {
-            toastr.error(`Failed: ${e.message}`, EXT_DISPLAY);
+            toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
             saveBtn.innerHTML = origLabel;
             updateBtns();
             return false;
@@ -372,7 +372,7 @@ function _buildOverrideRow(entity, fieldDef) {
 
     const resetBtn = document.createElement('button');
     resetBtn.className = 'scp-sp-ov-clear';
-    resetBtn.title = 'Clear override';
+    resetBtn.title = 'Очистить переопределение';
     resetBtn.textContent = '↺';
 
     const refresh = () => {
@@ -425,7 +425,7 @@ function _buildOverridesTab(entity) {
 
     const hint = document.createElement('div');
     hint.className = 'scp-char-ov-hint';
-    hint.textContent = `Override which fields of ${entity.name} are sent to AI context. Unchecked falls back to global settings.`;
+    hint.textContent = `Переопределите, какие поля ${entity.name} отправляются в контекст ИИ. Снятие флажка возвращает к глобальным настройкам.`;
     pane.appendChild(hint);
 
     OV_FIELDS.forEach(f => pane.appendChild(_buildOverrideRow(entity, f)));
@@ -452,13 +452,13 @@ function _renderCharDetail(entity) {
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'scp-action-btn scp-char-banner-save-btn';
-    saveBtn.innerHTML = `${I.check}<span>Save</span>`;
+    saveBtn.innerHTML = `${I.check}<span>Сохранить</span>`;
     saveBtn.disabled = true;
     saveBtn.style.opacity = '0.4';
 
     const revertBtn = document.createElement('button');
     revertBtn.className = 'scp-action-btn';
-    revertBtn.innerHTML = `${I.x}<span>Revert</span>`;
+    revertBtn.innerHTML = `${I.x}<span>Отменить</span>`;
     revertBtn.disabled = true;
     revertBtn.style.opacity = '0.4';
 
@@ -470,10 +470,10 @@ function _renderCharDetail(entity) {
     tabs.className = 'scp-char-tabs';
     const tabInfo = document.createElement('button');
     tabInfo.className = 'scp-char-tab active';
-    tabInfo.textContent = 'Current Info';
+    tabInfo.textContent = 'Текущая информация';
     const tabOv = document.createElement('button');
     tabOv.className = 'scp-char-tab';
-    tabOv.textContent = 'Overrides';
+    tabOv.textContent = 'Переопределения';
     tabOv.disabled = entity.isPersona;
     tabs.appendChild(tabInfo);
     tabs.appendChild(tabOv);

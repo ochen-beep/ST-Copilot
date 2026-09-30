@@ -3,12 +3,12 @@
         <div class="scp-lb-header">
             <div class="scp-lb-header-left">
                 <span class="scp-lb-title-icon">${I.book}</span>
-                <span class="scp-lb-title">Lorebook Manager</span>
+                <span class="scp-lb-title">Менеджер лорбуков</span>
             </div>
             <div class="scp-lb-header-center">
                 <div class="scp-lb-search-wrap">
                     ${I.search}
-                    <input type="text" id="scp-lb-search" class="scp-lb-search" placeholder="Search entries by name, keys, content…">
+                    <input type="text" id="scp-lb-search" class="scp-lb-search" placeholder="Поиск записей по имени, ключам, содержимому…">
                 </div>
             </div>
             <div class="scp-lb-header-right">
@@ -19,76 +19,76 @@
         <div class="scp-lb-body">
             <div class="scp-lb-sidebar">
                 <div class="scp-lb-sidebar-header">
-                    <span class="scp-lb-sidebar-title">Lorebooks</span>
-                    <button class="scp-tbtn" id="scp-lb-refresh" title="Refresh list">${I.refresh}</button>
+                    <span class="scp-lb-sidebar-title">Лорбуки</span>
+                    <button class="scp-tbtn" id="scp-lb-refresh" title="Обновить список">${I.refresh}</button>
                 </div>
                 <div class="scp-lb-book-list" id="scp-lb-book-list">
-                    <div class="scp-lb-loading">Loading…</div>
+                    <div class="scp-lb-loading">Загрузка…</div>
                 </div>
                 <div class="scp-lb-sidebar-legend">
-                    <span class="scp-lb-legend-item"><span class="scp-lb-src-badge scp-lb-src-global">G</span> Global</span>
-                    <span class="scp-lb-legend-item"><span class="scp-lb-src-badge scp-lb-src-character">C</span> Char</span>
-                    <span class="scp-lb-legend-item"><span class="scp-lb-src-badge scp-lb-src-chat">Ch</span> Chat</span>
-                    <span class="scp-lb-legend-item"><span class="scp-lb-src-badge scp-lb-src-persona">P</span> Persona</span>
+                    <span class="scp-lb-legend-item"><span class="scp-lb-src-badge scp-lb-src-global">G</span> Глобальный</span>
+                    <span class="scp-lb-legend-item"><span class="scp-lb-src-badge scp-lb-src-character">C</span> Персонаж</span>
+                    <span class="scp-lb-legend-item"><span class="scp-lb-src-badge scp-lb-src-chat">Ch</span> Чат</span>
+                    <span class="scp-lb-legend-item"><span class="scp-lb-src-badge scp-lb-src-persona">P</span> Персона</span>
                 </div>
             </div>
 
             <div class="scp-lb-main">
                 <div class="scp-lb-main-toolbar">
-                    <span class="scp-lb-entries-label" id="scp-lb-entries-label">Select a lorebook</span>
+                    <span class="scp-lb-entries-label" id="scp-lb-entries-label">Выберите лорбук</span>
                     <div class="scp-lb-main-actions" id="scp-lb-main-actions" style="display:none">
-                        <button class="scp-lb-bulk-btn" id="scp-lb-enable-all">Force All On</button>
-                        <button class="scp-lb-bulk-btn" id="scp-lb-disable-all">Force All Off</button>
-                        <button class="scp-lb-bulk-btn" id="scp-lb-reset-overrides">Reset All</button>
-                        <button class="scp-lb-bulk-btn scp-lb-add-btn" id="scp-lb-add-entry">${I.plus} New Entry</button>
+                        <button class="scp-lb-bulk-btn" id="scp-lb-enable-all">Включить все принудительно</button>
+                        <button class="scp-lb-bulk-btn" id="scp-lb-disable-all">Выключить все принудительно</button>
+                        <button class="scp-lb-bulk-btn" id="scp-lb-reset-overrides">Сбросить все</button>
+                        <button class="scp-lb-bulk-btn scp-lb-add-btn" id="scp-lb-add-entry">${I.plus} Новая запись</button>
                     </div>
                 </div>
                 <div class="scp-lb-ctx-legend" id="scp-lb-ctx-legend" style="display:none">
-                    <span class="scp-lb-ctx-legend-item"><span class="scp-lb-ind-demo scp-lb-ind-in-ctx"></span>In context</span>
-                    <span class="scp-lb-ctx-legend-item"><span class="scp-lb-ind-demo forced-on"></span>Force On</span>
-                    <span class="scp-lb-ctx-legend-item"><span class="scp-lb-ind-demo forced-off"></span>Force Off</span>
-                    <span class="scp-lb-ctx-legend-item"><span class="scp-lb-ind-demo scp-lb-ind-demo-disabled"></span>Disabled</span>
-                    <span class="scp-lb-ctx-legend-item"><span class="scp-lb-ind-demo"></span>Default</span>
+                    <span class="scp-lb-ctx-legend-item"><span class="scp-lb-ind-demo scp-lb-ind-in-ctx"></span>В контексте</span>
+                    <span class="scp-lb-ctx-legend-item"><span class="scp-lb-ind-demo forced-on"></span>Включить принудительно</span>
+                    <span class="scp-lb-ctx-legend-item"><span class="scp-lb-ind-demo forced-off"></span>Выключить принудительно</span>
+                    <span class="scp-lb-ctx-legend-item"><span class="scp-lb-ind-demo scp-lb-ind-demo-disabled"></span>Отключено</span>
+                    <span class="scp-lb-ctx-legend-item"><span class="scp-lb-ind-demo"></span>По умолчанию</span>
                 </div>
                 <div class="scp-lb-entries-container">
                     <div class="scp-lb-entries" id="scp-lb-entries">
-                        <div class="scp-lb-empty-state"><div class="scp-empty-icon">${I.book}</div><div>Select a lorebook to view its entries</div></div>
+                        <div class="scp-lb-empty-state"><div class="scp-empty-icon">${I.book}</div><div>Выберите лорбук для просмотра записей</div></div>
                     </div>
                     <div class="scp-lb-entry-detail" id="scp-lb-entry-detail" style="display:none">
                         <div class="scp-lb-detail-header">
-                            <button class="scp-lb-back-btn" id="scp-lb-back">← Back</button>
-                            <span class="scp-lb-detail-title" id="scp-lb-detail-title">Entry</span>
+                            <button class="scp-lb-back-btn" id="scp-lb-back">← Назад</button>
+                            <span class="scp-lb-detail-title" id="scp-lb-detail-title">Запись</span>
                             <div class="scp-lb-detail-actions">
-                                <button class="scp-lb-detail-btn" id="scp-lb-detail-copy" title="Copy content">${I.copy}</button>
-                                <button class="scp-lb-detail-btn scp-lb-detail-save-btn" id="scp-lb-detail-save" title="Save">${I.check} Save</button>
-                                <button class="scp-lb-detail-btn scp-lb-detail-danger" id="scp-lb-detail-delete" title="Delete entry">${I.trash}</button>
+                                <button class="scp-lb-detail-btn" id="scp-lb-detail-copy" title="Копировать содержимое">${I.copy}</button>
+                                <button class="scp-lb-detail-btn scp-lb-detail-save-btn" id="scp-lb-detail-save" title="Сохранить">${I.check} Сохранить</button>
+                                <button class="scp-lb-detail-btn scp-lb-detail-danger" id="scp-lb-detail-delete" title="Удалить запись">${I.trash}</button>
                             </div>
                         </div>
                         <div class="scp-lb-detail-body">
                             <div class="scp-lb-detail-row">
-                                <label class="scp-lb-detail-label">Name / Comment</label>
-                                <input type="text" class="scp-lb-detail-input" id="scp-lb-detail-name" placeholder="Entry name">
+                                <label class="scp-lb-detail-label">Имя / Комментарий</label>
+                                <input type="text" class="scp-lb-detail-input" id="scp-lb-detail-name" placeholder="Имя записи">
                             </div>
                             <div class="scp-lb-detail-row">
-                                <label class="scp-lb-detail-label">Trigger Keys <span class="scp-lb-label-hint">(comma-separated)</span></label>
-                                <input type="text" class="scp-lb-detail-input" id="scp-lb-detail-triggers" placeholder="keyword1, keyword2, /regex/i">
+                                <label class="scp-lb-detail-label">Триггер-ключи <span class="scp-lb-label-hint">(через запятую)</span></label>
+                                <input type="text" class="scp-lb-detail-input" id="scp-lb-detail-triggers" placeholder="ключ1, ключ2, /regex/i">
                             </div>
                             <div class="scp-lb-detail-row scp-lb-detail-row-grow">
-                                <label class="scp-lb-detail-label">Content</label>
-                                <textarea class="scp-lb-detail-textarea" id="scp-lb-detail-content" placeholder="Entry content…"></textarea>
+                                <label class="scp-lb-detail-label">Содержимое</label>
+                                <textarea class="scp-lb-detail-textarea" id="scp-lb-detail-content" placeholder="Содержимое записи…"></textarea>
                             </div>
                             <div class="scp-lb-detail-meta-row">
                                 <div class="scp-lb-detail-meta-item">
-                                    <span class="scp-lb-detail-label">Lorebook Status</span>
-                                    <div class="scp-lb-detail-status" id="scp-lb-detail-lb-status" title="Click to toggle in lorebook">Enabled</div>
+                                    <span class="scp-lb-detail-label">Статус лорбука</span>
+                                    <div class="scp-lb-detail-status" id="scp-lb-detail-lb-status" title="Нажмите для переключения в лорбуке">Включено</div>
                                 </div>
                                 <div class="scp-lb-detail-meta-item">
-                                    <span class="scp-lb-detail-label">Copilot Context Injection</span>
+                                    <span class="scp-lb-detail-label">Контекстная инъекция Copilot</span>
                                     <div style="display:flex;flex-direction:column;gap:4px">
                                         <div class="scp-lb-detail-injection">
-                                            <button class="scp-lb-inj-btn" data-val="default" id="scp-lb-inj-default">Default</button>
-                                            <button class="scp-lb-inj-btn" data-val="true" id="scp-lb-inj-force-on">Force On</button>
-                                            <button class="scp-lb-inj-btn" data-val="false" id="scp-lb-inj-force-off">Force Off</button>
+                                            <button class="scp-lb-inj-btn" data-val="default" id="scp-lb-inj-default">По умолчанию</button>
+                                            <button class="scp-lb-inj-btn" data-val="true" id="scp-lb-inj-force-on">Включить принудительно</button>
+                                            <button class="scp-lb-inj-btn" data-val="false" id="scp-lb-inj-force-off">Выключить принудительно</button>
                                         </div>
                                         <span class="scp-lb-inj-hint" id="scp-lb-inj-hint"></span>
                                     </div>
@@ -110,12 +110,12 @@
 <div id="scp-diff-modal" class="scp-modal-overlay" style="display:none">
     <div class="scp-modal scp-diff-modal-box">
         <div class="scp-modal-header">
-            <span class="scp-diff-modal-title">${I.edit} Diff View</span>
+            <span class="scp-diff-modal-title">${I.edit} Просмотр различий</span>
             <button class="scp-hbtn scp-hbtn-close" id="scp-diff-close">${I.x}</button>
         </div>
         <div class="scp-modal-tabs">
-            <button class="scp-modal-tab active" data-diff-tab="split">Split</button>
-            <button class="scp-modal-tab" data-diff-tab="unified">Unified</button>
+            <button class="scp-modal-tab active" data-diff-tab="split">Разделённый</button>
+            <button class="scp-modal-tab" data-diff-tab="unified">Объединённый</button>
         </div>
         <div class="scp-modal-body scp-diff-body" id="scp-diff-body"></div>
     </div>

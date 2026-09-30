@@ -10,15 +10,15 @@ export function fallbackCopy(text) {
     ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;width:1px;height:1px;';
     document.body.appendChild(ta);
     ta.focus(); ta.select();
-    try { document.execCommand('copy'); toastr.success('Copied', EXT_DISPLAY); }
-    catch (e) { toastr.error('Copy failed', EXT_DISPLAY); }
+    try { document.execCommand('copy'); toastr.success('Скопировано', EXT_DISPLAY); }
+    catch (e) { toastr.error('Не удалось скопировать', EXT_DISPLAY); }
     ta.remove();
 }
 
 export function copyText(text) {
     if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(text)
-            .then(() => toastr.success('Copied', EXT_DISPLAY))
+            .then(() => toastr.success('Скопировано', EXT_DISPLAY))
             .catch(() => fallbackCopy(text));
     } else { fallbackCopy(text); }
 }
@@ -41,8 +41,8 @@ export function showCustomDialog({ type = 'alert', title = '', message = '', htm
                 ${message ? `<div class="scp-dialog-msg">${escHtml(message)}</div>` : (htmlMessage ? `<div class="scp-dialog-msg">${htmlMessage}</div>` : '')}
                 ${isPrompt ? `<input type="text" class="scp-dialog-input" value="${escHtml(defaultValue)}" placeholder="${escHtml(placeholder)}">` : ''}
                 <div class="scp-dialog-btns">
-                    ${(isPrompt || isConfirm) ? `<button class="scp-dialog-btn scp-dialog-cancel">Cancel</button>` : ''}
-                    <button class="scp-dialog-btn scp-dialog-ok${isConfirm ? ' danger' : ''}">${isConfirm ? 'Confirm' : 'OK'}</button>
+                    ${(isPrompt || isConfirm) ? `<button class="scp-dialog-btn scp-dialog-cancel">Отмена</button>` : ''}
+                    <button class="scp-dialog-btn scp-dialog-ok${isConfirm ? ' danger' : ''}">${isConfirm ? 'Подтвердить' : 'OK'}</button>
                 </div>
             </div>`;
         document.body.appendChild(overlay);

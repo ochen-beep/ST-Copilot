@@ -33,8 +33,8 @@ export function openDiffModal(change, originalEntry) {
         newContent = originalContent + (change.content || '');
     }
     
-    const entryName = change.name || originalEntry?.comment || `Entry #${change.uid || '?'}`;
-    const title = `Diff: "${entryName}" in ${change.worldName || '?'}`;
+    const entryName = change.name || originalEntry?.comment || `Запись #${change.uid || '?'}`;
+    const title = `Сравнение: «${entryName}» в ${change.worldName || '?'}`;
     openTextDiffModal(title, originalContent, newContent);
 }
 
@@ -46,14 +46,14 @@ export function renderLBHistoryContent(msg, contentEl) {
     const dismissed = lines.filter(l => l.includes('DISMISSED')).length;
 
     const summaryParts = [];
-    if (accepted) summaryParts.push(`${accepted} applied`);
-    if (rejected) summaryParts.push(`${rejected} rejected`);
-    if (dismissed) summaryParts.push(`${dismissed} dismissed`);
-    const summaryStr = summaryParts.length ? summaryParts.join(', ') : `${lines.length} change${lines.length !== 1 ? 's' : ''}`;
+    if (accepted) summaryParts.push(`${accepted} применено`);
+    if (rejected) summaryParts.push(`${rejected} отклонено`);
+    if (dismissed) summaryParts.push(`${dismissed} отклонено`);
+    const summaryStr = summaryParts.length ? summaryParts.join(', ') : `${lines.length} ${lines.length !== 1 ? 'изменений' : 'изменение'}`;
 
     const summaryRow = document.createElement('div');
     summaryRow.style.cssText = 'font-size:12px;font-weight:600;color:var(--scp-text);margin-bottom:4px';
-    summaryRow.textContent = `System Notification: ${summaryStr}`;
+    summaryRow.textContent = `Системное уведомление: ${summaryStr}`;
     contentEl.appendChild(summaryRow);
 
     if (lines.length) {
@@ -61,7 +61,7 @@ export function renderLBHistoryContent(msg, contentEl) {
         details.className = 'scp-hist-details';
         const summary = document.createElement('summary');
         summary.className = 'scp-hist-summary';
-        summary.textContent = 'Show details';
+        summary.textContent = 'Показать подробности';
         details.appendChild(summary);
 
         const detailsBody = document.createElement('div');
@@ -121,7 +121,7 @@ export function appendLBHistoryEl(msg, afterMsgId = null) {
     const closeBtn = document.createElement('button');
     closeBtn.className = 'scp-msg-btn scp-lb-history-close';
     closeBtn.innerHTML = I.x;
-    closeBtn.title = 'Dismiss notification';
+    closeBtn.title = 'Скрыть уведомление';
     closeBtn.addEventListener('click', () => {
         const session = getCurrentSession();
         deleteMsg(session, msg.id);
@@ -153,12 +153,12 @@ export function logLBHistoryChanges(changes, statusStr, afterMsgId = null) {
 
         const newLines = changes.map(c => {
             const act = (c.action || 'edit').toUpperCase();
-            return `${statusIcon} **${actionText}**: ${icons[c.action] || '·'} ${act} "${escHtml(c.name || c.originalName || `Entry #${c.uid || '?'}`)}" in \`${escHtml(c.worldName || '?')}\``;
+            return `${statusIcon} **${actionText}**: ${icons[c.action] || '·'} ${act} «${escHtml(c.name || c.originalName || `Запись #${c.uid || '?'}`)}» в \`${escHtml(c.worldName || '?')}\``;
         });
 
         if (afterMsgId && addHistoryToSwipe(afterMsgId, newLines)) return;
 
-        const histText = `**System Notification** — User interaction with proposed lorebook changes:\n${newLines.join('\n')}`;
+        const histText = `**Системное уведомление** — Взаимодействие пользователя с предложенными изменениями лорбука:\n${newLines.join('\n')}`;
         const histMsg = addMessage(session, 'system', histText, { isLBHistory: true, appliedLines: [...newLines] });
         appendLBHistoryEl(histMsg);
     } catch (_) {}
@@ -186,13 +186,13 @@ export async function applyLBChanges(changes, afterMsgId = null) {
         }
 
         if (!data) {
-            const msg = `Lorebook not found: "${change.worldName || '(empty)'}" — is it active in this chat?`;
-            toastr.error(`[LB] ${msg}`, EXT_DISPLAY, { timeOut: 10000 });
+            const msg = `Лорбук не найден: «${change.worldName || '(пусто)'}» — активен ли он в этом чате?`;
+            toastr.error(`[ЛБ] ${msg}`, EXT_DISPLAY, { timeOut: 10000 });
             console.error(`[${EXT_DISPLAY}] applyLBChanges: ${msg}`, change);
             continue;
         }
         if (!bookName) {
-            toastr.error(`[LB] Could not resolve book name for change: "${change.name || change.uid || '?'}"`, EXT_DISPLAY, { timeOut: 10000 });
+            toastr.error(`[ЛБ] Не удалось определить имя книги для изменения: «${change.name || change.uid || '?'}»`, EXT_DISPLAY, { timeOut: 10000 });
             continue;
         }
 
@@ -237,7 +237,7 @@ export async function applyLBChanges(changes, afterMsgId = null) {
             successfulChanges.push(change);
         } else if (change.action === 'edit') {
             if (!origEntry) {
-                toastr.error(`[LB] Entry not found for edit: "${change.name || change.uid || '?'}" in "${bookName}"`, EXT_DISPLAY, { timeOut: 10000 });
+                toastr.error(`[ЛБ] Запись для редактирования не найдена: «${change.name || change.uid || '?'}» в «${bookName}»`, EXT_DISPLAY, { timeOut: 10000 });
                 continue;
             }
             if (change.name !== undefined) origEntry.comment = change.name;
@@ -270,7 +270,7 @@ export async function applyLBChanges(changes, afterMsgId = null) {
             successfulChanges.push(change);
         } else if (change.action === 'patch') {
             if (!origEntry) {
-                toastr.error(`[LB] Entry not found for patch: "${change.name || change.uid || '?'}" in "${bookName}"`, EXT_DISPLAY, { timeOut: 10000 });
+                toastr.error(`[ЛБ] Запись для исправления не найдена: «${change.name || change.uid || '?'}» в «${bookName}»`, EXT_DISPLAY, { timeOut: 10000 });
                 continue;
             }
             let current = origEntry.content || '';
@@ -278,7 +278,7 @@ export async function applyLBChanges(changes, afterMsgId = null) {
             for (const patch of (change.patches || [])) {
                 const { result, matched } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
                 if (!matched) {
-                    toastr.warning(`[LB] SEARCH not found in "${origEntry.comment}": "${(patch.search || '').slice(0, 60)}"`, EXT_DISPLAY, { timeOut: 8000 });
+                    toastr.warning(`[ЛБ] SEARCH не найдено в «${origEntry.comment}»: «${(patch.search || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 });
                     allMatched = false;
                     break;
                 }
@@ -318,7 +318,7 @@ export async function applyLBChanges(changes, afterMsgId = null) {
     }
 
     if (changes.length > 0 && !Object.keys(bookCache).length) {
-        toastr.warning('[LB] No changes were applied — see browser console (F12) for details', EXT_DISPLAY, { timeOut: 10000 });
+        toastr.warning('[ЛБ] Изменения не применены — подробности см. в консоли браузера (F12)', EXT_DISPLAY, { timeOut: 10000 });
         return;
     }
 
@@ -326,7 +326,7 @@ export async function applyLBChanges(changes, afterMsgId = null) {
         try {
             await saveWorldInfoBook(name, data);
         } catch (e) {
-            toastr.error(`[LB] Save failed for "${name}": ${e.message}`, EXT_DISPLAY, { timeOut: 12000 });
+            toastr.error(`[ЛБ] Ошибка сохранения для «${name}»: ${e.message}`, EXT_DISPLAY, { timeOut: 12000 });
         }
     }
 
@@ -344,7 +344,7 @@ export function renderProposalCard(changes, msgEl) {
 
     const editableChanges = changes.map(c => ({ ...c }));
     const itemStates = editableChanges.map(() => 'pending');
-    const actionLabels = { add: '+ Add', edit: '✎ Edit', patch: '✂ Patch', prepend: '⬆ Prepend', append: '⬇ Append', delete: '✕ Remove' };
+    const actionLabels = { add: '+ Добавить', edit: '✎ Изменить', patch: '✂ Исправить', prepend: '⬆ В начало', append: '⬇ В конец', delete: '✕ Удалить' };
 
     const card = document.createElement('div');
     card.className = 'scp-lb-proposal-card';
@@ -374,16 +374,16 @@ export function renderProposalCard(changes, msgEl) {
     header.className = 'scp-lb-proposal-header';
     const headerLeft = document.createElement('div');
     headerLeft.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;min-width:0';
-    headerLeft.innerHTML = `<span class="scp-lb-proposal-icon">${I.book}</span><span class="scp-lb-proposal-title">Proposed Lorebook Changes</span>`;
+    headerLeft.innerHTML = `<span class="scp-lb-proposal-icon">${I.book}</span><span class="scp-lb-proposal-title">Предложенные изменения лорбука</span>`;
 
     const countBadge = document.createElement('span');
     countBadge.className = 'scp-lb-proposal-count';
-    countBadge.textContent = `${editableChanges.length} pending`;
+    countBadge.textContent = `${editableChanges.length} ожидает`;
     headerLeft.appendChild(countBadge);
 
     const dismissBtn = document.createElement('button');
     dismissBtn.className = 'scp-lb-proposal-dismiss';
-    dismissBtn.innerHTML = I.x; dismissBtn.title = 'Dismiss';
+    dismissBtn.innerHTML = I.x; dismissBtn.title = 'Отклонить';
     dismissBtn.addEventListener('click', () => {
         const dismissedChanges = editableChanges.filter((_, i) => itemStates[i] === 'pending');
         _dbgAdd('LB_PROPOSAL_ACTION', { action: 'dismissed', msgId: card.dataset.for, dismissedCount: dismissedChanges.length });
@@ -407,11 +407,11 @@ export function renderProposalCard(changes, msgEl) {
 
         const itemMeta = document.createElement('div');
         itemMeta.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-wrap:wrap';
-        itemMeta.innerHTML = `<span class="scp-lb-proposal-action">${escHtml(actionLabels[c.action] || c.action || '?')}</span><span class="scp-lb-proposal-name scp-lb-pn-target">${escHtml(c.name || c.originalName || `Entry #${c.uid || '?'}`)}</span>${c.constant ? '<span class="scp-lb-src-badge scp-lb-src-global" style="font-size:9px;padding:1px 5px" title="Constant entry">★</span>' : ''}`;
+        itemMeta.innerHTML = `<span class="scp-lb-proposal-action">${escHtml(actionLabels[c.action] || c.action || '?')}</span><span class="scp-lb-proposal-name scp-lb-pn-target">${escHtml(c.name || c.originalName || `Запись #${c.uid || '?'}`)}</span>${c.constant ? '<span class="scp-lb-src-badge scp-lb-src-global" style="font-size:9px;padding:1px 5px" title="Постоянная запись">★</span>' : ''}`;
 
         const warnEl = document.createElement('div');
         warnEl.style.cssText = 'font-size:10px;color:var(--scp-danger);margin-top:4px;width:100%;display:none;cursor:pointer;';
-        warnEl.title = 'Click to open the edit panel and fix manually';
+        warnEl.title = 'Нажмите, чтобы открыть панель редактирования и исправить вручную';
         itemMeta.appendChild(warnEl);
 
         const _activeBooks = getActiveLorebookNames();
@@ -426,7 +426,7 @@ export function renderProposalCard(changes, msgEl) {
 
         const worldTriggerText = document.createElement('span');
         worldTriggerText.className = 'scp-lb-proposal-world-trigger-text';
-        worldTriggerText.textContent = `in ${getDisplayName(_currentBook) || '?'}`;
+        worldTriggerText.textContent = `в ${getDisplayName(_currentBook) || '?'}`;
 
         const worldChevronEl = document.createElement('span');
         worldChevronEl.className = 'scp-lb-proposal-world-chevron';
@@ -445,7 +445,7 @@ export function renderProposalCard(changes, msgEl) {
             if (!items.length) {
                 const empty = document.createElement('div');
                 empty.className = 'scp-lb-proposal-world-empty';
-                empty.textContent = 'No active lorebooks';
+                empty.textContent = 'Нет активных лорбуков';
                 worldPanel.appendChild(empty);
             }
             items.forEach(name => {
@@ -461,10 +461,10 @@ export function renderProposalCard(changes, msgEl) {
                 worldPanel.appendChild(sep);
                 const newItem = document.createElement('div');
                 newItem.className = 'scp-lb-proposal-world-item scp-lb-proposal-world-new';
-                newItem.innerHTML = `<span>${I.plus}</span><span>Create new lorebook…</span>`;
+                newItem.innerHTML = `<span>${I.plus}</span><span>Создать новый лорбук…</span>`;
                 newItem.addEventListener('click', async () => {
                     worldPanel.classList.remove('open'); worldTrigger.classList.remove('open');
-                    const name = await showCustomDialog({ type: 'prompt', title: 'New Lorebook Name', message: 'Enter name for the new lorebook:', placeholder: 'My Lorebook' });
+                    const name = await showCustomDialog({ type: 'prompt', title: 'Имя нового лорбука', message: 'Введите имя для нового лорбука:', placeholder: 'Мой лорбук' });
                     if (name?.trim()) {
                         const n = name.trim();
                         if (!_activeBooks.includes(n)) _activeBooks.push(n);
@@ -487,7 +487,7 @@ export function renderProposalCard(changes, msgEl) {
             const found = !!resolved.origEntry;
             if (found) {
                 const orig = resolved.origEntry;
-                const n = orig.comment || `Entry #${orig.uid}`;
+                const n = orig.comment || `Запись #${orig.uid}`;
                 editableChanges[ci].originalName = n;
                 if (!editableChanges[ci].name) editableChanges[ci].name = n;
                 
@@ -501,7 +501,7 @@ export function renderProposalCard(changes, msgEl) {
                     const origKeys = orig.key || [];
                     editableChanges[ci].triggers = [...origKeys];
                     const tEl = item.querySelector('.scp-lb-proposal-triggers');
-                    if (tEl) tEl.textContent = origKeys.length ? `Keys: ${origKeys.join(', ')}` : 'Keys: none';
+                    if (tEl) tEl.textContent = origKeys.length ? `Ключи: ${origKeys.join(', ')}` : 'Ключи: нет';
                     const tInput = item.querySelector('.scp-lb-trig-input');
                     if (tInput && !tInput.value) { tInput.value = origKeys.join(', '); tInput.placeholder = ''; }
                 }
@@ -511,20 +511,20 @@ export function renderProposalCard(changes, msgEl) {
                 editableChanges[ci].worldName = resolved.bookName;
                 _selectedBook = resolved.bookName;
                 worldPanel.querySelectorAll('.scp-lb-proposal-world-item').forEach(el => el.classList.toggle('active', el.dataset.value === resolved.bookName));
-                worldTriggerText.textContent = `in ${getDisplayName(resolved.bookName)}`;
-                toastr.info(`Entry found in "<b>${escHtml(getDisplayName(resolved.bookName))}</b>" instead — lorebook switched automatically.`, EXT_DISPLAY, { escapeHtml: false });
+                worldTriggerText.textContent = `в ${getDisplayName(resolved.bookName)}`;
+                toastr.info(`Запись найдена в «<b>${escHtml(getDisplayName(resolved.bookName))}</b>» — лорбук переключён автоматически.`, EXT_DISPLAY, { escapeHtml: false });
             } else {
-                worldTriggerText.textContent = found ? `in ${getDisplayName(bookName)}` : `in ${getDisplayName(bookName)} ⚠`;
+                worldTriggerText.textContent = found ? `в ${getDisplayName(bookName)}` : `в ${getDisplayName(bookName)} ⚠`;
             }
 
             let isValid = found;
-            let reason = found ? '' : 'Entry not found in selected lorebook';
+            let reason = found ? '' : 'Запись не найдена в выбранном лорбуке';
             if (found && editableChanges[ci].action === 'patch') {
                 const orig = resolved.origEntry;
                 let current = orig?.content || '';
                 for (const patch of (editableChanges[ci].patches || [])) {
                     const { result, matched } = applySearchReplaceToField(current, patch.search || patch.anchor || '', patch.replace || '');
-                    if (!matched) { isValid = false; reason = `ANCHOR not found: "${(patch.search || patch.anchor || '').slice(0, 40)}..."`; break; }
+                    if (!matched) { isValid = false; reason = `ANCHOR не найден: «${(patch.search || patch.anchor || '').slice(0, 40)}...»`; break; }
                     current = result;
                 }
             }
@@ -534,7 +534,7 @@ export function renderProposalCard(changes, msgEl) {
                 item.style.borderLeftColor = 'var(--scp-danger)';
                 warnEl.textContent = `⚠ ${reason}`; warnEl.style.display = 'block';
             } else {
-                applyItemBtn.disabled = false; applyItemBtn.title = 'Apply this change';
+                applyItemBtn.disabled = false; applyItemBtn.title = 'Применить это изменение';
                 item.style.borderLeftColor = ''; warnEl.style.display = 'none';
             }
             worldTrigger.classList.toggle('warn', !found);
@@ -543,7 +543,7 @@ export function renderProposalCard(changes, msgEl) {
         const selectBook = async (name) => {
             _selectedBook = name;
             editableChanges[ci].worldName = name;
-            worldTriggerText.textContent = `in ${getDisplayName(name)}`;
+            worldTriggerText.textContent = `в ${getDisplayName(name)}`;
             worldTrigger.classList.remove('warn');
             worldPanel.querySelectorAll('.scp-lb-proposal-world-item').forEach(el => el.classList.toggle('active', el.dataset.value === name));
             worldPanel.classList.remove('open'); worldTrigger.classList.remove('open');
@@ -573,19 +573,19 @@ export function renderProposalCard(changes, msgEl) {
         if (c.action !== 'delete') {
             editToggleBtn = document.createElement('button');
             editToggleBtn.className = 'scp-lb-proposal-edit-toggle';
-            editToggleBtn.title = 'Edit before applying'; editToggleBtn.textContent = '✎';
+            editToggleBtn.title = 'Изменить перед применением'; editToggleBtn.textContent = '✎';
             itemBtns.appendChild(editToggleBtn);
         }
 
         if (['edit', 'patch', 'prepend', 'append'].includes(c.action)) {
             const diffBtn = document.createElement('button');
             diffBtn.className = 'scp-lb-proposal-diff-btn';
-            diffBtn.title = 'View diff'; diffBtn.innerHTML = I.diff;
+            diffBtn.title = 'Показать различия'; diffBtn.innerHTML = I.diff;
             diffBtn.addEventListener('click', async e => {
                 e.stopPropagation();
                 const change = editableChanges[ci];
                 const { origEntry } = await resolveLBChangeTarget(change);
-                if (!origEntry) { toastr.warning('Could not find original entry to compare against.', EXT_DISPLAY); return; }
+                if (!origEntry) { toastr.warning('Не удалось найти исходную запись для сравнения.', EXT_DISPLAY); return; }
                 openDiffModal(change, origEntry);
             });
             itemBtns.appendChild(diffBtn);
@@ -603,7 +603,7 @@ export function renderProposalCard(changes, msgEl) {
 
         const applyItemBtn = document.createElement('button');
         applyItemBtn.className = 'scp-lb-proposal-item-apply';
-        applyItemBtn.title = 'Apply this change'; applyItemBtn.textContent = '✓';
+        applyItemBtn.title = 'Применить это изменение'; applyItemBtn.textContent = '✓';
         applyItemBtn.addEventListener('click', async e => {
             e.stopPropagation();
             if (itemStates[ci] !== 'pending') return;
@@ -614,16 +614,16 @@ export function renderProposalCard(changes, msgEl) {
                 itemStates[ci] = 'applied'; item.classList.add('scp-lb-item-applied');
                 itemBtns.querySelectorAll('button').forEach(b => { b.disabled = true; });
                 updateCountBadge(); updateFooterBtns(); syncBlockToMessage(); checkAllResolved();
-                toastr.success('[LB] Change applied.', EXT_DISPLAY);
+                toastr.success('[ЛБ] Изменение применено.', EXT_DISPLAY);
             } catch (err) {
-                toastr.error(`Failed: ${err.message}`, EXT_DISPLAY);
+                toastr.error(`Ошибка: ${err.message}`, EXT_DISPLAY);
                 applyItemBtn.disabled = false; applyItemBtn.textContent = '✓';
             }
         });
 
         const rejectItemBtn = document.createElement('button');
         rejectItemBtn.className = 'scp-lb-proposal-item-reject';
-        rejectItemBtn.title = 'Reject this change'; rejectItemBtn.textContent = '✕';
+        rejectItemBtn.title = 'Отклонить это изменение'; rejectItemBtn.textContent = '✕';
         rejectItemBtn.addEventListener('click', e => {
             e.stopPropagation();
             if (itemStates[ci] !== 'pending') return;
@@ -646,7 +646,7 @@ export function renderProposalCard(changes, msgEl) {
             previewEl.textContent = isLong ? c.content.slice(0, 120) + '…' : c.content;
             if (isLong) {
                 let _expanded = false;
-                previewEl.title = 'Click to expand'; previewEl.style.cursor = 'pointer';
+                previewEl.title = 'Нажмите для раскрытия'; previewEl.style.cursor = 'pointer';
                 previewEl.addEventListener('click', e => {
                     e.stopPropagation();
                     if (window.getSelection()?.toString()) return;
@@ -659,10 +659,10 @@ export function renderProposalCard(changes, msgEl) {
         }
         if (c.triggers !== null && c.triggers?.length) {
             triggersEl = document.createElement('div'); triggersEl.className = 'scp-lb-proposal-triggers';
-            triggersEl.textContent = 'Keys: ' + c.triggers.join(', '); item.appendChild(triggersEl);
+            triggersEl.textContent = 'Ключи: ' + c.triggers.join(', '); item.appendChild(triggersEl);
         } else if (c.triggers === null) {
             triggersEl = document.createElement('div'); triggersEl.className = 'scp-lb-proposal-triggers';
-            triggersEl.style.opacity = '0.5'; triggersEl.textContent = 'Keys: keep original'; item.appendChild(triggersEl);
+            triggersEl.style.opacity = '0.5'; triggersEl.textContent = 'Ключи: сохранить оригинальные'; item.appendChild(triggersEl);
         }
 
         if (c.action !== 'delete') {
@@ -680,7 +680,7 @@ export function renderProposalCard(changes, msgEl) {
             nameInput.type = 'text'; nameInput.className = 'scp-lb-pe-input scp-lb-name-input';
             nameInput.value = c.name || '';
             nameInput.addEventListener('input', () => { editableChanges[ci].name = nameInput.value; });
-            editPanel.appendChild(mkRow('Name', nameInput));
+            editPanel.appendChild(mkRow('Имя', nameInput));
 
             const trigInput = document.createElement('input');
             trigInput.type = 'text'; trigInput.className = 'scp-lb-pe-input scp-lb-trig-input';
@@ -689,7 +689,7 @@ export function renderProposalCard(changes, msgEl) {
                 const val = trigInput.value.trim();
                 editableChanges[ci].triggers = val === '' ? [] : val.split(',').map(t => t.trim()).filter(Boolean);
             });
-            editPanel.appendChild(mkRow('Keys', trigInput));
+            editPanel.appendChild(mkRow('Ключи', trigInput));
 
             if (c.action === 'patch') {
                 const rebuildPatches = () => {
@@ -705,8 +705,8 @@ export function renderProposalCard(changes, msgEl) {
                         const replaceTa = document.createElement('textarea');
                         replaceTa.className = 'scp-lb-pe-textarea'; replaceTa.rows = 3; replaceTa.value = patch.replace || '';
                         replaceTa.addEventListener('input', () => { editableChanges[ci].patches[pi].replace = replaceTa.value; });
-                        patchWrap.appendChild(mkRow('Anchor (range)', searchTa));
-                        patchWrap.appendChild(mkRow('Replace', replaceTa));
+                        patchWrap.appendChild(mkRow('Якорь (диапазон)', searchTa));
+                        patchWrap.appendChild(mkRow('Замена', replaceTa));
                     });
                     editPanel.appendChild(patchWrap);
                 };
@@ -715,7 +715,7 @@ export function renderProposalCard(changes, msgEl) {
                 const contentTa = document.createElement('textarea');
                 contentTa.className = 'scp-lb-pe-textarea'; contentTa.value = c.content || '';
                 contentTa.addEventListener('input', () => { editableChanges[ci].content = contentTa.value; });
-                editPanel.appendChild(mkRow('Content', contentTa));
+                editPanel.appendChild(mkRow('Содержимое', contentTa));
             }
 
             const constWrap = document.createElement('label');
@@ -723,13 +723,13 @@ export function renderProposalCard(changes, msgEl) {
             const constCb = document.createElement('input');
             constCb.type = 'checkbox'; constCb.checked = !!c.constant;
             constCb.addEventListener('change', () => { editableChanges[ci].constant = constCb.checked; });
-            constWrap.appendChild(constCb); constWrap.appendChild(Object.assign(document.createElement('span'), { textContent: 'Constant (always inject)' }));
+            constWrap.appendChild(constCb); constWrap.appendChild(Object.assign(document.createElement('span'), { textContent: 'Постоянная (вставлять всегда)' }));
             
             const outletWrap = document.createElement('label');
             outletWrap.className = 'scp-sp-check'; outletWrap.style.marginTop = '6px';
             const outletCb = document.createElement('input');
             outletCb.type = 'checkbox'; outletCb.checked = !!c.outlet;
-            outletWrap.appendChild(outletCb); outletWrap.appendChild(Object.assign(document.createElement('span'), { textContent: 'Outlet Entry' }));
+            outletWrap.appendChild(outletCb); outletWrap.appendChild(Object.assign(document.createElement('span'), { textContent: 'Запись-аутлет' }));
 
             const outletNameRow = document.createElement('div');
             outletNameRow.className = 'scp-lb-pe-row';
@@ -737,9 +737,9 @@ export function renderProposalCard(changes, msgEl) {
             const oNameInp = document.createElement('input');
             oNameInp.type = 'text'; oNameInp.className = 'scp-lb-pe-input';
             oNameInp.value = c.outlet_name || '';
-            oNameInp.placeholder = 'Outlet macro name...';
+            oNameInp.placeholder = 'Имя макроса аутлета...';
             oNameInp.addEventListener('input', () => { editableChanges[ci].outlet_name = oNameInp.value; });
-            outletNameRow.innerHTML = '<label class="scp-lb-pe-label">Outlet Name</label>';
+            outletNameRow.innerHTML = '<label class="scp-lb-pe-label">Имя аутлета</label>';
             outletNameRow.appendChild(oNameInp);
 
             outletCb.addEventListener('change', () => { 
@@ -775,11 +775,11 @@ export function renderProposalCard(changes, msgEl) {
     const footer = document.createElement('div');
     footer.className = 'scp-lb-proposal-footer';
     const applyAllBtn = document.createElement('button');
-    applyAllBtn.className = 'scp-lb-proposal-apply'; applyAllBtn.textContent = 'Apply All';
+    applyAllBtn.className = 'scp-lb-proposal-apply'; applyAllBtn.textContent = 'Применить всё';
     const rejectAllBtn = document.createElement('button');
-    rejectAllBtn.className = 'scp-lb-proposal-reject'; rejectAllBtn.textContent = 'Reject All';
+    rejectAllBtn.className = 'scp-lb-proposal-reject'; rejectAllBtn.textContent = 'Отклонить всё';
 
-    const updateCountBadge = () => { countBadge.textContent = getPendingCount() > 0 ? `${getPendingCount()} pending` : `${getAppliedCount()} applied`; };
+    const updateCountBadge = () => { countBadge.textContent = getPendingCount() > 0 ? `${getPendingCount()} ожидает` : `${getAppliedCount()} применено`; };
     const updateFooterBtns = () => {
         applyAllBtn.style.display = getPendingCount() > 0 ? '' : 'none';
         rejectAllBtn.style.display = getPendingCount() > 0 ? '' : 'none';
@@ -788,15 +788,15 @@ export function renderProposalCard(changes, msgEl) {
     applyAllBtn.addEventListener('click', async () => {
         const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
         if (!pending.length) return;
-        applyAllBtn.disabled = true; applyAllBtn.textContent = 'Applying…';
+        applyAllBtn.disabled = true; applyAllBtn.textContent = 'Применение…';
         try {
             await applyLBChanges(pending, card.dataset.for);
             itemStates.forEach((s, i) => { if (s === 'pending') { itemStates[i] = 'applied'; itemEls[i].classList.add('scp-lb-item-applied'); itemEls[i].querySelectorAll('button').forEach(b => { b.disabled = true; }); } });
             updateCountBadge(); updateFooterBtns(); checkAllResolved();
-            toastr.success(`[LB] ${pending.length} changes applied.`, EXT_DISPLAY);
+            toastr.success(`[ЛБ] ${pending.length} изменений применено.`, EXT_DISPLAY);
         } catch (e) {
-            toastr.error(`Failed: ${e.message}`, EXT_DISPLAY);
-            applyAllBtn.disabled = false; applyAllBtn.textContent = 'Apply All';
+            toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
+            applyAllBtn.disabled = false; applyAllBtn.textContent = 'Применить всё';
         }
     });
 
@@ -852,7 +852,7 @@ export function _applyLBBookCheckState(item, name, s) {
     check.classList.remove('checked', 'excluded');
     if (isSelected) check.classList.add('checked');
     else if (isExcluded) check.classList.add('excluded');
-    check.title = isSelected ? 'Selected: all entries included — click to exclude' : isExcluded ? 'Excluded: all entries blocked — click to reset' : 'Default — click to include all';
+    check.title = isSelected ? 'Выбрано: все записи включены — нажмите, чтобы исключить' : isExcluded ? 'Исключено: все записи заблокированы — нажмите для сброса' : 'По умолчанию — нажмите, чтобы включить все';
     item.classList.toggle('selected', isSelected);
     item.classList.toggle('lb-excluded', isExcluded);
     const isForced = isSelected || isExcluded;
@@ -872,7 +872,7 @@ export async function refreshLorebookList() {
     listEl.innerHTML = '';
     
     if (!activeNamesArray.length) {
-        listEl.innerHTML = '<div class="scp-lb-loading">No active lorebooks found.<br><small style="opacity:.5">Link one to the character or select globally.</small></div>';
+        listEl.innerHTML = '<div class="scp-lb-loading">Активные лорбуки не найдены.<br><small style="opacity:.5">Привяжите его к персонажу или выберите глобально.</small></div>';
         return;
     }
     
@@ -923,14 +923,14 @@ export async function refreshLorebookList() {
     });
 
     const getSourceInfo = (name) => {
-        if (name === EMBEDDED_BOOK_KEY) return { cls: 'scp-lb-src-character', label: 'C', title: 'Embedded Character Lorebook' };
-        
-        if (name === chatBook) return { cls: 'scp-lb-src-chat', label: 'Ch', title: 'Chat Lorebook' };
-        if (name === personaBook) return { cls: 'scp-lb-src-persona', label: 'P', title: 'Persona Lorebook' };
-        if (charBooks.has(name)) return { cls: 'scp-lb-src-character', label: 'C', title: 'Character Lorebook (Primary or Additional)' };
-        if (globalBooks.includes(name)) return { cls: 'scp-lb-src-global', label: 'G', title: 'Global Lorebook' };
+        if (name === EMBEDDED_BOOK_KEY) return { cls: 'scp-lb-src-character', label: 'C', title: 'Встроенный лорбук персонажа' };
 
-        return { cls: 'scp-lb-src-global', label: 'G', title: 'Global Lorebook' };
+        if (name === chatBook) return { cls: 'scp-lb-src-chat', label: 'Ч', title: 'Лорбук чата' };
+        if (name === personaBook) return { cls: 'scp-lb-src-persona', label: 'P', title: 'Лорбук персоны' };
+        if (charBooks.has(name)) return { cls: 'scp-lb-src-character', label: 'C', title: 'Лорбук персонажа (основной или дополнительный)' };
+        if (globalBooks.includes(name)) return { cls: 'scp-lb-src-global', label: 'G', title: 'Глобальный лорбук' };
+
+        return { cls: 'scp-lb-src-global', label: 'G', title: 'Глобальный лорбук' };
     };
 
     const frag = document.createDocumentFragment();
@@ -952,7 +952,7 @@ export async function refreshLorebookList() {
             <div class="scp-lb-book-check${checkState ? ' ' + checkState : ''}" data-book="${escHtml(name)}"></div>
             <div class="scp-lb-book-info">
                 <span class="scp-lb-book-name">${escHtml(displayName)}</span>
-                <span class="scp-lb-book-meta">${entryCount} entries</span>
+                <span class="scp-lb-book-meta">${entryCount} записей</span>
             </div>
             <span class="scp-lb-src-badge ${srcInfo.cls}" title="${srcInfo.title}" style="margin-left: auto;">${srcInfo.label}</span>`;
             
@@ -1007,7 +1007,7 @@ export async function renderEntryList(bookName, search = '') {
     const container = document.getElementById('scp-lb-entries');
     if (!container) return;
     const data = await fetchWorldInfoBook(bookName);
-    if (!data) { container.innerHTML = '<div class="scp-lb-empty-state">Failed to load lorebook</div>'; return; }
+    if (!data) { container.innerHTML = '<div class="scp-lb-empty-state">Не удалось загрузить лорбук</div>'; return; }
 
     const entries = wiEntriesToArray(data);
     const s = getSettings();
@@ -1024,7 +1024,7 @@ export async function renderEntryList(bookName, search = '') {
     }) : entries;
 
     const label = document.getElementById('scp-lb-entries-label');
-    if (label) label.textContent = `${getDisplayName(bookName)} — ${filtered.length}${filtered.length !== entries.length ? ` of ${entries.length}` : ''} entr${filtered.length !== 1 ? 'ies' : 'y'}`;
+    if (label) label.textContent = `${getDisplayName(bookName)} — ${filtered.length}${filtered.length !== entries.length ? ` из ${entries.length}` : ''} ${filtered.length === 1 ? 'запись' : 'записей'}`;
 
     const frag = document.createDocumentFragment();
     for (const entry of filtered) {
@@ -1045,7 +1045,7 @@ export async function renderEntryList(bookName, search = '') {
         row.innerHTML = `
             <div class="scp-lb-entry-indicator ${indClass}"></div>
             <div class="scp-lb-entry-info">
-                <span class="scp-lb-entry-name">${escHtml(entry.comment || `#${entry.uid}`)}${isInCtx ? ' <span class="scp-lb-in-ctx-badge">in context</span>' : ''}</span>
+                <span class="scp-lb-entry-name">${escHtml(entry.comment || `#${entry.uid}`)}${isInCtx ? ' <span class="scp-lb-in-ctx-badge">в контексте</span>' : ''}</span>
                 <span class="scp-lb-entry-keys">${entry.key?.slice(0, 5).map(k => escHtml(k)).join(' · ') || '—'}</span>
             </div>
             <div class="scp-lb-entry-actions">
@@ -1101,7 +1101,7 @@ export function showEntryDetail(entry, bookName) {
     document.getElementById('scp-lb-entry-detail').style.display = 'flex';
     document.getElementById('scp-lb-entries').style.display = 'none';
 
-    document.getElementById('scp-lb-detail-title').textContent = entry.comment || `Entry #${entry.uid}`;
+    document.getElementById('scp-lb-detail-title').textContent = entry.comment || `Запись #${entry.uid}`;
     document.getElementById('scp-lb-detail-name').value = entry.comment || '';
     document.getElementById('scp-lb-detail-triggers').value = (entry.key || []).join(', ');
     document.getElementById('scp-lb-detail-content').value = entry.content || '';
@@ -1109,7 +1109,7 @@ export function showEntryDetail(entry, bookName) {
     const lbStatus = document.getElementById('scp-lb-detail-lb-status');
     if (lbStatus) {
         const updateStatus = () => {
-            lbStatus.textContent = entry.disable ? 'Disabled' : 'Enabled';
+            lbStatus.textContent = entry.disable ? 'Отключено' : 'Включено';
             lbStatus.className = `scp-lb-detail-status ${entry.disable ? 'status-disabled' : 'status-enabled'}`;
         };
         updateStatus();
@@ -1120,7 +1120,7 @@ export function showEntryDetail(entry, bookName) {
             if (data?.entries[entry.uid] !== undefined) {
                 data.entries[entry.uid].disable = entry.disable;
                 await saveWorldInfoBook(bookName, data);
-                toastr.success('Status updated', EXT_DISPLAY);
+                toastr.success('Статус обновлён', EXT_DISPLAY);
                 renderEntryList(bookName, state.lbSearchQuery);
             }
         };
@@ -1136,7 +1136,7 @@ export function showEntryDetail(entry, bookName) {
 
 export async function saveEntryDetail() {
     if (!state.lbEntryDetailEntry || !state.lbEntryDetailBook) return;
-    if (state.lbEntryDetailBook === EMBEDDED_BOOK_KEY) { toastr.warning('Cannot save embedded character book entries.', EXT_DISPLAY); return; }
+    if (state.lbEntryDetailBook === EMBEDDED_BOOK_KEY) { toastr.warning('Нельзя сохранять записи встроенного лорбука персонажа.', EXT_DISPLAY); return; }
     const data = await fetchWorldInfoBook(state.lbEntryDetailBook);
     if (!data) return;
     const entry = data.entries[state.lbEntryDetailEntry.uid];
@@ -1146,22 +1146,22 @@ export async function saveEntryDetail() {
     Object.assign(state.lbEntryDetailEntry, entry);
     await saveWorldInfoBook(state.lbEntryDetailBook, data);
 
-    toastr.success('Entry saved', EXT_DISPLAY);
-    document.getElementById('scp-lb-detail-title').textContent = entry.comment || `Entry #${entry.uid}`;
+    toastr.success('Запись сохранена', EXT_DISPLAY);
+    document.getElementById('scp-lb-detail-title').textContent = entry.comment || `Запись #${entry.uid}`;
     renderEntryList(state.lbEntryDetailBook, state.lbSearchQuery);
     updateMsgCount(getCurrentSession());
 }
 
 export async function deleteEntryDetail() {
     if (!state.lbEntryDetailEntry || !state.lbEntryDetailBook) return;
-    const ok = await showCustomDialog({ type: 'confirm', title: 'Delete Entry', message: `Delete "${state.lbEntryDetailEntry.comment || 'this entry'}"?` });
+    const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить запись', message: `Удалить «${state.lbEntryDetailEntry.comment || 'эту запись'}»?` });
     if (!ok) return;
     const data = await fetchWorldInfoBook(state.lbEntryDetailBook);
     if (!data) return;
     delete data.entries[state.lbEntryDetailEntry.uid];
     await saveWorldInfoBook(state.lbEntryDetailBook, data);
 
-    toastr.success('Entry deleted', EXT_DISPLAY);
+    toastr.success('Запись удалена', EXT_DISPLAY);
     document.getElementById('scp-lb-entry-detail').style.display = 'none';
     document.getElementById('scp-lb-entries').style.display = '';
     renderEntryList(state.lbEntryDetailBook, state.lbSearchQuery);
@@ -1169,9 +1169,9 @@ export async function deleteEntryDetail() {
 }
 
 export async function addNewEntry() {
-    if (!state.lbActiveBook) { toastr.warning('Select a lorebook first', EXT_DISPLAY); return; }
-    if (state.lbActiveBook === EMBEDDED_BOOK_KEY) { toastr.warning('Cannot add entries to embedded character books.', EXT_DISPLAY); return; }
-    const name = await showCustomDialog({ type: 'prompt', title: 'New Entry', message: 'Entry name:', placeholder: 'New Entry' });
+    if (!state.lbActiveBook) { toastr.warning('Сначала выберите лорбук', EXT_DISPLAY); return; }
+    if (state.lbActiveBook === EMBEDDED_BOOK_KEY) { toastr.warning('Нельзя добавлять записи во встроенные лорбуки персонажа.', EXT_DISPLAY); return; }
+    const name = await showCustomDialog({ type: 'prompt', title: 'Новая запись', message: 'Имя записи:', placeholder: 'Новая запись' });
     if (name === null) return;
     const data = await fetchWorldInfoBook(state.lbActiveBook);
     if (!data) return;
@@ -1179,13 +1179,13 @@ export async function addNewEntry() {
     const newUid = uids.length ? Math.max(...uids) + 1 : 1;
     const newEntry = {
         uid: newUid, key: [], keysecondary: [], content: '',
-        comment: name.trim() || 'New Entry', disable: false, group: '',
+        comment: name.trim() || 'Новая запись', disable: false, group: '',
         selective: false, constant: false, position: 0, depth: 4, displayIndex: newUid
     };
 
     data.entries[newUid] = newEntry;
     await saveWorldInfoBook(state.lbActiveBook, data);
-    toastr.success('Entry created', EXT_DISPLAY);
+    toastr.success('Запись создана', EXT_DISPLAY);
     await renderEntryList(state.lbActiveBook, state.lbSearchQuery);
     showEntryDetail(newEntry, state.lbActiveBook);
     updateMsgCount(getCurrentSession());
@@ -1203,9 +1203,9 @@ export function updateLBFooterInfo() {
     
     const kwOn = s.lorebookAutoKeyword;
     const parts = [];
-    if (count) parts.push(`${count} book${count !== 1 ? 's' : ''} selected`);
-    if (excCount) parts.push(`${excCount} excluded`);
-    if (kwOn) parts.push('Auto-keywords ON');
+    if (count) parts.push(`${count} ${count !== 1 ? 'книг' : 'книга'} выбрано`);
+    if (excCount) parts.push(`${excCount} исключено`);
+    if (kwOn) parts.push('Авто-ключевые слова ВКЛ');
     el.textContent = parts.join(' · ');
 }
 
@@ -1243,7 +1243,7 @@ export function setupLorebookManagerListeners() {
     
     document.getElementById('scp-lb-reset-overrides')?.addEventListener('click', async () => {
         if (!state.lbActiveBook) return;
-        const ok = await showCustomDialog({ type: 'confirm', title: 'Reset Overrides', message: `Reset all copilot injection overrides for "${state.lbActiveBook}"?` });
+        const ok = await showCustomDialog({ type: 'confirm', title: 'Сбросить переопределения', message: `Сбросить все переопределения инъекций copilot для «${state.lbActiveBook}»?` });
         if (!ok) return;
         const s = getSettings();
         if (wiCache[state.lbActiveBook]) Object.values(wiCache[state.lbActiveBook].entries).forEach(e => { delete s.lorebookEntryOverrides[getEntryOverrideKey(state.lbActiveBook, e)]; });

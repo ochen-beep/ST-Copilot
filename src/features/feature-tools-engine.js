@@ -183,7 +183,7 @@ export async function executeTool(toolName, toolInput) {
         }
         case 'get_char_info': {
             const charInfoFull = getCharInfo();
-            if (!charInfoFull) return { error: 'No active character.' };
+            if (!charInfoFull) return { error: 'Нет активного персонажа.' };
             const charCtx = ctx.characters?.[ctx.characterId];
             const requestedFields = toolInput.fields || ['description', 'personality', 'scenario'];
             const result = { name: charInfoFull.name };
@@ -230,7 +230,7 @@ export async function executeTool(toolName, toolInput) {
                 note: 'Use "index" values in chat-changes proposals for precise targeting.',
             };
         }
-        default: return { error: `Unknown tool: ${toolName}` };
+        default: return { error: `Неизвестный инструмент: ${toolName}` };
     }
 }
 

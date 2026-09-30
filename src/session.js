@@ -1,13 +1,14 @@
-import { 
-    EXT_NAME, 
-    EXT_DISPLAY, 
-    DEFAULT_SYSTEM_PROMPT, 
-    DEFAULT_MEMORY_PROMPT, 
-    DEFAULT_LB_MANAGE_PROMPT, 
-    THEME_PRESETS 
+import {
+    EXT_NAME,
+    EXT_DISPLAY,
+    DEFAULT_SYSTEM_PROMPT,
+    DEFAULT_MEMORY_PROMPT,
+    DEFAULT_LB_MANAGE_PROMPT,
+    THEME_PRESETS
 } from './constants.js';
 import { _dbgAdd, _dbgDiffSettings } from './utils/util-debug.js';
 import { _repairJSON } from './utils/util-text.js';
+import { invalidateSystemPromptCache } from './state.js';
 
 // ─── Settings ───────────────────────────────────────────────────────────────
 export function getSettings() {
@@ -16,7 +17,7 @@ export function getSettings() {
     const s = extensionSettings[EXT_NAME];
     const defaults = {
         enabled: true,
-        performanceMode: false,
+        performanceMode: true,
         windowVisible: false,
         minimized: false,
         windowX: null, windowY: null,
@@ -64,11 +65,11 @@ export function getSettings() {
         ghostModeHotkeyEnabled: true,
         quickPromptsVisible: false,
         quickPrompts: [
-            { id: 'qp_d1', label: 'Analyze', icon: '🔍', text: 'Analyze the current scene and character motivations in detail.' },
-            { id: 'qp_d2', label: 'Ideas', icon: '💡', text: 'Give me 3 creative plot twist ideas for the current scene.' },
-            { id: 'qp_d3', label: 'Summary', icon: '📋', text: 'Summarize everything that has happened in the roleplay so far.' },
-            { id: 'qp_d4', label: 'Feelings', icon: '💭', text: 'What is {{char}} likely feeling right now and why?' },
-            { id: 'qp_d5', label: 'Next?', icon: '🎯', text: 'What are the most interesting directions the story could go next?' },
+            { id: 'qp_d1', label: 'Анализ', icon: '🔍', text: 'Analyze the current scene and character motivations in detail.' },
+            { id: 'qp_d2', label: 'Идеи', icon: '💡', text: 'Give me 3 creative plot twist ideas for the current scene.' },
+            { id: 'qp_d3', label: 'Сводка', icon: '📋', text: 'Summarize everything that has happened in the roleplay so far.' },
+            { id: 'qp_d4', label: 'Чувства', icon: '💭', text: 'What is {{char}} likely feeling right now and why?' },
+            { id: 'qp_d5', label: 'Дальше?', icon: '🎯', text: 'What are the most interesting directions the story could go next?' },
         ],
         quickPromptSets: {},
         activeQuickPromptSet: '',
@@ -126,12 +127,18 @@ export function getSettings() {
     for (const [k, v] of Object.entries(defaults)) {
         if (s[k] === undefined) s[k] = v;
     }
+    // v2.10.0+: launcherMode replaces the removed floating FAB setting.
+    // Users who had the persistent floating icon get the floating launcher by default.
+    if (s.launcherMode === undefined) {
+        s.launcherMode = s.floatingIconPersistent ? 'floating' : 'bar';
+    }
     return s;
 }
 
 export function saveSettings() {
     SillyTavern.getContext().saveSettingsDebounced();
     _dbgDiffSettings();
+    invalidateSystemPromptCache('saveSettings');
 }
 
 // ─── ST Context Helpers ─────────────────────────────────────────────────────
@@ -271,6 +278,10 @@ export async function initChatBucket({ forceReset = false } = {}) {
     if (!ctx.chatMetadata) ctx.chatMetadata = {};
     const { charId, chatId } = getBindingKey();
 
+    // Сменa чата/персонажа/ветки = полностью новые входы buildSystemContent.
+    // Бампаем сразу, до любых ранних return'ов ниже, чтобы кэш гарантированно сбрасывался.
+    invalidateSystemPromptCache('initChatBucket');
+
     if (forceReset) {
         const prevMeta = ctx.chatMetadata.st_copilot || null;
         const freshId = `copilot_sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.json`;
@@ -350,7 +361,7 @@ export async function initChatBucket({ forceReset = false } = {}) {
         _currentSessionFileId = targetFileId;
         await commitBucketChanges(true);
 
-        toastr.error('Copilot session file was corrupted and could not be recovered. Started a fresh session storage for this chat; the broken file was kept on disk for manual recovery.', EXT_DISPLAY, { timeOut: 15000 });
+        toastr.error('Файл сессии Copilot был повреждён и не подлежит восстановлению. Создано новое хранилище сессий для этого чата; повреждённый файл сохранён на диске для ручного восстановления.', EXT_DISPLAY, { timeOut: 15000 });
         return;
     }
 
@@ -385,9 +396,12 @@ export async function commitBucketChanges(force = false) {
         const existing = _saveQueue.get(fileName);
         if (existing) clearTimeout(existing.timer);
         _saveQueue.delete(fileName);
-        
+
         const success = await saveSessionFile(fileName, payloadToSave);
         if (!success) _dbgAdd('STORAGE_WRITE_FAILED', { fileName });
+        // force=true означает load/recovery: новое состояние сессии может изменить
+        // срез истории и, как следствие, системный промпт — сбрасываем.
+        invalidateSystemPromptCache('commitBucketChanges:force');
     } else {
         const existing = _saveQueue.get(fileName);
         if (existing) clearTimeout(existing.timer);
@@ -416,7 +430,7 @@ export function genId(prefix) { return `${prefix}_${Date.now()}_${Math.random().
 export function createSession(name, isTemporary = false, recordStats = true) {
     const bucket = getChatBucket();
     const id = genId('sess');
-    const sess = { id, name: name || `Session ${bucket.sessions.length + 1}`, created: Date.now(), messages: [], isTemporary };
+    const sess = { id, name: name || `Сессия ${bucket.sessions.length + 1}`, created: Date.now(), messages: [], isTemporary };
     
     if (recordStats) {
         const prev = bucket.sessions.find(s => s.id === bucket.activeSessionId);
@@ -455,6 +469,9 @@ export function setActiveSession(sessionId) {
     }
     bucket.activeSessionId = sessionId;
     saveSessionsToMetadata();
+    // Активная сессия задаёт pickedChatIndices / getMainChatSlice — это прямые входы
+    // assembleMessages (а значит и косвенно системный промпт черезpicked msgs).
+    invalidateSystemPromptCache('setActiveSession');
     _dbgAdd('SESSION_SWITCHED', { id: sessionId });
 }
 
@@ -588,9 +605,9 @@ export function exportCurrentSession() {
         a.download = `st-copilot-session-${safeName}.json`;
         a.click();
         URL.revokeObjectURL(url);
-        toastr.success('Session exported.', EXT_DISPLAY);
+        toastr.success('Сессия экспортирована.', EXT_DISPLAY);
     } catch (e) {
-        toastr.error(`Export failed: ${e.message}`, EXT_DISPLAY);
+        toastr.error(`Ошибка экспорта: ${e.message}`, EXT_DISPLAY);
     }
 }
 
@@ -603,24 +620,24 @@ export function importSession(onSuccessCallback) {
             const text = await file.text();
             const data = JSON.parse(text);
             if (!data.session || !data.session.id || !Array.isArray(data.session.messages)) {
-                toastr.error('Invalid session file.', EXT_DISPLAY); return;
+                toastr.error('Недействительный файл сессии.', EXT_DISPLAY); return;
             }
             const ok = await showCustomDialog({
                 type: 'confirm',
-                title: 'Import Session',
-                message: `Import session "${data.session.name || 'unnamed'}"${data.charName ? ` (from ${data.charName})` : ''}? It will be added to the current chat metadata.`,
+                title: 'Импорт сессии',
+                message: `Импортировать сессию «${data.session.name || 'безымянная'}»${data.charName ? ` (от ${data.charName})` : ''}? Она будет добавлена в метаданные текущего чата.`,
             });
             if (!ok) return;
             const bucket = getChatBucket();
-            const imported = { ...data.session, id: genId('sess'), name: `${data.session.name || 'Imported'} (imported)` };
+            const imported = { ...data.session, id: genId('sess'), name: `${data.session.name || 'Импортированная'} (импорт)` };
             imported.isTemporary = false;
             bucket.sessions.push(imported);
             bucket.activeSessionId = imported.id;
             saveSessionsToMetadata();
-            toastr.success(`Session "${escHtml(imported.name)}" imported.`, EXT_DISPLAY);
+            toastr.success(`Сессия «${escHtml(imported.name)}» импортирована.`, EXT_DISPLAY);
             if (onSuccessCallback) onSuccessCallback();
         } catch (e) {
-            toastr.error(`Import failed: ${e.message}`, EXT_DISPLAY);
+            toastr.error(`Ошибка импорта: ${e.message}`, EXT_DISPLAY);
         }
     };
     inp.click();
@@ -633,16 +650,16 @@ export function showSessionDialog({ defaultName = '' } = {}) {
         overlay.style.zIndex = '2147483050';
         overlay.innerHTML = `
             <div class="scp-dialog-box">
-                <div class="scp-dialog-title">New Session</div>
-                <div class="scp-dialog-msg">Session name:</div>
+                <div class="scp-dialog-title">Новая сессия</div>
+                <div class="scp-dialog-msg">Имя сессии:</div>
                 <input type="text" class="scp-dialog-input" value="${escHtml(defaultName)}" placeholder="${escHtml(defaultName)}">
                 <label class="scp-sess-tmp-label">
                     <div class="scp-lb-toggle" id="scp-sess-tmp-toggle"><div class="scp-lb-toggle-knob"></div></div>
-                    <span>Temporary — auto-delete when switching</span>
+                    <span>Временная — автоудаление при переключении</span>
                 </label>
                 <div class="scp-dialog-btns">
-                    <button class="scp-dialog-btn scp-dialog-cancel">Cancel</button>
-                    <button class="scp-dialog-btn scp-dialog-ok">Create</button>
+                    <button class="scp-dialog-btn scp-dialog-cancel">Отмена</button>
+                    <button class="scp-dialog-btn scp-dialog-ok">Создать</button>
                 </div>
             </div>`;
         document.body.appendChild(overlay);

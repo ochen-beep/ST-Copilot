@@ -25,7 +25,7 @@ export function buildChatEditAIInstructions(settings) {
     const base = (settings.chatEditPrompt || DEFAULT_CHAT_EDIT_DIRECTIVE.trim())
         .replace('{{chat_edit_format}}', CHAT_EDIT_FORMAT_BLOCK)
         .replace('{{active_chat_ids}}', activeChatIds);
-    const chatNameNote = `\nCurrent chat name: "${chatDisplayName}"`;
+    const chatNameNote = `\nНазвание текущего чата: "${chatDisplayName}"`;
     return `<chat_messages_editing>\n${base}${chatNameNote}\n</chat_messages_editing>`;
 }
 
@@ -161,14 +161,14 @@ export async function logChatEditHistory(changes, statusStr, afterMsgId = null) 
             let target = `\`#${escHtml(c.msg_index ?? c.msg_id ?? '?')}\``;
             if (c.msg_range && Array.isArray(c.msg_range)) target = `[${c.msg_range[0]}–${c.msg_range[1]}]`;
             if (Array.isArray(c.msg_indices) && c.msg_indices.length) target = `[${c.msg_indices.join(', ')}]`;
-            let extras = c.affectedCount !== undefined ? ` (${c.affectedCount} affected)` : '';
-            return `${icon} **${actionText}**: \`${escHtml(c.action)}\` on message ${target}${extras}`;
+            let extras = c.affectedCount !== undefined ? ` (${c.affectedCount} затронуто)` : '';
+            return `${icon} **${actionText}**: \`${escHtml(c.action)}\` над сообщением ${target}${extras}`;
         });
         
         const uiChatMod = await import('../ui/ui-chat.js');
         if (afterMsgId && uiChatMod.addHistoryToSwipe(afterMsgId, newLines)) return;
 
-        const histText = `**System Notification** — Chat message edits:\n${newLines.join('\n')}`;
+        const histText = `**Системное уведомление** — Редактирование сообщений чата:\n${newLines.join('\n')}`;
         const msg = addMessage(session, 'system', histText, { isChatEditHistory: true, isLBHistory: true, appliedLines: [...newLines] });
         
         const lbUiMod = await import('./feature-lorebook-ui.js');
@@ -181,7 +181,7 @@ export async function logChatEditHistory(changes, statusStr, afterMsgId = null) 
 export async function applyChatChanges(changes, afterMsgId = null) {
     const ctx = SillyTavern.getContext();
     const msgs = ctx.chat;
-    if (!msgs) { toastr.error('[ChatEdit] No active chat.', EXT_DISPLAY); return; }
+    if (!msgs) { toastr.error('[Редактор чата] Нет активного чата.', EXT_DISPLAY); return; }
     const successLog = [];
 
     for (const change of changes) {
@@ -241,7 +241,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                 const isSys = change.role === 'system';
                 const isUser = change.role === 'user';
                 const newMsg = {
-                    name: isSys ? 'System' : (isUser ? (ctx.name1 || 'User') : (ctx.name2 || 'Character')),
+                    name: isSys ? 'Система' : (isUser ? (ctx.name1 || 'Пользователь') : (ctx.name2 || 'Персонаж')),
                     is_user: isUser,
                     is_system: isSys,
                     send_date: Date.now(),
@@ -292,7 +292,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                                 content = content.replace(re, change.replace || '');
                                 changed = true;
                             }
-                        } catch(e) { toastr.error(`[ChatEdit] Invalid regex: ${change.regex}`, EXT_DISPLAY); }
+                        } catch(e) { toastr.error(`[Редактор чата] Неверное регулярное выражение: ${change.regex}`, EXT_DISPLAY); }
                     }
 
                     if (changed) {
@@ -312,7 +312,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                 );
                 for (const idx of sortedIndices) {
                     if (idx < 0 || idx >= msgs.length) {
-                        toastr.warning(`[ChatEdit] Message #${idx} not found`, EXT_DISPLAY, { timeOut: 6000 });
+                        toastr.warning(`[Редактор чата] Сообщение #${idx} не найдено`, EXT_DISPLAY, { timeOut: 6000 });
                         allSuccess = false; continue;
                     }
                     const msg = msgs[idx];
@@ -332,7 +332,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                         let matched = true;
                         for (const patch of (change.patches || [])) {
                             const { result, matched: m } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
-                            if (!m) { toastr.warning(`[ChatEdit] ANCHOR not found in #${idx}: "${(patch.search || patch.anchor || '').slice(0, 60)}"`, EXT_DISPLAY, { timeOut: 8000 }); matched = false; break; }
+                            if (!m) { toastr.warning(`[Редактор чата] ANCHOR не найден в #${idx}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 }); matched = false; break; }
                             content = result;
                         }
                         if (!matched) { allSuccess = false; continue; }
@@ -346,7 +346,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
 
             const resolved = _resolveStMsgByIndexOrId(change);
             if (!resolved) {
-                toastr.warning(`[ChatEdit] Message not found: Index ${change.msg_index ?? change.msg_id}`, EXT_DISPLAY, { timeOut: 6000 });
+                toastr.warning(`[Редактор чата] Сообщение не найдено: Индекс ${change.msg_index ?? change.msg_id}`, EXT_DISPLAY, { timeOut: 6000 });
                 continue;
             }
             const { idx, msg } = resolved;
@@ -371,7 +371,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                 for (const patch of (change.patches || [])) {
                     const { result, matched } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
                     if (!matched) {
-                        toastr.warning(`[ChatEdit] ANCHOR not found in message ${change.msg_index ?? change.msg_id}: "${(patch.search || patch.anchor || '').slice(0, 60)}"`, EXT_DISPLAY, { timeOut: 8000 });
+                        toastr.warning(`[Редактор чата] ANCHOR не найден в сообщении ${change.msg_index ?? change.msg_id}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 });
                         allMatched = false; break;
                     }
                     content = result;
@@ -383,13 +383,13 @@ export async function applyChatChanges(changes, afterMsgId = null) {
             successLog.push(change);
         } catch (e) {
             console.error(`[ST-Copilot-Debug] ChatEdit Failed:`, e);
-            toastr.error(`[ChatEdit] Failed on change: ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
+            toastr.error(`[Редактор чата] Ошибка изменения: ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
         }
     }
 
     if (successLog.length > 0) {
         setTimeout(() => _refreshSTChatDOM(ctx), 100);
         await logChatEditHistory(successLog, 'Applied', afterMsgId);
-        toastr.success(`[ChatEdit] ${successLog.length} change(s) applied.`, EXT_DISPLAY);
+        toastr.success(`[Редактор чата] Применено изменений: ${successLog.length}.`, EXT_DISPLAY);
     }
 }

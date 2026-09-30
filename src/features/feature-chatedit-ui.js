@@ -20,13 +20,13 @@ export function logChatEditHistory(changes, statusStr, afterMsgId = null) {
             let target = `\`#${escHtml(c.msg_index ?? c.msg_id ?? '?')}\``;
             if (c.msg_range && Array.isArray(c.msg_range)) target = `[${c.msg_range[0]}–${c.msg_range[1]}]`;
             if (Array.isArray(c.msg_indices) && c.msg_indices.length) target = `[${c.msg_indices.join(', ')}]`;
-            let extras = c.affectedCount !== undefined ? ` (${c.affectedCount} affected)` : '';
-            return `${icon} **${actionText}**: \`${escHtml(c.action)}\` on message ${target}${extras}`;
+            let extras = c.affectedCount !== undefined ? ` (${c.affectedCount} затронуто)` : '';
+            return `${icon} **${actionText}**: \`${escHtml(c.action)}\` над сообщением ${target}${extras}`;
         });
         
         if (afterMsgId && addHistoryToSwipe(afterMsgId, newLines)) return;
 
-        const histText = `**System Notification** — Chat message edits:\n${newLines.join('\n')}`;
+        const histText = `**Системное уведомление** — Редактирование сообщений чата:\n${newLines.join('\n')}`;
         const msg = addMessage(session, 'system', histText, { isChatEditHistory: true, isLBHistory: true, appliedLines: [...newLines] });
         appendLBHistoryEl(msg);
     } catch(_) {}
@@ -41,18 +41,18 @@ export function renderChatProposalCard(changes, msgEl) {
     const editableChanges = changes.map(c => JSON.parse(JSON.stringify(c)));
     const itemStates = editableChanges.map(() => 'pending');
 
-    const ACTION_LABELS = { 
-        add: '<i class="fa-solid fa-square-plus" style="margin-right: 4px;"></i> Add', 
-        replace: '<i class="fa-solid fa-pen-to-square" style="margin-right: 4px;"></i> Replace', 
-        overwrite: '<i class="fa-solid fa-rotate" style="margin-right: 4px;"></i> Overwrite', 
-        prepend: '<i class="fa-solid fa-arrow-up" style="margin-right: 4px;"></i> Prepend', 
-        append: '<i class="fa-solid fa-arrow-down" style="margin-right: 4px;"></i> Append', 
-        bulk_replace: '<i class="fa-solid fa-list-check" style="margin-right: 4px;"></i> Bulk', 
-        regex: '<i class="fa-solid fa-terminal" style="margin-right: 4px;"></i> Regex', 
-        delete: '<i class="fa-solid fa-trash" style="margin-right: 4px;"></i> Delete', 
-        hide: '<i class="fa-solid fa-eye-slash" style="margin-right: 4px;"></i> Hide', 
-        unhide: '<i class="fa-solid fa-eye" style="margin-right: 4px;"></i> Unhide',
-        rename_chat: '<i class="fa-solid fa-tag" style="margin-right: 4px;"></i> Rename Chat' 
+    const ACTION_LABELS = {
+        add: '<i class="fa-solid fa-square-plus" style="margin-right: 4px;"></i> Добавить',
+        replace: '<i class="fa-solid fa-pen-to-square" style="margin-right: 4px;"></i> Заменить',
+        overwrite: '<i class="fa-solid fa-rotate" style="margin-right: 4px;"></i> Перезаписать',
+        prepend: '<i class="fa-solid fa-arrow-up" style="margin-right: 4px;"></i> В начало',
+        append: '<i class="fa-solid fa-arrow-down" style="margin-right: 4px;"></i> Добавить',
+        bulk_replace: '<i class="fa-solid fa-list-check" style="margin-right: 4px;"></i> Массово',
+        regex: '<i class="fa-solid fa-terminal" style="margin-right: 4px;"></i> Регулярка',
+        delete: '<i class="fa-solid fa-trash" style="margin-right: 4px;"></i> Удалить',
+        hide: '<i class="fa-solid fa-eye-slash" style="margin-right: 4px;"></i> Скрыть',
+        unhide: '<i class="fa-solid fa-eye" style="margin-right: 4px;"></i> Показать',
+        rename_chat: '<i class="fa-solid fa-tag" style="margin-right: 4px;"></i> Переименовать чат'
     };
     
     const card = document.createElement('div');
@@ -84,48 +84,48 @@ export function renderChatProposalCard(changes, msgEl) {
     const validateChatChange = (change) => {
         const stMsgs = SillyTavern.getContext().chat || [];
         if (change.action === 'rename_chat') {
-            return { valid: !!(change.name && change.name.trim()), reason: 'Chat name cannot be empty' };
+            return { valid: !!(change.name && change.name.trim()), reason: 'Имя чата не может быть пустым' };
         }
         if (change.action === 'add') {
-            if (!['user', 'assistant', 'system'].includes(change.role)) return { valid: false, reason: 'Invalid role' };
-            if (change.msg_index < 0 || change.msg_index > stMsgs.length + 1) return { valid: false, reason: 'Index out of bounds' };
+            if (!['user', 'assistant', 'system'].includes(change.role)) return { valid: false, reason: 'Недопустимая роль' };
+            if (change.msg_index < 0 || change.msg_index > stMsgs.length + 1) return { valid: false, reason: 'Индекс вне диапазона' };
             return { valid: true };
         }
         let startIdx, endIdx;
         if (['bulk_replace', 'regex', 'hide', 'unhide'].includes(change.action)) {
             if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
                 const invalid = change.msg_indices.filter(i => i < 0 || i >= stMsgs.length);
-                if (invalid.length) return { valid: false, reason: `Indices out of bounds: ${invalid.join(', ')}` };
-                if (change.action === 'hide' || change.action === 'unhide') return { valid: true };
-                if (change.action === 'bulk_replace') {
-                    let anyMatch = false;
-                    for (const i of change.msg_indices) {
-                        let content = stMsgs[i].mes || '', thisMsgMatch = true;
-                        for (const rp of (change.replacements || [])) {
-                            if (!rp.search && !rp.anchor) continue;
-                            const { matched } = applySearchReplaceToField(content, rp.search || rp.anchor, rp.replace || '');
-                            if (!matched) { thisMsgMatch = false; break; }
+                    if (invalid.length) return { valid: false, reason: `Индексы вне диапазона: ${invalid.join(', ')}` };
+                    if (change.action === 'hide' || change.action === 'unhide') return { valid: true };
+                    if (change.action === 'bulk_replace') {
+                        let anyMatch = false;
+                        for (const i of change.msg_indices) {
+                            let content = stMsgs[i].mes || '', thisMsgMatch = true;
+                            for (const rp of (change.replacements || [])) {
+                                if (!rp.search && !rp.anchor) continue;
+                                const { matched } = applySearchReplaceToField(content, rp.search || rp.anchor, rp.replace || '');
+                                if (!matched) { thisMsgMatch = false; break; }
+                            }
+                            if (thisMsgMatch && change.replacements?.length > 0) anyMatch = true;
                         }
-                        if (thisMsgMatch && change.replacements?.length > 0) anyMatch = true;
+                        if (!anyMatch) return { valid: false, reason: 'Якоря не найдены в указанных сообщениях' };
+                    } else if (change.action === 'regex') {
+                        try {
+                            const m = (change.regex || '').match(/^\/([\s\S]+)\/([a-z]*)$/i);
+                            const re = m ? new RegExp(m[1], m[2]) : new RegExp(change.regex, 'g');
+                            const anyMatch = change.msg_indices.some(i => re.test(stMsgs[i].mes || ''));
+                            if (!anyMatch) return { valid: false, reason: 'Регулярное выражение ничего не совпало в указанных сообщениях' };
+                        } catch(e) { return { valid: false, reason: 'Неверный синтаксис регулярного выражения' }; }
                     }
-                    if (!anyMatch) return { valid: false, reason: 'Anchors not found in the specified messages' };
-                } else if (change.action === 'regex') {
-                    try {
-                        const m = (change.regex || '').match(/^\/([\s\S]+)\/([a-z]*)$/i);
-                        const re = m ? new RegExp(m[1], m[2]) : new RegExp(change.regex, 'g');
-                        const anyMatch = change.msg_indices.some(i => re.test(stMsgs[i].mes || ''));
-                        if (!anyMatch) return { valid: false, reason: 'Regex matched nothing in the specified messages' };
-                    } catch(e) { return { valid: false, reason: 'Invalid regex syntax' }; }
+                    return { valid: true };
                 }
-                return { valid: true };
-            }
-            if (Array.isArray(change.msg_range)) {
-                startIdx = change.msg_range[0]; endIdx = change.msg_range[1];
-            } else if (change.msg_index !== undefined) {
-                startIdx = change.msg_index; endIdx = change.msg_index;
-            } else return { valid: false, reason: 'Target index or range not specified' };
-            
-            if (startIdx < 0 || endIdx >= stMsgs.length || startIdx > endIdx) return { valid: false, reason: `Range [${startIdx}-${endIdx}] is out of bounds` };
+                if (Array.isArray(change.msg_range)) {
+                    startIdx = change.msg_range[0]; endIdx = change.msg_range[1];
+                } else if (change.msg_index !== undefined) {
+                    startIdx = change.msg_index; endIdx = change.msg_index;
+                } else return { valid: false, reason: 'Целевой индекс или диапазон не указаны' };
+
+                if (startIdx < 0 || endIdx >= stMsgs.length || startIdx > endIdx) return { valid: false, reason: `Диапазон [${startIdx}-${endIdx}] вне границ` };
 
             if (change.action === 'hide' || change.action === 'unhide') return { valid: true };
             
@@ -141,7 +141,7 @@ export function renderChatProposalCard(changes, msgEl) {
                     }
                     if (thisMsgMatch && change.replacements?.length > 0) anyMatch = true;
                 }
-                if (!anyMatch) return { valid: false, reason: 'Anchors not found in the specified range' };
+                    if (!anyMatch) return { valid: false, reason: 'Якоря не найдены в указанном диапазоне' };
             } else if (change.action === 'regex') {
                 try {
                     const m = (change.regex || '').match(/^\/([\s\S]+)\/([a-z]*)$/i);
@@ -149,33 +149,33 @@ export function renderChatProposalCard(changes, msgEl) {
                     for (let i = startIdx; i <= endIdx; i++) {
                         if (re.test(stMsgs[i].mes || '')) { anyMatch = true; break; }
                     }
-                    if (!anyMatch) return { valid: false, reason: 'Regex matched nothing in the specified range' };
-                } catch(e) { return { valid: false, reason: 'Invalid regex syntax' }; }
+                    if (!anyMatch) return { valid: false, reason: 'Регулярное выражение ничего не совпало в указанном диапазоне' };
+                } catch(e) { return { valid: false, reason: 'Неверный синтаксис регулярного выражения' }; }
             }
             return { valid: true };
         } else {
             if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
                 const invalid = change.msg_indices.filter(i => i < 0 || i >= stMsgs.length);
-                if (invalid.length) return { valid: false, reason: `Indices out of bounds: ${invalid.join(', ')}` };
+                if (invalid.length) return { valid: false, reason: `Индексы вне диапазона: ${invalid.join(', ')}` };
                 if (change.action === 'replace') {
                     for (const idx of change.msg_indices) {
                         let content = stMsgs[idx].mes || '';
                         for (const patch of (change.patches || [])) {
                             const { matched } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
-                            if (!matched) return { valid: false, reason: `ANCHOR not found in #${idx}: "${(patch.search || patch.anchor || '').slice(0, 40)}..."` };
+                            if (!matched) return { valid: false, reason: `ANCHOR не найден в #${idx}: «${(patch.search || patch.anchor || '').slice(0, 40)}...»` };
                         }
                     }
                 }
                 return { valid: true };
             }
             const resolved = _resolveStMsgByIndexOrId(change);
-            if (!resolved) return { valid: false, reason: `Message not found (Index: ${change.msg_index ?? change.msg_id})` };
+            if (!resolved) return { valid: false, reason: `Сообщение не найдено (Индекс: ${change.msg_index ?? change.msg_id})` };
 
             if (change.action === 'replace') {
                 let content = resolved.msg.mes || '';
                 for (const patch of (change.patches || [])) {
                     const { matched } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
-                    if (!matched) return { valid: false, reason: `ANCHOR not found: "${(patch.search || patch.anchor || '').slice(0, 40)}..."` };
+                    if (!matched) return { valid: false, reason: `ANCHOR не найден: «${(patch.search || patch.anchor || '').slice(0, 40)}...»` };
                 }
             }
             return { valid: true };
@@ -218,11 +218,11 @@ export function renderChatProposalCard(changes, msgEl) {
     headerLeft.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;min-width:0';
     const countBadge = document.createElement('span');
     countBadge.className = 'scp-lb-proposal-count';
-    countBadge.textContent = `${editableChanges.length} pending`;
-    headerLeft.innerHTML = `<span class="scp-lb-proposal-icon" style="color:var(--scp-accent);display:flex">${I.chatEdit}</span><span class="scp-lb-proposal-title">Proposed Chat Edits</span>`;
+    countBadge.textContent = `${editableChanges.length} ожидает`;
+    headerLeft.innerHTML = `<span class="scp-lb-proposal-icon" style="color:var(--scp-accent);display:flex">${I.chatEdit}</span><span class="scp-lb-proposal-title">Предложенные правки чата</span>`;
     headerLeft.appendChild(countBadge);
     const dismissBtn = document.createElement('button');
-    dismissBtn.className = 'scp-lb-proposal-dismiss'; dismissBtn.innerHTML = I.x; dismissBtn.title = 'Dismiss all';
+    dismissBtn.className = 'scp-lb-proposal-dismiss'; dismissBtn.innerHTML = I.x; dismissBtn.title = 'Отклонить всё';
     dismissBtn.addEventListener('click', () => {
         const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
         if (pending.length > 0) logChatEditHistory(pending, 'Dismissed', card.dataset.for);
@@ -252,17 +252,17 @@ export function renderChatProposalCard(changes, msgEl) {
             const change = editableChanges[ci];
             let targetDesc = '';
             if (change.action === 'rename_chat') {
-                targetDesc = `Current chat`;
+                targetDesc = `Текущий чат`;
             } else if (change.action === 'add') {
-                targetDesc = `Insert at #${change.msg_index} (${change.role})`;
+                targetDesc = `Вставить в #${change.msg_index} (${change.role})`;
             } else if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
-                targetDesc = `msgs [${change.msg_indices.join(', ')}]`;
+                targetDesc = `сообщ. [${change.msg_indices.join(', ')}]`;
             } else if (['bulk_replace', 'regex', 'hide', 'unhide'].includes(change.action)) {
-                if (change.msg_range) targetDesc = `msgs [${change.msg_range[0]}–${change.msg_range[1]}]`;
-                else targetDesc = `msg #${change.msg_index}`;
+                if (change.msg_range) targetDesc = `сообщ. [${change.msg_range[0]}–${change.msg_range[1]}]`;
+                else targetDesc = `сообщ. #${change.msg_index}`;
             } else {
                 const resolved = _resolveStMsgByIndexOrId(change);
-                targetDesc = resolved ? `#${resolved.idx} ${stMsgs[resolved.idx]?.is_user ? '(user)' : '(assistant)'}` : `Index ${change.msg_index ?? change.msg_id}`;
+                targetDesc = resolved ? `#${resolved.idx} ${stMsgs[resolved.idx]?.is_user ? '(пользователь)' : '(помощник)'}` : `Индекс ${change.msg_index ?? change.msg_id}`;
             }
             targetDescEl.textContent = targetDesc;
         };
@@ -277,7 +277,7 @@ export function renderChatProposalCard(changes, msgEl) {
         
         const warnEl = document.createElement('div');
         warnEl.style.cssText = 'font-size:10px;color:var(--scp-danger);margin-top:4px;width:100%;display:none;cursor:pointer;';
-        warnEl.title = 'Click to open the edit panel and fix manually';
+        warnEl.title = 'Нажмите, чтобы открыть панель редактирования и исправить вручную';
         meta.appendChild(warnEl);
 
         const btns = document.createElement('div');
@@ -285,7 +285,7 @@ export function renderChatProposalCard(changes, msgEl) {
 
         if (['replace', 'overwrite', 'bulk_replace', 'regex'].includes(c.action)) {
             const diffBtn = document.createElement('button');
-            diffBtn.className = 'scp-lb-proposal-diff-btn'; diffBtn.title = 'View diff'; diffBtn.innerHTML = I.diff;
+            diffBtn.className = 'scp-lb-proposal-diff-btn'; diffBtn.title = 'Показать различия'; diffBtn.innerHTML = I.diff;
             diffBtn.addEventListener('click', e => {
                 e.stopPropagation();
                 const ctx = SillyTavern.getContext();
@@ -297,11 +297,11 @@ export function renderChatProposalCard(changes, msgEl) {
                 } else {
                     let startIdx = change.msg_index !== undefined ? change.msg_index : (change.msg_range ? change.msg_range[0] : null);
                     let endIdx = change.msg_index !== undefined ? change.msg_index : (change.msg_range ? change.msg_range[1] : null);
-                    if (startIdx === null || endIdx === null) { toastr.warning('Message index not specified.', EXT_DISPLAY); return; }
+                    if (startIdx === null || endIdx === null) { toastr.warning('Индекс сообщения не указан.', EXT_DISPLAY); return; }
                     for (let i = Math.max(0, startIdx); i <= Math.min(stMsgs.length - 1, endIdx); i++) { if (stMsgs[i]) targetIdxList.push(i); }
                 }
 
-                if (!targetIdxList.length) { toastr.warning(`Message(s) not found — chat may have changed since this proposal was generated.`, EXT_DISPLAY, { timeOut: 7000 }); return; }
+                if (!targetIdxList.length) { toastr.warning(`Сообщения не найдены — возможно, чат изменился с момента создания предложения.`, EXT_DISPLAY, { timeOut: 7000 }); return; }
                 
                 let origCombined = [];
                 let newCombined = [];
@@ -312,7 +312,7 @@ export function renderChatProposalCard(changes, msgEl) {
                     const newText = getChatChangeResult(change, origText);
                     
                     if (origText !== newText || targetIdxList.length === 1) {
-                        const prefix = targetIdxList.length > 1 ? `[Message #${i}]\n` : '';
+                        const prefix = targetIdxList.length > 1 ? `[Сообщение #${i}]\n` : '';
                         origCombined.push(prefix + origText);
                         newCombined.push(prefix + newText);
                         changesFound++;
@@ -320,15 +320,15 @@ export function renderChatProposalCard(changes, msgEl) {
                 }
 
                 if (changesFound === 0) {
-                    toastr.info('No changes would be made to these messages.', EXT_DISPLAY);
+                    toastr.info('Для этих сообщений не будет внесено никаких изменений.', EXT_DISPLAY);
                     return;
                 }
 
                 const finalOrig = origCombined.join('\n\n' + '—'.repeat(30) + '\n\n');
                 const finalNew = newCombined.join('\n\n' + '—'.repeat(30) + '\n\n');
                 const title = targetIdxList.length === 1
-                    ? `Diff: ${stMsgs[targetIdxList[0]]?.is_user ? 'User' : 'Copilot/Char'} Message #${targetIdxList[0]}`
-                    : `Diff: Messages [${targetIdxList.join(', ')}]`;
+                    ? `Сравнение: ${stMsgs[targetIdxList[0]]?.is_user ? 'Сообщение пользователя' : 'Сообщение Copilot/персонажа'} #${targetIdxList[0]}`
+                    : `Сравнение: Сообщения [${targetIdxList.join(', ')}]`;
 
                 openTextDiffModal(title, finalOrig, finalNew);
             });
@@ -339,12 +339,12 @@ export function renderChatProposalCard(changes, msgEl) {
         let editPanel = null;
         if (c.action !== 'delete') {
             editToggleBtn = document.createElement('button');
-            editToggleBtn.className = 'scp-lb-proposal-edit-toggle'; editToggleBtn.title = 'Edit before applying'; editToggleBtn.textContent = '✎';
+            editToggleBtn.className = 'scp-lb-proposal-edit-toggle'; editToggleBtn.title = 'Изменить перед применением'; editToggleBtn.textContent = '✎';
             btns.appendChild(editToggleBtn);
         }
 
         const applyBtn = document.createElement('button');
-        applyBtn.className = 'scp-lb-proposal-item-apply'; applyBtn.title = 'Apply'; applyBtn.textContent = '✓';
+        applyBtn.className = 'scp-lb-proposal-item-apply'; applyBtn.title = 'Применить'; applyBtn.textContent = '✓';
         
         const refreshValidation = () => {
             const { valid, reason } = validateChatChange(editableChanges[ci]);
@@ -353,7 +353,7 @@ export function renderChatProposalCard(changes, msgEl) {
                 item.style.borderLeftColor = 'var(--scp-danger)';
                 warnEl.textContent = `⚠ ${reason}`; warnEl.style.display = 'block';
             } else {
-                applyBtn.disabled = false; applyBtn.title = 'Apply';
+                applyBtn.disabled = false; applyBtn.title = 'Применить';
                 item.style.borderLeftColor = ''; 
                 warnEl.style.display = 'none';
             }
@@ -371,7 +371,7 @@ export function renderChatProposalCard(changes, msgEl) {
                 item.classList.add('scp-lb-item-applied');
                 btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
                 persistState(); 
-                countBadge.textContent = `${getPending()} pending`; 
+                countBadge.textContent = `${getPending()} ожидает`; 
                 updateFooterBtns(); 
                 syncBlockToMessage(); 
 
@@ -383,18 +383,18 @@ export function renderChatProposalCard(changes, msgEl) {
                     item.classList.remove('scp-lb-item-applied');
                     btns.querySelectorAll('button').forEach(b => { b.disabled = false; });
                     persistState(); 
-                    countBadge.textContent = `${getPending()} pending`; 
+                    countBadge.textContent = `${getPending()} ожидает`; 
                     updateFooterBtns(); 
                     syncBlockToMessage(); 
 
-                    toastr.error(`Failed: ${err.message}`, EXT_DISPLAY);
+                    toastr.error(`Ошибка: ${err.message}`, EXT_DISPLAY);
                     applyBtn.disabled = false; 
                     applyBtn.textContent = '✓';
                 }
             });
         });
         const rejectBtn = document.createElement('button');
-        rejectBtn.className = 'scp-lb-proposal-item-reject'; rejectBtn.title = 'Reject'; rejectBtn.textContent = '✕';
+        rejectBtn.className = 'scp-lb-proposal-item-reject'; rejectBtn.title = 'Отклонить'; rejectBtn.textContent = '✕';
         rejectBtn.addEventListener('click', e => {
             e.stopPropagation();
             if (itemStates[ci] !== 'pending') return;
@@ -402,7 +402,7 @@ export function renderChatProposalCard(changes, msgEl) {
             item.classList.add('scp-lb-item-rejected');
             btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
             logChatEditHistory([editableChanges[ci]], 'Rejected', card.dataset.for);
-            persistState(); countBadge.textContent = `${getPending()} pending`; updateFooterBtns(); syncBlockToMessage(); checkAllResolved();
+            persistState(); countBadge.textContent = `${getPending()} ожидает`; updateFooterBtns(); syncBlockToMessage(); checkAllResolved();
         });
         btns.appendChild(applyBtn); btns.appendChild(rejectBtn);
         hdr.appendChild(meta); hdr.appendChild(btns);
@@ -410,19 +410,19 @@ export function renderChatProposalCard(changes, msgEl) {
 
         const buildPreview = () => {
             const change = editableChanges[ci];
-            if (change.action === 'rename_chat') return `New Name: ${change.name || ''}`;
-            if (change.action === 'hide') return 'Exclude message(s) from AI prompt context.';
-            if (change.action === 'unhide') return 'Include message(s) back into AI context.';
+            if (change.action === 'rename_chat') return `Новое имя: ${change.name || ''}`;
+            if (change.action === 'hide') return 'Исключить сообщение(я) из контекста промпта ИИ.';
+            if (change.action === 'unhide') return 'Вернуть сообщение(я) обратно в контекст ИИ.';
             if (change.action === 'replace' && change.patches?.length) {
                 const target = Array.isArray(change.msg_indices) && change.msg_indices.length
-                    ? ` (msgs ${change.msg_indices.join(', ')})` : '';
-                return change.patches.map((p, pi) => `Patch ${pi+1}${target}: "${(p.search||p.anchor||'').slice(0,60)}" → "${(p.replace||'').slice(0,60)}"`).join('\n');
+                    ? ` (сообщ. ${change.msg_indices.join(', ')})` : '';
+                return change.patches.map((p, pi) => `Патч ${pi+1}${target}: «${(p.search||p.anchor||'').slice(0,60)}» → «${(p.replace||'').slice(0,60)}»`).join('\n');
             }
             if (change.action === 'bulk_replace' && change.replacements?.length) {
-                return change.replacements.map(r => `"${(r.search||r.anchor||'').slice(0,40)}" → "${(r.replace||'').slice(0,40)}"`).join('\n');
+                return change.replacements.map(r => `«${(r.search||r.anchor||'').slice(0,40)}» → «${(r.replace||'').slice(0,40)}»`).join('\n');
             }
             if (change.action === 'regex') {
-                return `Regex: ${change.regex}\nReplace: ${change.replace || ''}`;
+                return `Регулярка: ${change.regex}\nЗамена: ${change.replace || ''}`;
             }
             return change.content || '';
         };
@@ -459,7 +459,7 @@ export function renderChatProposalCard(changes, msgEl) {
                     nameTa.type = 'text'; nameTa.className = 'scp-lb-pe-input';
                     nameTa.value = change.name || '';
                     nameTa.addEventListener('input', () => { change.name = nameTa.value; refreshPreview(); });
-                    editPanel.appendChild(mkRow('New Name', nameTa));
+                    editPanel.appendChild(mkRow('Новое имя', nameTa));
                     return;
                 }
                 
@@ -467,12 +467,12 @@ export function renderChatProposalCard(changes, msgEl) {
                     const idxInp = document.createElement('input');
                     idxInp.type = 'text'; idxInp.className = 'scp-lb-pe-input';
                     idxInp.value = change.msg_indices.join(', ');
-                    idxInp.placeholder = 'e.g. 12, 17, 19';
+                    idxInp.placeholder = 'напр. 12, 17, 19';
                     idxInp.addEventListener('input', () => {
                         change.msg_indices = idxInp.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
                         refreshPreview(); refreshValidation(); updateTargetDesc();
                     });
-                    editPanel.appendChild(mkRow('Message Indices (comma-separated)', idxInp));
+                    editPanel.appendChild(mkRow('Индексы сообщений (через запятую)', idxInp));
                 } else if (change.msg_range) {
                     const rangeRow = document.createElement('div');
                     rangeRow.style.cssText = 'display:flex;gap:8px;';
@@ -481,11 +481,11 @@ export function renderChatProposalCard(changes, msgEl) {
                     sInp.addEventListener('input', () => { change.msg_range[0] = parseInt(sInp.value)||0; refreshPreview(); refreshValidation(); updateTargetDesc(); });
                     eInp.addEventListener('input', () => { change.msg_range[1] = parseInt(eInp.value)||0; refreshPreview(); refreshValidation(); updateTargetDesc(); });
                     rangeRow.append(sInp, eInp);
-                    editPanel.appendChild(mkRow('Msg Range (Start - End)', rangeRow));
+                    editPanel.appendChild(mkRow('Диапазон сообщ. (начало - конец)', rangeRow));
                 } else if (change.msg_index !== undefined || change.msg_id !== undefined) {
                     const idxInp = document.createElement('input'); idxInp.type='number'; idxInp.className='scp-lb-pe-input'; idxInp.value=change.msg_index ?? change.msg_id;
                     idxInp.addEventListener('input', () => { change.msg_index = parseInt(idxInp.value)||0; refreshPreview(); refreshValidation(); updateTargetDesc(); });
-                    editPanel.appendChild(mkRow('Message Index', idxInp));
+                    editPanel.appendChild(mkRow('Индекс сообщения', idxInp));
                 }
 
                 if (['hide', 'unhide'].includes(change.action)) {
@@ -500,28 +500,28 @@ export function renderChatProposalCard(changes, msgEl) {
                     });
                     roleSel.value = change.role || 'assistant';
                     roleSel.addEventListener('change', () => { change.role = roleSel.value; refreshValidation(); updateTargetDesc(); });
-                    editPanel.appendChild(mkRow('Role', roleSel));
+                    editPanel.appendChild(mkRow('Роль', roleSel));
 
                     const valueTa = document.createElement('textarea');
-                    valueTa.className = 'scp-lb-pe-textarea'; 
-                    valueTa.rows = 4; 
-                    valueTa.placeholder = 'Type the message content here...';
+                    valueTa.className = 'scp-lb-pe-textarea';
+                    valueTa.rows = 4;
+                    valueTa.placeholder = 'Введите содержимое сообщения здесь...';
                     valueTa.value = change.content || '';
-                    valueTa.addEventListener('input', () => { 
-                        change.content = valueTa.value; 
-                        refreshPreview(); 
-                        refreshValidation(); 
+                    valueTa.addEventListener('input', () => {
+                        change.content = valueTa.value;
+                        refreshPreview();
+                        refreshValidation();
                     });
-                    editPanel.appendChild(mkRow('Content', valueTa));
+                    editPanel.appendChild(mkRow('Содержимое', valueTa));
                 } else if (change.action === 'replace') {
                     (change.patches || []).forEach((patch, pi) => {
                         const pHdr = document.createElement('div');
                         pHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px';
-                        pHdr.innerHTML = `<span style="font-size:10px;font-weight:700;color:var(--scp-accent);text-transform:uppercase;letter-spacing:.04em">Patch ${pi+1}</span>`;
+                        pHdr.innerHTML = `<span style="font-size:10px;font-weight:700;color:var(--scp-accent);text-transform:uppercase;letter-spacing:.04em">Патч ${pi+1}</span>`;
                         if (change.patches.length > 1) {
                             const delP = document.createElement('button');
                             delP.style.cssText = 'background:none;border:none;color:var(--scp-danger);cursor:pointer;font-size:11px;padding:0;font-family:var(--scp-font)';
-                            delP.textContent = '✕ Remove';
+                            delP.textContent = '✕ Удалить';
                             delP.addEventListener('click', () => { change.patches.splice(pi, 1); rebuildEditPanel(); refreshPreview(); refreshValidation(); });
                             pHdr.appendChild(delP);
                         }
@@ -532,12 +532,12 @@ export function renderChatProposalCard(changes, msgEl) {
                         const replaceTa = document.createElement('textarea');
                         replaceTa.className = 'scp-lb-pe-textarea'; replaceTa.rows = 3; replaceTa.value = patch.replace || '';
                         replaceTa.addEventListener('input', () => { change.patches[pi].replace = replaceTa.value; refreshPreview(); refreshValidation(); });
-                        editPanel.appendChild(mkRow('Anchor', searchTa));
-                        editPanel.appendChild(mkRow('Replace', replaceTa));
+                        editPanel.appendChild(mkRow('Якорь', searchTa));
+                        editPanel.appendChild(mkRow('Замена', replaceTa));
                     });
                     const addPatchBtn = document.createElement('button');
                     addPatchBtn.className = 'scp-action-btn'; addPatchBtn.style.marginTop = '8px';
-                    addPatchBtn.innerHTML = `${I.plus}<span>Add Patch</span>`;
+                    addPatchBtn.innerHTML = `${I.plus}<span>Добавить патч</span>`;
                     addPatchBtn.addEventListener('click', () => { change.patches.push({ search: '', replace: '' }); rebuildEditPanel(); });
                     editPanel.appendChild(addPatchBtn);
                 } else if (change.action === 'bulk_replace') {
@@ -548,24 +548,24 @@ export function renderChatProposalCard(changes, msgEl) {
                         const replaceTa = document.createElement('textarea');
                         replaceTa.className = 'scp-lb-pe-textarea'; replaceTa.rows = 1; replaceTa.value = rp.replace || '';
                         replaceTa.addEventListener('input', () => { change.replacements[ri].replace = replaceTa.value; refreshPreview(); refreshValidation(); });
-                        editPanel.appendChild(mkRow(`Replace pair ${ri+1} — Anchor`, searchTa));
-                        editPanel.appendChild(mkRow('Replace', replaceTa));
+                        editPanel.appendChild(mkRow(`Пара замены ${ri+1} — Якорь`, searchTa));
+                        editPanel.appendChild(mkRow('Замена', replaceTa));
                     });
                 } else if (change.action === 'regex') {
                     const regTa = document.createElement('textarea');
                     regTa.className = 'scp-lb-pe-textarea'; regTa.rows = 1; regTa.value = change.regex || '';
                     regTa.addEventListener('input', () => { change.regex = regTa.value; refreshPreview(); refreshValidation(); });
-                    editPanel.appendChild(mkRow('Regex Pattern', regTa));
-                    
+                    editPanel.appendChild(mkRow('Шаблон регулярного выражения', regTa));
+
                     const replTa = document.createElement('textarea');
                     replTa.className = 'scp-lb-pe-textarea'; replTa.rows = 2; replTa.value = change.replace || '';
                     replTa.addEventListener('input', () => { change.replace = replTa.value; refreshPreview(); refreshValidation(); });
-                    editPanel.appendChild(mkRow('Replace', replTa));
+                    editPanel.appendChild(mkRow('Замена', replTa));
                 } else {
                     const valueTa = document.createElement('textarea');
                     valueTa.className = 'scp-lb-pe-textarea'; valueTa.rows = 5; valueTa.value = change.content || '';
                     valueTa.addEventListener('input', () => { change.content = valueTa.value; refreshPreview(); refreshValidation(); });
-                    editPanel.appendChild(mkRow('Content', valueTa));
+                    editPanel.appendChild(mkRow('Содержимое', valueTa));
                 }
             };
             rebuildEditPanel();
@@ -622,9 +622,9 @@ export function renderChatProposalCard(changes, msgEl) {
     const footer = document.createElement('div');
     footer.className = 'scp-lb-proposal-footer';
     const applyAllBtn = document.createElement('button');
-    applyAllBtn.className = 'scp-lb-proposal-apply'; applyAllBtn.textContent = 'Apply All';
+    applyAllBtn.className = 'scp-lb-proposal-apply'; applyAllBtn.textContent = 'Применить всё';
     const rejectAllBtn = document.createElement('button');
-    rejectAllBtn.className = 'scp-lb-proposal-reject'; rejectAllBtn.textContent = 'Reject All';
+    rejectAllBtn.className = 'scp-lb-proposal-reject'; rejectAllBtn.textContent = 'Отклонить всё';
 
     const updateFooterBtns = () => {
         const p = getPending();
@@ -639,7 +639,7 @@ export function renderChatProposalCard(changes, msgEl) {
             editableChanges.forEach((_, i) => { if (itemStates[i] === 'pending') pendingIndices.push(i); });
             const pending = pendingIndices.map(i => editableChanges[i]);
             if (!pending.length) return;
-            applyAllBtn.disabled = true; applyAllBtn.textContent = 'Applying…';
+            applyAllBtn.disabled = true; applyAllBtn.textContent = 'Применение…';
             
             pendingIndices.forEach(i => {
                 itemStates[i] = 'applied';
@@ -647,7 +647,7 @@ export function renderChatProposalCard(changes, msgEl) {
                 itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = true; });
             });
             persistState(); 
-            countBadge.textContent = `${getPending()} pending`; 
+            countBadge.textContent = `${getPending()} ожидает`; 
             updateFooterBtns(); 
             syncBlockToMessage(); 
 
@@ -661,13 +661,13 @@ export function renderChatProposalCard(changes, msgEl) {
                     itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = false; });
                 });
                 persistState(); 
-                countBadge.textContent = `${getPending()} pending`; 
+                countBadge.textContent = `${getPending()} ожидает`; 
                 updateFooterBtns(); 
                 syncBlockToMessage(); 
                 
-                toastr.error(`Failed: ${e.message}`, EXT_DISPLAY);
-                applyAllBtn.disabled = false; 
-                applyAllBtn.textContent = 'Apply All';
+                toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
+                applyAllBtn.disabled = false;
+                applyAllBtn.textContent = 'Применить всё';
             }
         });
     });
@@ -676,7 +676,7 @@ export function renderChatProposalCard(changes, msgEl) {
         const pending = editableChanges.filter((_, i) => itemStates[i] === 'pending');
         itemStates.forEach((s, i) => { if (s === 'pending') { itemStates[i] = 'rejected'; itemEls[i]?.classList.add('scp-lb-item-rejected'); itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = true; }); } });
         logChatEditHistory(pending, 'Rejected', card.dataset.for);
-        persistState(); countBadge.textContent = `${getPending()} pending`; updateFooterBtns(); syncBlockToMessage(); checkAllResolved();
+        persistState(); countBadge.textContent = `${getPending()} ожидает`; updateFooterBtns(); syncBlockToMessage(); checkAllResolved();
     });
 
     footer.appendChild(applyAllBtn); footer.appendChild(rejectAllBtn);

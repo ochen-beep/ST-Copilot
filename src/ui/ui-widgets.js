@@ -87,7 +87,7 @@ export function showQPIconPicker(anchorEl, currentIcon, onSelect) {
 let _activePresetPanel = null;
 
 export function openPresetDropdown(triggerEl, groups, onSelect, opts = {}) {
-    const { placeholder = 'Search…', width = 320, emptyText = 'Nothing here' } = opts;
+    const { placeholder = 'Поиск…', width = 320, emptyText = 'Здесь пусто' } = opts;
 
     if (_activePresetPanel) {
         _activePresetPanel.remove();
@@ -168,7 +168,7 @@ export function openPresetDropdown(triggerEl, groups, onSelect, opts = {}) {
         if (!totalShown) {
             const empty = document.createElement('div');
             empty.className = 'scp-pdd-empty';
-            empty.textContent = q ? 'No results' : emptyText;
+            empty.textContent = q ? 'Нет результатов' : emptyText;
             listEl.appendChild(empty);
         }
     };
@@ -216,14 +216,14 @@ export function buildPromptPresetManager(containerEl, getTextFn, setTextFn, dict
     const trigger = document.createElement('button');
     trigger.type = 'button';
     trigger.className = 'scp-preset-mgr-trigger';
-    trigger.innerHTML = `<span class="scp-pmt-label">Select a preset…</span><svg class="scp-pmt-chevron" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+    trigger.innerHTML = `<span class="scp-pmt-label">Выберите пресет…</span><svg class="scp-pmt-chevron" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>`;
 
     const labelEl = trigger.querySelector('.scp-pmt-label');
 
     const setActive = (name, source) => {
         _activeName = name;
         _activeSource = source;
-        labelEl.textContent = name || 'Select a preset…';
+        labelEl.textContent = name || 'Выберите пресет…';
         trigger.classList.toggle('scp-pmt--has-value', !!name);
         updateBtnStates();
     };
@@ -239,7 +239,7 @@ export function buildPromptPresetManager(containerEl, getTextFn, setTextFn, dict
                 badge: 'profile',
                 _source: 'profile',
             }));
-        if (profileItems.length) groups.push({ label: 'From Profiles', items: profileItems });
+        if (profileItems.length) groups.push({ label: 'Из профилей', items: profileItems });
 
         const customItems = Object.keys(s[dictKey])
             .map(n => ({
@@ -249,7 +249,7 @@ export function buildPromptPresetManager(containerEl, getTextFn, setTextFn, dict
                 badge: 'custom',
                 _source: 'custom',
             }));
-        if (customItems.length) groups.push({ label: 'Custom Presets', items: customItems });
+        if (customItems.length) groups.push({ label: 'Пользовательские пресеты', items: customItems });
         return groups;
     };
 
@@ -258,7 +258,7 @@ export function buildPromptPresetManager(containerEl, getTextFn, setTextFn, dict
         openPresetDropdown(trigger, groups, (value, name, item) => {
             setTextFn(value);
             setActive(name, item._source || 'custom');
-        }, { placeholder: 'Search presets…', width: 360, emptyText: 'No presets saved yet' });
+        }, { placeholder: 'Поиск пресетов…', width: 360, emptyText: 'Пресеты ещё не сохранены' });
     });
 
     const mkBtn = (icon, title, cls, cb) => {
@@ -271,24 +271,24 @@ export function buildPromptPresetManager(containerEl, getTextFn, setTextFn, dict
         return b;
     };
 
-    const saveBtn = mkBtn('floppy-disk', 'Save preset', '', async () => {
+    const saveBtn = mkBtn('floppy-disk', 'Сохранить пресет', '', async () => {
         if (_activeName && _activeSource === 'custom') {
             s[dictKey][_activeName] = getTextFn();
             saveSettings();
-            toastr.success(`Saved preset "${escHtml(_activeName)}"`, EXT_DISPLAY);
+            toastr.success(`Пресет «${escHtml(_activeName)}» сохранён`, EXT_DISPLAY);
         } else {
-            const name = await showCustomDialog({ type: 'prompt', title: 'Save Prompt Preset', message: 'Preset name:', placeholder: 'My Preset' });
+            const name = await showCustomDialog({ type: 'prompt', title: 'Сохранить пресет промпта', message: 'Имя пресета:', placeholder: 'Мой пресет' });
             if (!name?.trim()) return;
             s[dictKey][name.trim()] = getTextFn();
             saveSettings();
             setActive(name.trim(), 'custom');
-            toastr.success(`Saved preset "${escHtml(name.trim())}"`, EXT_DISPLAY);
+            toastr.success(`Пресет «${escHtml(name.trim())}» сохранён`, EXT_DISPLAY);
         }
     });
 
-    const renameBtn = mkBtn('pen', 'Rename selected custom preset', '', async () => {
-        if (!_activeName || _activeSource !== 'custom') { toastr.info('Select a custom preset first.', EXT_DISPLAY); return; }
-        const newName = await showCustomDialog({ type: 'prompt', title: 'Rename Preset', message: 'New name:', defaultValue: _activeName });
+    const renameBtn = mkBtn('pen', 'Переименовать выбранный пользовательский пресет', '', async () => {
+        if (!_activeName || _activeSource !== 'custom') { toastr.info('Сначала выберите пользовательский пресет.', EXT_DISPLAY); return; }
+        const newName = await showCustomDialog({ type: 'prompt', title: 'Переименовать пресет', message: 'Новое имя:', defaultValue: _activeName });
         if (!newName?.trim() || newName.trim() === _activeName) return;
         s[dictKey][newName.trim()] = s[dictKey][_activeName];
         delete s[dictKey][_activeName];
@@ -296,9 +296,9 @@ export function buildPromptPresetManager(containerEl, getTextFn, setTextFn, dict
         setActive(newName.trim(), 'custom');
     });
 
-    const deleteBtn = mkBtn('trash', 'Delete selected custom preset', 'danger', async () => {
-        if (!_activeName || _activeSource !== 'custom') { toastr.info('Only custom presets can be deleted.', EXT_DISPLAY); return; }
-        const ok = await showCustomDialog({ type: 'confirm', title: 'Delete Preset', message: `Delete "${_activeName}"?` });
+    const deleteBtn = mkBtn('trash', 'Удалить выбранный пользовательский пресет', 'danger', async () => {
+        if (!_activeName || _activeSource !== 'custom') { toastr.info('Удалять можно только пользовательские пресеты.', EXT_DISPLAY); return; }
+        const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить пресет', message: `Удалить «${_activeName}»?` });
         if (!ok) return;
         delete s[dictKey][_activeName];
         saveSettings();
@@ -336,7 +336,7 @@ export function buildQPSetManager(containerEl, onSetLoaded) {
     trigger.type = 'button';
     trigger.className = 'scp-preset-mgr-trigger';
     const getLabel = name => {
-        if (!name) return 'Select a set…';
+        if (!name) return 'Выберите набор…';
         const count = (s.quickPromptSets[name] || []).length;
         return `${name}  (${count})`;
     };
@@ -359,7 +359,7 @@ export function buildQPSetManager(containerEl, onSetLoaded) {
                 (s.quickPromptSets[name] || []).map(q => `${q.icon || '⚡'} ${q.label}`).join(', ').slice(0, 80),
             badge: name === s.activeQuickPromptSet ? 'active' : null,
         }));
-        return [{ label: items.length ? 'Saved Sets' : null, items }];
+        return [{ label: items.length ? 'Сохранённые наборы' : null, items }];
     };
 
     trigger.addEventListener('click', () => {
@@ -371,8 +371,8 @@ export function buildQPSetManager(containerEl, onSetLoaded) {
             setActive(value);
             renderQuickPromptsBar();
             if (onSetLoaded) onSetLoaded();
-            toastr.success(`Loaded set "${escHtml(value)}"`, EXT_DISPLAY);
-        }, { placeholder: 'Search sets…', width: 340, emptyText: 'No sets saved yet. Save one below.' });
+            toastr.success(`Набор «${escHtml(value)}» загружен`, EXT_DISPLAY);
+        }, { placeholder: 'Поиск наборов…', width: 340, emptyText: 'Наборы ещё не сохранены. Сохраните один ниже.' });
     });
 
     const mkBtn = (icon, title, cls, cb) => {
@@ -385,10 +385,10 @@ export function buildQPSetManager(containerEl, onSetLoaded) {
         return b;
     };
 
-    const saveBtn = mkBtn('floppy-disk', 'Save current prompts to active set (or new)', '', async () => {
+    const saveBtn = mkBtn('floppy-disk', 'Сохранить текущие промпты в активный набор (или новый)', '', async () => {
         let name = _activeName;
         if (!name) {
-            name = await showCustomDialog({ type: 'prompt', title: 'Save Prompt Set', message: 'Set name:', placeholder: 'My Set' });
+            name = await showCustomDialog({ type: 'prompt', title: 'Сохранить набор промптов', message: 'Имя набора:', placeholder: 'Мой набор' });
             if (!name?.trim()) return;
             name = name.trim();
         }
@@ -396,23 +396,23 @@ export function buildQPSetManager(containerEl, onSetLoaded) {
         s.activeQuickPromptSet = name;
         saveSettings();
         setActive(name);
-        toastr.success(`Saved set "${escHtml(name)}"`, EXT_DISPLAY);
+        toastr.success(`Набор «${escHtml(name)}» сохранён`, EXT_DISPLAY);
     });
 
-    const saveAsBtn = mkBtn('plus', 'Save current prompts as a new set', '', async () => {
-        const name = await showCustomDialog({ type: 'prompt', title: 'New Prompt Set', message: 'Set name:', placeholder: 'My New Set' });
+    const saveAsBtn = mkBtn('plus', 'Сохранить текущие промпты как новый набор', '', async () => {
+        const name = await showCustomDialog({ type: 'prompt', title: 'Новый набор промптов', message: 'Имя набора:', placeholder: 'Мой новый набор' });
         if (!name?.trim()) return;
         const n = name.trim();
         s.quickPromptSets[n] = JSON.parse(JSON.stringify(s.quickPrompts));
         s.activeQuickPromptSet = n;
         saveSettings();
         setActive(n);
-        toastr.success(`Created set "${escHtml(n)}"`, EXT_DISPLAY);
+        toastr.success(`Набор «${escHtml(n)}» создан`, EXT_DISPLAY);
     });
 
-    const renameBtn = mkBtn('pen', 'Rename selected set', '', async () => {
-        if (!_activeName) { toastr.info('Select a set first.', EXT_DISPLAY); return; }
-        const newName = await showCustomDialog({ type: 'prompt', title: 'Rename Set', message: 'New name:', defaultValue: _activeName });
+    const renameBtn = mkBtn('pen', 'Переименовать выбранный набор', '', async () => {
+        if (!_activeName) { toastr.info('Сначала выберите набор.', EXT_DISPLAY); return; }
+        const newName = await showCustomDialog({ type: 'prompt', title: 'Переименовать набор', message: 'Новое имя:', defaultValue: _activeName });
         if (!newName?.trim() || newName.trim() === _activeName) return;
         const n = newName.trim();
         s.quickPromptSets[n] = s.quickPromptSets[_activeName];
@@ -422,9 +422,9 @@ export function buildQPSetManager(containerEl, onSetLoaded) {
         setActive(n);
     });
 
-    const deleteBtn = mkBtn('trash', 'Delete selected set', 'danger', async () => {
-        if (!_activeName) { toastr.info('Select a set first.', EXT_DISPLAY); return; }
-        const ok = await showCustomDialog({ type: 'confirm', title: 'Delete Set', message: `Delete set "${_activeName}"?` });
+    const deleteBtn = mkBtn('trash', 'Удалить выбранный набор', 'danger', async () => {
+        if (!_activeName) { toastr.info('Сначала выберите набор.', EXT_DISPLAY); return; }
+        const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить набор', message: `Удалить набор «${_activeName}»?` });
         if (!ok) return;
         delete s.quickPromptSets[_activeName];
         if (s.activeQuickPromptSet === _activeName) s.activeQuickPromptSet = '';
@@ -450,12 +450,12 @@ export function buildQPSetManager(containerEl, onSetLoaded) {
 // ─── Sounds ─────────────────────────────────────────────────────────────
 
 export const _SOUND_PRESETS = {
-    none:    { label: 'None' },
-    chime:   { label: 'Chime' },
-    bell:    { label: 'Bell' },
-    soft:    { label: 'Soft Ping' },
-    digital: { label: 'Digital Blip' },
-    pop:     { label: 'Pop' },
+    none:    { label: 'Без звука' },
+    chime:   { label: 'Куранты' },
+    bell:    { label: 'Колокол' },
+    soft:    { label: 'Мягкий сигнал' },
+    digital: { label: 'Цифровой бип' },
+    pop:     { label: 'Поп' },
 };
 
 export function _synthSound(type, volume = 80) {
@@ -638,7 +638,7 @@ export function renderFavoritesPanel() {
 
         const raw = msg.content.replace(/```[\s\S]*?```/g, '[code]').replace(/<[^>]+>/g, '').trim();
         const preview = raw.length > 140 ? raw.slice(0, 140) + '…' : raw;
-        const roleLabel = msg.role === 'user' ? 'User' : 'Copilot';
+        const roleLabel = msg.role === 'user' ? 'Пользователь' : 'Copilot';
         const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
         item.innerHTML = `
@@ -650,7 +650,7 @@ export function renderFavoritesPanel() {
                 </div>
                 <div class="scp-fav-item-text">${escHtml(preview)}</div>
             </div>
-            <button class="scp-fav-item-remove" title="Remove from starred">✕</button>`;
+            <button class="scp-fav-item-remove" title="Убрать из избранного">✕</button>`;
 
         item.addEventListener('click', e => {
             if (e.target.classList.contains('scp-fav-item-remove')) return;
@@ -673,7 +673,7 @@ export function renderFavoritesPanel() {
             if (msgEl) {
                 msgEl.classList.remove('scp-msg-starred');
                 const btn = msgEl.querySelector('.scp-msg-btn-star');
-                if (btn) { btn.classList.remove('starred'); btn.title = 'Star message'; }
+                if (btn) { btn.classList.remove('starred'); btn.title = 'В избранное'; }
             }
             renderFavoritesPanel();
         });
@@ -797,16 +797,16 @@ export function _highlightContextText(raw) {
 
 export function _buildContextInspectorHTML(messages) {
     const SECTION_LABELS = {
-        'system_prompt': 'System Prompt', 
-        'persistent_memory': 'Persistent Memory',
-        'lorebook_context': 'Lorebook', 
-        'characters': 'Characters',
-        '{{user}}_persona': 'User Persona',
-        'memory_system': 'Memory Management',
-        'lorebook_management': 'Lorebook Management',
-        'character_management': 'Character Management',
-        'chat_messages_editing': 'Chat Management',
-        'tool_calls_system': 'Tool Calls'
+        'system_prompt': 'Системный промпт',
+        'persistent_memory': 'Постоянная память',
+        'lorebook_context': 'Лорбук',
+        'characters': 'Персонажи',
+        '{{user}}_persona': 'Персона пользователя',
+        'memory_system': 'Управление памятью',
+        'lorebook_management': 'Управление лорбуком',
+        'character_management': 'Управление персонажами',
+        'chat_messages_editing': 'Управление чатом',
+        'tool_calls_system': 'Вызовы инструментов'
     };
     const KNOWN_SECS = new Set(Object.keys(SECTION_LABELS));
     const ALIASES = {
@@ -861,7 +861,7 @@ export function _buildContextInspectorHTML(messages) {
 
                 if ((KNOWN_SECS.has(key) || isUserPersona) && !seenSections.has(key)) {
                     seenSections.add(key);
-                    const secLabel = SECTION_LABELS[key] || (isUserPersona ? 'User Persona' : key);
+                    const secLabel = SECTION_LABELS[key] || (isUserPersona ? 'Персона пользователя' : key);
                     const secId = `scp-ctx-sec-${rawTag}`;
                     
                     if (['memory_system','lorebook_management','character_management','chat_messages_editing', 'tool_calls_system'].includes(key)) {
@@ -893,7 +893,7 @@ export function _buildContextInspectorHTML(messages) {
             });
 
             if (moduleNavs) {
-                 navHtml += `<details class="scp-ctx-nav-details" open><summary class="scp-ctx-nav-btn" style="color:var(--scp-text)">▼ Modules</summary>${moduleNavs}</details>`;
+                 navHtml += `<details class="scp-ctx-nav-details" open><summary class="scp-ctx-nav-btn" style="color:var(--scp-text)">▼ Модули</summary>${moduleNavs}</details>`;
             }
         }
 
@@ -990,7 +990,7 @@ export function buildSoundSettingsUI(container) {
 
     if (s.completionSoundData && !s.customSounds['custom_legacy']) {
         s.customSounds['custom_legacy'] = {
-            name: s.completionSoundFileName || 'Legacy Custom Sound',
+            name: s.completionSoundFileName || 'Унаследованный пользовательский звук',
             data: s.completionSoundData
         };
         if (s.completionSound === 'custom') {
@@ -1010,7 +1010,7 @@ export function buildSoundSettingsUI(container) {
     const typeLbl = document.createElement(isSP ? 'label' : 'b');
     typeLbl.className = isSP ? 'scp-sp-label' : '';
     if (!isSP) typeLbl.style.fontSize = '12px';
-    typeLbl.textContent = 'Completion Sound';
+    typeLbl.textContent = 'Звук завершения';
     
     const typeWrap = document.createElement('div');
     typeWrap.style.cssText = 'display:flex;gap:6px;align-items:center';
@@ -1024,7 +1024,7 @@ export function buildSoundSettingsUI(container) {
         typeSel.innerHTML = '';
         
         const groupPreset = document.createElement('optgroup');
-        groupPreset.label = 'Presets';
+        groupPreset.label = 'Пресеты';
         for (const [key, preset] of Object.entries(_SOUND_PRESETS)) {
             const opt = document.createElement('option');
             opt.value = key; opt.textContent = preset.label;
@@ -1034,7 +1034,7 @@ export function buildSoundSettingsUI(container) {
         
         if (Object.keys(s.customSounds).length > 0) {
             const groupCustom = document.createElement('optgroup');
-            groupCustom.label = 'Custom Sounds';
+            groupCustom.label = 'Пользовательские звуки';
             for (const [key, snd] of Object.entries(s.customSounds)) {
                 const opt = document.createElement('option');
                 opt.value = key; opt.textContent = snd.name;
@@ -1054,7 +1054,7 @@ export function buildSoundSettingsUI(container) {
 
     const testBtn = document.createElement('button');
     testBtn.className = isSP ? 'scp-action-btn' : 'menu_button interactable';
-    testBtn.innerHTML = `<i class="fa-solid fa-play"></i><span>Test</span>`;
+    testBtn.innerHTML = `<i class="fa-solid fa-play"></i><span>Тест</span>`;
     if (!isSP) testBtn.style.flex = '0 0 auto';
     testBtn.addEventListener('click', () => playCompletionSound(true));
     
@@ -1069,7 +1069,7 @@ export function buildSoundSettingsUI(container) {
     
     const uploadBtn = document.createElement('button');
     uploadBtn.className = isSP ? 'scp-action-btn' : 'menu_button interactable';
-    uploadBtn.innerHTML = `<i class="fa-solid fa-upload"></i><span>Upload Custom</span>`;
+    uploadBtn.innerHTML = `<i class="fa-solid fa-upload"></i><span>Загрузить свой</span>`;
     if (!isSP) uploadBtn.style.flex = '1';
 
     uploadBtn.addEventListener('click', () => {
@@ -1077,11 +1077,11 @@ export function buildSoundSettingsUI(container) {
         inp.type = 'file'; inp.accept = 'audio/*';
         inp.onchange = async () => {
             const file = inp.files?.[0]; if (!file) return;
-            if (file.size > 5 * 1024 * 1024) { toastr.warning('Audio file too large (>5MB).', EXT_DISPLAY); return; }
+            if (file.size > 5 * 1024 * 1024) { toastr.warning('Аудиофайл слишком большой (>5 МБ).', EXT_DISPLAY); return; }
             
             const { _fileToDataUrl } = await import('../utils/util-dom.js');
             const dataUrl = await _fileToDataUrl(file).catch(() => null);
-            if (!dataUrl) { toastr.error('Failed to load audio', EXT_DISPLAY); return; }
+            if (!dataUrl) { toastr.error('Не удалось загрузить аудио', EXT_DISPLAY); return; }
             
             const s2 = getSettings();
             const id = 'snd_' + Date.now();
@@ -1097,13 +1097,13 @@ export function buildSoundSettingsUI(container) {
 
     const deleteBtn = document.createElement('button');
     deleteBtn.className = isSP ? 'scp-action-btn scp-sp-danger-btn' : 'menu_button interactable';
-    deleteBtn.innerHTML = `<i class="fa-solid fa-trash"></i><span>Delete</span>`;
+    deleteBtn.innerHTML = `<i class="fa-solid fa-trash"></i><span>Удалить</span>`;
     if (!isSP) deleteBtn.style.flex = '1';
 
     deleteBtn.addEventListener('click', async () => {
         const val = typeSel.value;
         if (val.startsWith('custom_')) {
-            const ok = await showCustomDialog({ type: 'confirm', title: 'Delete Sound', message: 'Delete this custom sound?' });
+            const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить звук', message: 'Удалить этот пользовательский звук?' });
             if (!ok) return;
             const s2 = getSettings();
             delete s2.customSounds[val];
@@ -1141,7 +1141,7 @@ export function buildSoundSettingsUI(container) {
     const volLbl = document.createElement(isSP ? 'label' : 'b');
     volLbl.className = isSP ? 'scp-sp-label' : '';
     if (!isSP) volLbl.style.fontSize = '12px';
-    volLbl.textContent = 'Volume';
+    volLbl.textContent = 'Громкость';
 
     const volWrap = document.createElement('div');
     volWrap.className = isSP ? 'scp-sp-row' : '';

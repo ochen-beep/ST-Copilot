@@ -38,11 +38,11 @@ export function getVisibleMemories() {
 export function addMemory(key, value, scope = 'character') {
     const { charId, chatId } = getBindingKey();
     const ctx = SillyTavern.getContext();
-    const charName = ctx.characters?.[charId]?.name || charId || 'Unknown Character';
-    const chatName = chatId || 'Unknown Chat';
+    const charName = ctx.characters?.[charId]?.name || charId || 'Неизвестный персонаж';
+    const chatName = chatId || 'Неизвестный чат';
     const sessionObj = getCurrentSession();
     const sessionId = sessionObj?.id;
-    const sessionName = sessionObj?.name || sessionId || 'Unknown Session';
+    const sessionName = sessionObj?.name || sessionId || 'Неизвестная сессия';
     
     const id = genMemoryId();
     getMemories()[id] = {
@@ -188,7 +188,7 @@ export function showMemoryToast(applied) {
     const icons = { add: '✦', update: '✎', delete: '✕' };
     const lines = applied.slice(0, 3).map(a => `${icons[a.action] || '·'} ${escHtml(a.key)}: ${escHtml((a.value || '(deleted)').slice(0, 60))}`).join("\n");
     const linesHtml = lines.split("\n").join("<br>");
-    toast.innerHTML = `<span class="scp-memory-toast-icon"><i class="fa-solid fa-brain"></i></span><div class="scp-memory-toast-body"><div class="scp-memory-toast-title">Memory Updated (${applied.length})</div><div class="scp-memory-toast-text">${linesHtml}</div></div>`;
+    toast.innerHTML = `<span class="scp-memory-toast-icon"><i class="fa-solid fa-brain"></i></span><div class="scp-memory-toast-body"><div class="scp-memory-toast-title">Память обновлена (${applied.length})</div><div class="scp-memory-toast-text">${linesHtml}</div></div>`;
     document.body.appendChild(toast);
     toast.style.cursor = 'pointer';
     toast.addEventListener('click', () => {
@@ -266,8 +266,8 @@ export function renderMemoryList() {
         }
 
         const timeStr = mem.updatedAt
-            ? `Updated ${new Date(mem.updatedAt).toLocaleString()}`
-            : `Added ${new Date(mem.createdAt || 0).toLocaleString()}`;
+            ? `Обновлено ${new Date(mem.updatedAt).toLocaleString()}`
+            : `Добавлено ${new Date(mem.createdAt || 0).toLocaleString()}`;
 
         item.innerHTML += `
             <div class="scp-memory-item-body">
@@ -276,11 +276,11 @@ export function renderMemoryList() {
                 <div class="scp-memory-item-meta">${escHtml(timeStr)}</div>
             </div>
             <div class="scp-memory-item-actions">
-                <button class="scp-memory-item-toggle" title="${mem.disabled ? 'Enable Memory' : 'Disable Memory'}">
+                <button class="scp-memory-item-toggle" title="${mem.disabled ? 'Включить память' : 'Отключить память'}">
                     <i class="fa-solid ${mem.disabled ? 'fa-toggle-off' : 'fa-toggle-on'}"></i>
                 </button>
-                <button class="scp-memory-item-edit" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                <button class="scp-memory-item-del" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                <button class="scp-memory-item-edit" title="Изменить"><i class="fa-solid fa-pen"></i></button>
+                <button class="scp-memory-item-del" title="Удалить"><i class="fa-solid fa-trash"></i></button>
             </div>
         `;
         const valEl = document.createElement('div');
@@ -289,13 +289,13 @@ export function renderMemoryList() {
         valEl.textContent = isLong ? mem.value.slice(0, 120) + '…' : mem.value;
         if (isLong) {
             valEl.style.cursor = 'pointer';
-            valEl.title = 'Click to expand';
+            valEl.title = 'Нажмите для раскрытия';
             let expanded = false;
             valEl.addEventListener('click', e => {
                 e.stopPropagation();
                 expanded = !expanded;
                 valEl.textContent = expanded ? mem.value : mem.value.slice(0, 120) + '…';
-                valEl.title = expanded ? 'Click to collapse' : 'Click to expand';
+                valEl.title = expanded ? 'Нажмите для сворачивания' : 'Нажмите для раскрытия';
             });
         }
         item.querySelector('.scp-memory-item-val-ph').replaceWith(valEl);
@@ -315,7 +315,7 @@ export function renderMemoryList() {
         
         item.querySelector('.scp-memory-item-del').addEventListener('click', async e => {
             e.stopPropagation();
-            const ok = await showCustomDialog({ type: 'confirm', title: 'Delete Memory', message: `Delete memory "${mem.key}"?` });
+            const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить память', message: `Удалить память «${mem.key}»?` });
             if (!ok) return;
             deleteMemory(mem.id);
             renderMemoryList();
@@ -340,7 +340,7 @@ export function renderMemoryList() {
     };
 
     if (tree.global.length > 0) {
-        const globDet = buildDetails('Global', 'globe', tree.global.map(createMemEl), true);
+        const globDet = buildDetails('Глобальные', 'globe', tree.global.map(createMemEl), true);
         if (globDet) listEl.appendChild(globDet);
     }
 
@@ -372,7 +372,7 @@ export function renderMemoryList() {
                             if (sDet) sessWrapper.push(sDet);
                         });
                         if (sessWrapper.length > 0) {
-                            const sMainDet = buildDetails('Sessions', 'layer-group', sessWrapper);
+                            const sMainDet = buildDetails('Сессии', 'layer-group', sessWrapper);
                             if (sMainDet) chatContent.push(sMainDet);
                         }
                     }
@@ -382,7 +382,7 @@ export function renderMemoryList() {
                 });
                 
                 if (chatsWrapper.length > 0) {
-                    const cMainDet = buildDetails('Chats', 'folder', chatsWrapper);
+                    const cMainDet = buildDetails('Чаты', 'folder', chatsWrapper);
                     if (cMainDet) nodeContent.push(cMainDet);
                 }
             }
@@ -391,7 +391,7 @@ export function renderMemoryList() {
             if (charDet) charContent.push(charDet);
         });
         
-        const charsMainDet = buildDetails('Characters', 'users', charContent, true);
+        const charsMainDet = buildDetails('Персонажи', 'users', charContent, true);
         if (charsMainDet) listEl.appendChild(charsMainDet);
     }
 }
@@ -404,28 +404,28 @@ export async function editMemoryDialog(id) {
         overlay.className = 'scp-dialog-overlay';
         
         const scopeOptions = [
-            {val: 'global', text: 'Global (All chats)'},
-            {val: 'character', text: 'Character (All chats with this character)'},
-            {val: 'chat', text: 'Chat (Only this specific chat)'},
-            {val: 'session', text: 'Session (Only this Copilot session)'}
+            {val: 'global', text: 'Глобально (Все чаты)'},
+            {val: 'character', text: 'Персонаж (Все чаты с этим персонажем)'},
+            {val: 'chat', text: 'Чат (Только этот конкретный чат)'},
+            {val: 'session', text: 'Сессия (Только эта сессия Copilot)'}
         ];
         const currentScope = mem?.scope || 'character';
 
         const scopeHtml = scopeOptions.map(o => `<option value="${o.val}" ${currentScope === o.val ? 'selected' : ''}>${o.text}</option>`).join('');
 
         overlay.innerHTML = `<div class="scp-dialog-box">
-<div class="scp-dialog-title">${isNew ? 'Add Memory' : 'Edit Memory'}</div>
-<div class="scp-dialog-msg">Category / Key:</div>
-<input type="text" class="scp-dialog-input" id="scp-mem-key-inp" placeholder="e.g. Preferences, About Me, Profession..." value="${escHtml(mem?.key || '')}">
-<div class="scp-dialog-msg" style="margin-top:4px">Value:</div>
-<textarea class="scp-dialog-input" id="scp-mem-val-inp" rows="3" placeholder="What to remember..." style="height:auto;resize:vertical;margin-bottom:10px;">${escHtml(mem?.value || '')}</textarea>
-<div class="scp-dialog-msg" style="margin-top:4px">Scope:</div>
+<div class="scp-dialog-title">${isNew ? 'Добавить память' : 'Изменить память'}</div>
+<div class="scp-dialog-msg">Категория / Ключ:</div>
+<input type="text" class="scp-dialog-input" id="scp-mem-key-inp" placeholder="напр. Предпочтения, Обо мне, Профессия..." value="${escHtml(mem?.key || '')}">
+<div class="scp-dialog-msg" style="margin-top:4px">Значение:</div>
+<textarea class="scp-dialog-input" id="scp-mem-val-inp" rows="3" placeholder="Что запомнить..." style="height:auto;resize:vertical;margin-bottom:10px;">${escHtml(mem?.value || '')}</textarea>
+<div class="scp-dialog-msg" style="margin-top:4px">Область:</div>
 <select class="scp-dialog-input" id="scp-mem-scope-inp" style="margin-bottom:20px;">
 ${scopeHtml}
 </select>
 <div class="scp-dialog-btns">
-<button class="scp-dialog-btn scp-dialog-cancel">Cancel</button>
-<button class="scp-dialog-btn scp-dialog-ok">${isNew ? 'Add' : 'Save'}</button>
+<button class="scp-dialog-btn scp-dialog-cancel">Отмена</button>
+<button class="scp-dialog-btn scp-dialog-ok">${isNew ? 'Добавить' : 'Сохранить'}</button>
 </div></div>`;
         document.body.appendChild(overlay);
         const keyInp = overlay.querySelector('#scp-mem-key-inp');
@@ -509,13 +509,13 @@ export function setupMemorySettingsUI() {
         const newResetBtn = resetBtn.cloneNode(true);
         resetBtn.parentNode.replaceChild(newResetBtn, resetBtn);
         newResetBtn.addEventListener('click', async () => {
-            const ok = await showCustomDialog({ type: 'confirm', title: 'Reset Prompt', message: 'Reset memory prompt to default?' });
+            const ok = await showCustomDialog({ type: 'confirm', title: 'Сбросить промпт', message: 'Сбросить промпт памяти к значению по умолчанию?' });
             if (!ok) return;
             getSettings().memoryManagePrompt = DEFAULT_MEMORY_PROMPT;
             saveSettings();
             const el = document.getElementById('scp-sp-memory-prompt'); if (el) el.value = DEFAULT_MEMORY_PROMPT;
             const stEl = document.getElementById('scp-memory-prompt'); if (stEl) stEl.value = DEFAULT_MEMORY_PROMPT;
-            toastr.success('Prompt reset.', EXT_DISPLAY);
+            toastr.success('Промпт сброшен.', EXT_DISPLAY);
         });
     }
 
@@ -534,12 +534,12 @@ export function setupMemorySettingsUI() {
         clearBtn.parentNode.replaceChild(newClearBtn, clearBtn);
         newClearBtn.addEventListener('click', async () => {
             const count = Object.keys(getMemories()).length;
-            if (!count) { toastr.info('No memories to clear.', EXT_DISPLAY); return; }
-            const ok = await showCustomDialog({ type: 'confirm', title: 'Clear All Memories', message: `Delete all ${count} stored memories? This cannot be undone.`, delayConfirm: 2 });
+            if (!count) { toastr.info('Нет памяток для очистки.', EXT_DISPLAY); return; }
+            const ok = await showCustomDialog({ type: 'confirm', title: 'Очистить всю память', message: `Удалить все ${count} сохранённых памяток? Это действие нельзя отменить.`, delayConfirm: 2 });
             if (!ok) return;
             clearAllMemories();
             renderMemoryList();
-            toastr.success('All memories cleared.', EXT_DISPLAY);
+            toastr.success('Вся память очищена.', EXT_DISPLAY);
         });
     }
 

@@ -3,9 +3,10 @@ import { getSettings, getCurrentSession, saveSettings, expandMacros } from '../s
 import { _dbgAdd } from '../utils/util-debug.js';
 import { ST_WorldInfo, ST_Utils } from '../index.js';
 import { _repairJSON } from '../utils/util-text.js';
+import { invalidateSystemPromptCache } from '../state.js';
 
 export const wiCache = {};
-export const wiPromises = {}; 
+export const wiPromises = {};
 export let lastActiveEntries = [];
 
 let _wiExternalListenerBound = false;
@@ -18,9 +19,14 @@ export function setupExternalWIChangeListener() {
     if (!es) return;
     es.on(et.WORLDINFO_UPDATED || 'worldinfo_updated', (name) => {
         if (name) delete wiCache[name];
+        // WI контент попадает в системный промпт через buildLorebookContextBlock.
+        // Чистка wiCache НЕ чистит systemPromptCache — Promise с уже собранным lb-блоком
+        // остался бы stale, поэтому бампаем явно.
+        invalidateSystemPromptCache('WORLDINFO_UPDATED');
     });
     es.on(et.WORLDINFO_SETTINGS_UPDATED || 'worldinfo_settings_updated', () => {
         for (const key of Object.keys(wiCache)) delete wiCache[key];
+        invalidateSystemPromptCache('WORLDINFO_SETTINGS_UPDATED');
     });
 }
 
@@ -126,7 +132,7 @@ export function getEmbeddedCharBook() {
 }
 
 export async function saveWorldInfoBook(name, data) {
-    if (data._embedded) { toastr.warning('Cannot save embedded character books directly.', EXT_DISPLAY); return; }
+    if (data._embedded) { toastr.warning('Нельзя напрямую сохранять встроенные лорбуки персонажа.', EXT_DISPLAY); return; }
     const ctx = SillyTavern.getContext();
     const payload = { ...data };
     delete payload._ts;
@@ -162,7 +168,7 @@ export function getDisplayName(name) {
     if (name === EMBEDDED_BOOK_KEY) {
         const ctx = SillyTavern.getContext();
         const char = ctx.characters?.[ctx.characterId];
-        return `[${char?.name || 'Character'} Book]`;
+        return `[${char?.name || 'Персонаж'} книга]`;
     }
     return name;
 }
@@ -540,7 +546,7 @@ export async function bindNewLorebookToCharacter(bookName) {
                 if (typeof ctx.updateWorldInfoList === 'function') await ctx.updateWorldInfoList();
                 else if (typeof window.loadWorldInfoList === 'function') await window.loadWorldInfoList();
             }
-            toastr.success(`Lorebook "${bookName}" created successfully.`, EXT_DISPLAY);
+            toastr.success(`Лорбук «${bookName}» успешно создан.`, EXT_DISPLAY);
         }
 
         delete wiCache[bookName];

@@ -5,14 +5,14 @@ import { EXT_DISPLAY } from '../constants.js';
 export const SM = { msg:0, regen:1, sess:2, tokIn:3, tokOut:4, qp:5, lb:6, edit:7 };
 const _STAT_N = 8;
 const _STAT_META = [
-    { key:'msg',   label:'Messages',    color:'#7c6dfa', icon:'fa-message' },
-    { key:'regen', label:'Regens',      color:'#4caf7d', icon:'fa-rotate-right' },
-    { key:'sess',  label:'Sessions',    color:'#ffb432', icon:'fa-list' },
-    { key:'tokIn', label:'Tokens In',   color:'#5bc0eb', icon:'fa-arrow-right-to-bracket' },
-    { key:'tokOut',label:'Tokens Out',  color:'#f06292', icon:'fa-arrow-right-from-bracket' },
-    { key:'qp',    label:'QPrompts',    color:'#ff8a65', icon:'fa-bolt' },
-    { key:'lb',    label:'LB Changes',  color:'#ab47bc', icon:'fa-book-open' },
-    { key:'edit',  label:'Edits',       color:'#78909c', icon:'fa-pen-to-square' },
+    { key:'msg',   label:'Сообщения',    color:'#7c6dfa', icon:'fa-message' },
+    { key:'regen', label:'Регенерации',      color:'#4caf7d', icon:'fa-rotate-right' },
+    { key:'sess',  label:'Сессии',    color:'#ffb432', icon:'fa-list' },
+    { key:'tokIn', label:'Токены (вход)',   color:'#5bc0eb', icon:'fa-arrow-right-to-bracket' },
+    { key:'tokOut',label:'Токены (выход)',  color:'#f06292', icon:'fa-arrow-right-from-bracket' },
+    { key:'qp',    label:'Быстрые промпты',    color:'#ff8a65', icon:'fa-bolt' },
+    { key:'lb',    label:'Изменения ЛБ',  color:'#ab47bc', icon:'fa-book-open' },
+    { key:'edit',  label:'Правки',       color:'#78909c', icon:'fa-pen-to-square' },
 ];
 
 export function _ensureStats() {
@@ -73,7 +73,7 @@ export function getStatBuckets(scope, period) {
             const v = obj[_toDateKey(d)];
             const vals = v ? v.slice() : EMPTY();
             while (vals.length < _STAT_N) vals.push(0);
-            const lbl = i === 0 ? 'Today' : `${d.getMonth()+1}/${d.getDate()}`;
+            const lbl = i === 0 ? 'Сегодня' : `${d.getMonth()+1}/${d.getDate()}`;
             results.push({ label: lbl, vals });
         }
     } else if (period === 'week') {
@@ -86,7 +86,7 @@ export function getStatBuckets(scope, period) {
                 const v = obj[_toDateKey(day)];
                 if (v) v.forEach((n, i) => { if (i < _STAT_N) agg[i] += (n || 0); });
             }
-            results.push({ label: w === 0 ? 'This wk' : `${wStart.getMonth()+1}/${wStart.getDate()}`, vals: agg });
+            results.push({ label: w === 0 ? 'Эта нед.' : `${wStart.getMonth()+1}/${wStart.getDate()}`, vals: agg });
         }
     } else if (period === 'month') {
         for (let m = 11; m >= 0; m--) {
@@ -170,13 +170,13 @@ export function renderStatsPane(container) {
         return row;
     };
 
-    controls.appendChild(mkPillRow('Scope',
-        [['g','Global'],['c','Character'],['ch','Chat']],
+    controls.appendChild(mkPillRow('Область',
+        [['g','Глобально'],['c','Персонаж'],['ch','Чат']],
         'scope',
         () => { refreshStatCards(container); refreshStatsChart(container); }
     ));
-    controls.appendChild(mkPillRow('Period',
-        [['day','30 Days'],['week','12 Weeks'],['month','12 Mo'],['year','All Years']],
+    controls.appendChild(mkPillRow('Период',
+        [['day','30 дней'],['week','12 недель'],['month','12 мес.'],['year','Все годы']],
         'period',
         () => refreshStatsChart(container)
     ));
@@ -194,17 +194,17 @@ export function renderStatsPane(container) {
 
     const danger = document.createElement('div');
     danger.className = 'scp-sp-group scp-stats-danger';
-    danger.innerHTML = `<div class="scp-sp-group-title" style="color:var(--scp-danger)"><i class="fa-solid fa-triangle-exclamation"></i> Danger Zone</div>`;
+    danger.innerHTML = `<div class="scp-sp-group-title" style="color:var(--scp-danger)"><i class="fa-solid fa-triangle-exclamation"></i> Опасная зона</div>`;
     const resetBtn = document.createElement('button');
     resetBtn.className = 'scp-action-btn scp-sp-danger-btn';
-    resetBtn.innerHTML = '<i class="fa-solid fa-trash"></i><span>Reset Statistics</span>';
+    resetBtn.innerHTML = '<i class="fa-solid fa-trash"></i><span>Сбросить статистику</span>';
     resetBtn.addEventListener('click', async () => {
-        const ok = await showCustomDialog({ type:'confirm', title:'Reset Statistics', message:'Delete ALL collected statistics permanently? This cannot be undone.', delayConfirm:3 });
+        const ok = await showCustomDialog({ type:'confirm', title:'Сбросить статистику', message:'Удалить ВСЮ собранную статистику навсегда? Это действие нельзя отменить.', delayConfirm:3 });
         if (!ok) return;
         getSettings().stats = { g:{}, c:{}, ch:{} };
         saveSettings();
         renderStatsPane(container);
-        toastr.success('Statistics cleared.', EXT_DISPLAY);
+        toastr.success('Статистика очищена.', EXT_DISPLAY);
     });
     danger.appendChild(resetBtn);
     container.appendChild(danger);

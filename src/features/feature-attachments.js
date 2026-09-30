@@ -18,24 +18,24 @@ export async function _processAttachmentsBeforeSend(atts, isPreview = false) {
     for (const a of atts) {
         if (a.isImage && mode === 'caption') {
             if (isPreview) {
-                processed.push({ ...a, sendAsText: true, textContent: `[Image "${a.name}" (caption will be generated on send)]` });
+                processed.push({ ...a, sendAsText: true, textContent: `[Изображение "${a.name}" (подпись будет сгенерирована при отправке)]` });
             } else {
                 let cap = await _getCaptionViaExtension(a.file).catch((e)=>{
                     console.warn("[ST-Copilot] Captioning error:", e);
                     _dbgAdd('IMAGE_CAPTIONING_SERVICE_MISSING', { name: a.name });
                     return '';
                 });
-                if (!cap) toastr.warning(`Captioning failed for ${a.name}`, EXT_DISPLAY);
+                if (!cap) toastr.warning(`Не удалось создать подпись для ${a.name}`, EXT_DISPLAY);
                 processed.push({
                     ...a,
                     sendAsText: true,
-                    textContent: cap ? `[Image "${a.name}" caption: ${cap}]` : `[Image "${a.name}" (captioning failed)]`
+                    textContent: cap ? `[Изображение "${a.name}" подпись: ${cap}]` : `[Изображение "${a.name}" (ошибка подписи)]`
                 });
             }
         } else if (!a.isImage) {
             let text = a.textContent;
             if (!text && a.file) {
-                try { text = await a.file.text(); } catch(e) { text = '(binary data or read error)'; }
+                try { text = await a.file.text(); } catch(e) { text = '(бинарные данные или ошибка чтения)'; }
             }
             processed.push({ ...a, sendAsText: true, textContent: text });
         } else {
@@ -47,7 +47,7 @@ export async function _processAttachmentsBeforeSend(atts, isPreview = false) {
 
 export function _mergeContent(baseText, atts) {
     if (!atts || !atts.length) return baseText;
-    const textParts = atts.filter(a => a.textContent).map(a => a.sendAsText ? a.textContent : `[Attached file "${a.name}"]\n${a.textContent}`);
+    const textParts = atts.filter(a => a.textContent).map(a => a.sendAsText ? a.textContent : `[Прикреплённый файл "${a.name}"]\n${a.textContent}`);
     const textPrefix = textParts.join('\n\n');
     
     let combinedText = '';
@@ -109,7 +109,7 @@ export function _renderAttachmentPreviews() {
         const removeBtn = document.createElement('button');
         removeBtn.className = 'scp-att-remove';
         removeBtn.innerHTML = '×';
-        removeBtn.title = 'Remove';
+        removeBtn.title = 'Удалить';
         removeBtn.addEventListener('click', e => {
             e.stopPropagation();
             _dbgAdd('ATTACHMENT_REMOVE', { id: att.id });
@@ -175,9 +175,9 @@ export async function _openTextLightbox(att) {
     let text = att.textContent;
     if (!text && att.file) {
         try { text = await att.file.text(); att.textContent = text; } 
-        catch(e) { text = 'Error reading file.'; }
+        catch(e) { text = 'Ошибка чтения файла.'; }
     }
-    pre.textContent = text || 'Loading...';
+    pre.textContent = text || 'Загрузка...';
     
     overlay.appendChild(pre);
     document.body.appendChild(overlay);

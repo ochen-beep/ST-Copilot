@@ -153,5 +153,5 @@ export function dbgDownload() {
     a.download = `st-copilot-debug-${Date.now()}.txt`;
     a.click();
     URL.revokeObjectURL(url);
-    toastr.success('Debug log downloaded.', EXT_DISPLAY);
+    toastr.success('Журнал отладки скачан.', EXT_DISPLAY);
 }

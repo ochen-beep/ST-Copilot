@@ -13,7 +13,7 @@ export function createToolCallEl(tc) {
     
     const isWarning = tc.status === 'warning';
     const statusClass = tc.status === 'running' ? 'running' : tc.status === 'error' ? 'error' : isWarning ? 'warning' : 'done';
-    const statusLabel = tc.status === 'running' ? 'Running' : tc.status === 'error' ? 'Error' : isWarning ? 'Unavailable' : 'Done';
+    const statusLabel = tc.status === 'running' ? 'Выполняется' : tc.status === 'error' ? 'Ошибка' : isWarning ? 'Недоступно' : 'Готово';
     const colorStyle = isWarning ? 'color: var(--scp-warning, #ffb432);' : '';
 
     const spinnerHtml = tc.status === 'running' ? '<span class="scp-tool-spin">⟳</span> ' : '';
@@ -28,9 +28,9 @@ export function createToolCallEl(tc) {
 <div class="scp-tool-call-chevron">▶</div>
 </div>
 <div class="scp-tool-call-body">
-<div class="scp-tool-call-section-label">Input</div>
+<div class="scp-tool-call-section-label">Ввод</div>
 <pre class="scp-tool-call-args">${escHtml(JSON.stringify(tc.input, null, 2))}</pre>
-${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="margin-top:8px">Result</div><pre class="scp-tool-call-result${tc.status === 'error' ? ' error-result' : ''}" ${isWarning ? `style="${colorStyle}"` : ''}>${escHtml(typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2))}</pre>` : ''}
+${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="margin-top:8px">Результат</div><pre class="scp-tool-call-result${tc.status === 'error' ? ' error-result' : ''}" ${isWarning ? `style="${colorStyle}"` : ''}>${escHtml(typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2))}</pre>` : ''}
 </div>`;
     item.querySelector('.scp-tool-call-header').addEventListener('click', () => {
         const isOpen = !item.classList.contains('open');
@@ -117,7 +117,7 @@ export function setupToolsSettingsUI() {
         const descEl = document.createElement('div');
         descEl.className = 'scp-tool-toggle-desc';
         descEl.style.cssText = 'font-size:10px;color:var(--scp-text-muted);margin-top:2px;padding-left:20px';
-        descEl.textContent = isDisabledByStream ? '⚠ Unavailable — requires streaming to be enabled (not "Force Off")' : tool.description;
+        descEl.textContent = isDisabledByStream ? '⚠ Недоступно — требуется включить стриминг (не «Принудительно выключен»)' : tool.description;
         if (isDisabledByStream) descEl.style.color = 'var(--scp-danger)';
         row.appendChild(descEl);
         if (!isDisabledByStream) {
@@ -140,7 +140,7 @@ export function setupToolsSettingsUI() {
 let askUserResolve = null;
 
 export async function executeAskUser(input, msgEl) {
-    const question = input.question || 'Do you have any additional information?';
+    const question = input.question || 'Есть ли у вас дополнительная информация?';
     const context = input.context || '';
     return new Promise(resolve => {
         askUserResolve = resolve;
@@ -158,12 +158,12 @@ export async function executeAskUser(input, msgEl) {
         wrap.appendChild(q);
         const inp = document.createElement('textarea');
         inp.className = 'scp-tool-ask-input';
-        inp.placeholder = 'Your answer…';
+        inp.placeholder = 'Ваш ответ…';
         inp.rows = 2;
         wrap.appendChild(inp);
         const btn = document.createElement('button');
         btn.className = 'scp-tool-ask-submit';
-        btn.textContent = 'Submit Answer';
+        btn.textContent = 'Отправить ответ';
         btn.addEventListener('click', () => {
             const answer = inp.value.trim();
             if (!answer) return;
