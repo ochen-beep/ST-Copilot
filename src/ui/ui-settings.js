@@ -506,9 +506,12 @@ export function buildThemeEditor(containerOverride) {
         const updateResetState = val => { resetBtn.disabled = !val || val === getDefaultVal(); };
         updateResetState(curVal);
         let _fontDebounce = null;
+        let _saveDebounce = null;
         const applyVal = val => {
             const s2 = getSettings(); if (!s2.customTheme) s2.customTheme = {};
-            s2.customTheme[def.key] = val; saveSettings(); _markDirty('theme');
+            s2.customTheme[def.key] = val; _markDirty('theme');
+            clearTimeout(_saveDebounce);
+            _saveDebounce = setTimeout(() => saveSettings(), 300);
             document.querySelectorAll(`input.scp-theme-var-input[data-key="${def.key}"]`).forEach(inp => { if (inp.value !== val) inp.value = val; });
             if (isColorKey) {
                 if (cssVar) [windowEl, document.getElementById('scp-lb-overlay'), document.getElementById('scp-diff-modal')].filter(Boolean).forEach(t => t.style.setProperty(cssVar, val));
@@ -621,9 +624,19 @@ function _bindSetting(def) {
             _writeToEl(stEl, def, v); setDisplayVal(def.stValId, v); setDisplayVal(def.spValId, v); apply(spEl.value);
         });
     } else {
-        const ev = (def.type === 'input' || def.type === 'textarea') ? 'input' : 'change';
-        stEl?.addEventListener(ev, () => { const raw = def.type === 'checkbox' ? stEl.checked : stEl.value; _writeToEl(spEl, def, raw); apply(raw); });
-        spEl?.addEventListener(ev, () => { const raw = def.type === 'checkbox' ? spEl.checked : spEl.value; _writeToEl(stEl, def, raw); apply(raw); });
+        const isText = def.type === 'input' || def.type === 'textarea';
+        const ev = isText ? 'input' : 'change';
+        // Текстовые поля: apply (saveSettings + prune overrides + updateMsgCount)
+        // дебаунсится, чтобы не платить за каждое нажатие клавиши;
+        // синхронизация близнеца остаётся мгновенной.
+        let _applyDebounce = 0;
+        const applyMaybeDebounced = raw => {
+            if (!isText) { apply(raw); return; }
+            clearTimeout(_applyDebounce);
+            _applyDebounce = setTimeout(() => apply(raw), 300);
+        };
+        stEl?.addEventListener(ev, () => { const raw = def.type === 'checkbox' ? stEl.checked : stEl.value; _writeToEl(spEl, def, raw); applyMaybeDebounced(raw); });
+        spEl?.addEventListener(ev, () => { const raw = def.type === 'checkbox' ? spEl.checked : spEl.value; _writeToEl(stEl, def, raw); applyMaybeDebounced(raw); });
     }
 }
 
@@ -1152,9 +1165,13 @@ export function setupSettingsPanelListeners() {
     // ── Session Override bindings ──
     const bindOv = (id, key, isCheckbox = false, toVal = null) => {
         const el = document.getElementById(id); if (!el) return;
+        let _ovDebounce = 0;
         el.addEventListener(isCheckbox ? 'change' : 'input', () => {
             const raw = isCheckbox ? el.checked : el.value;
-            _syncOvToGlobal(key, (raw === '' || raw === undefined) ? undefined : (toVal ? toVal(raw) : raw));
+            const val = (raw === '' || raw === undefined) ? undefined : (toVal ? toVal(raw) : raw);
+            if (isCheckbox) { _syncOvToGlobal(key, val); return; }
+            clearTimeout(_ovDebounce);
+            _ovDebounce = setTimeout(() => _syncOvToGlobal(key, val), 300);
         });
     };
     const bindOvSel = (id, key) => { const el = document.getElementById(id); if (!el) return; el.addEventListener('change', () => _syncOvToGlobal(key, el.value || undefined)); };
@@ -1174,7 +1191,14 @@ export function setupSettingsPanelListeners() {
     bindOv('scp-sp-ov-max-tokens', 'maxTokens', false, Number); bindOv('scp-sp-ov-history-limit', 'localHistoryLimit', false, Number);
     bindOv('scp-sp-ov-reasoning-trim', 'reasoningTrimStrings'); bindOv('scp-sp-ov-char-edit-prompt', 'charEditPrompt');
     bindOv('scp-sp-ov-lb-manage-prompt', 'lorebookManagePrompt'); bindOv('scp-sp-ov-chat-edit-prompt', 'chatEditPrompt');
-    document.getElementById('scp-sp-ov-sysprompt')?.addEventListener('input', e => _syncOvToGlobal('systemPrompt', e.target.value || undefined));
+    {
+        let _sysOvDebounce = 0;
+        document.getElementById('scp-sp-ov-sysprompt')?.addEventListener('input', e => {
+            const v = e.target.value || undefined;
+            clearTimeout(_sysOvDebounce);
+            _sysOvDebounce = setTimeout(() => _syncOvToGlobal('systemPrompt', v), 300);
+        });
+    }
     bindOv('scp-sp-ov-include-sysprompt',  'includeSystemPrompt',     true);
     bindOv('scp-sp-ov-include-persona',    'includeUserPersonality',   true);
     bindOv('scp-sp-ov-include-alt-swipes', 'includeAlternateSwipes',   true);

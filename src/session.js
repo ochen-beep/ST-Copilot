@@ -143,10 +143,14 @@ export function getSettings() {
     return s;
 }
 
-export function saveSettings() {
+export function saveSettings(opts = {}) {
     SillyTavern.getContext().saveSettingsDebounced();
-    _dbgDiffSettings();
-    invalidateSystemPromptCache('saveSettings');
+    // quiet: для сохранений, которые не меняют ничего, влияющего на системный
+    // промпт (статистика и т.п.) — не сбрасываем кэш промпта и не считаем diff.
+    if (!opts.quiet) {
+        _dbgDiffSettings();
+        invalidateSystemPromptCache('saveSettings');
+    }
 }
 
 // ─── ST Context Helpers ─────────────────────────────────────────────────────
@@ -391,13 +395,14 @@ export async function commitBucketChanges(force = false) {
     if (!fileName) return;
 
     const { chatId } = getBindingKey();
-    const snapshot = JSON.parse(JSON.stringify(_inMemoryBucket));
-    
+    // Без deep-clone: payload сериализуется в saveSessionFile в момент фактической
+    // записи (force — сразу, очередь — через 1с), клон на каждый commit копировал
+    // все сессии/сообщения/свайпы впустую (commit'ов до 6 за генерацию).
     const payloadToSave = {
         _version: 4,
         chat_id_reference: chatId,
         updated_at: Date.now(),
-        bucket: snapshot
+        bucket: _inMemoryBucket
     };
 
     if (force) {

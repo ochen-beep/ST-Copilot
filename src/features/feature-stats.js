@@ -49,7 +49,7 @@ export function recordStat(metricIdx, value = 1) {
         inc(st.c[charId]);
         if (!st.ch[chk]) st.ch[chk] = {};
         inc(st.ch[chk]);
-        saveSettings();
+        saveSettings({ quiet: true });
     } catch(_) {}
 }
 
