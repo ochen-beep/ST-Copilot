@@ -835,6 +835,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
     let _streamRafScheduled = false;
     let _streamPendingArgs = null;
     let streamRenderer = null;
+    let reasoningRenderer = null;
 
     const cleanupCursor = () => {
         // Сброс pending RAF: мы покидаем контекст стрима, и incidental flush после
@@ -842,6 +843,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
         _streamRafScheduled = false;
         _streamPendingArgs = null;
         if (streamRenderer) { streamRenderer.destroy(); streamRenderer = null; }
+        if (reasoningRenderer) { reasoningRenderer.destroy(); reasoningRenderer = null; }
         if (cursorEl && cursorEl.parentNode) cursorEl.remove();
         cursorEl = null;
     };
@@ -880,9 +882,14 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
                 streamRenderer = createStreamRenderer({
                     el: streamContentEl,
+                    preprocessed: true,
                     onScroll: () => smartScrollToBottom(),
                 });
                 streamRenderer.setCursor(cursorEl);
+                reasoningRenderer = createStreamRenderer({
+                    el: streamReasoningContentEl,
+                    preprocessed: true,
+                });
 
                 const bar = document.getElementById('scp-thinking-bar');
                 if (bar) bar.style.display = 'flex';
@@ -912,21 +919,22 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
     const _streamFlushChunk = ({ text, reasoning, reasoningMs, reasoningDone }) => {
         if (!streamContentEl) return;
         let procReasoning = reasoning || '';
-        let procText = stripMemoryBlock(text);
+        // Дешёвые guard'ы: полнотекстовые replace гоняются только когда маркеры есть.
+        let procText = /```memory-update/i.test(text) ? stripMemoryBlock(text) : text;
 
         let tcIndex = 0;
-        if (procReasoning) {
+        if (procReasoning && /```tool_call/i.test(procReasoning)) {
             const resR = extractToolCallPlaceholders(procReasoning, tcIndex);
             procReasoning = resR.text;
             tcIndex = resR.nextIndex;
         }
-        const resC = extractToolCallPlaceholders(procText, tcIndex);
-        procText = resC.text;
+        if (/```tool_call/i.test(procText)) {
+            procText = extractToolCallPlaceholders(procText, tcIndex).text;
+        }
 
         if (reasoning && streamReasoningBlockEl) {
             streamReasoningBlockEl.style.display = '';
-            streamReasoningContentEl.innerHTML = renderMarkdown(procReasoning);
-            postProcessHTMLBlocks(streamReasoningContentEl);
+            if (reasoningRenderer) reasoningRenderer.push(procReasoning);
             const secs = reasoningMs ? (reasoningMs / 1000).toFixed(1) : null;
             streamReasoningSummaryEl.textContent = reasoningDone
                 ? `Думал ${secs} с`
@@ -995,24 +1003,23 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 }
                 
                 let procReasoning = combinedReasoning;
-                let procText = stripMemoryBlock(combinedText);
+                let procText = /```memory-update/i.test(combinedText) ? stripMemoryBlock(combinedText) : combinedText;
                 let tcIndex = 0;
                 
-                if (procReasoning) {
+                if (procReasoning && /```tool_call/i.test(procReasoning)) {
                     const resR = extractToolCallPlaceholders(procReasoning, tcIndex);
                     procReasoning = resR.text;
                     tcIndex = resR.nextIndex;
                 }
-                const resC = extractToolCallPlaceholders(procText, tcIndex);
-                procText = resC.text;
+                if (/```tool_call/i.test(procText)) {
+                    procText = extractToolCallPlaceholders(procText, tcIndex).text;
+                }
 
                 if (combinedReasoning && streamReasoningBlockEl) {
                     streamReasoningBlockEl.style.display = '';
-                    streamReasoningContentEl.innerHTML = renderMarkdown(procReasoning);
-                    postProcessHTMLBlocks(streamReasoningContentEl);
+                    if (reasoningRenderer) reasoningRenderer.push(procReasoning);
                 }
-                streamContentEl.innerHTML = renderMarkdown(procText);
-                postProcessHTMLBlocks(streamContentEl);
+                if (streamRenderer) streamRenderer.push(procText);
 
                 if (state.activeToolCalls.length || tcIndex > 0) {
                     postProcessToolCalls(streamMsgEl, state.activeToolCalls);
@@ -1235,13 +1242,15 @@ export async function runContinue(session, targetMsgId) {
             if (bar) bar.style.display = 'flex';
         }
         if (!streamRenderer && streamContentEl) {
-            streamRenderer = createStreamRenderer({ el: streamContentEl, onScroll: () => smartScrollToBottom() });
+            streamRenderer = createStreamRenderer({ el: streamContentEl, preprocessed: true, onScroll: () => smartScrollToBottom() });
             streamRenderer.setCursor(cursorEl);
         }
         const combined = _joinContinuation(originalContent, text);
         let tcIndex = 0;
-        const resC = extractToolCallPlaceholders(combined, tcIndex);
-        let procText = resC.text;
+        let procText = /```memory-update/i.test(combined) ? stripMemoryBlock(combined) : combined;
+        if (/```tool_call/i.test(procText)) {
+            procText = extractToolCallPlaceholders(procText, tcIndex).text;
+        }
 
         const { content: disp } = getDisplayContent(procText, settings);
         if (streamRenderer) {

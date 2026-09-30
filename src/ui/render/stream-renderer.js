@@ -30,11 +30,14 @@ export { findSafeRenderBoundary };
  * @param {(el:HTMLElement)=>void} [opts.onPostProcess] — вызывается после каждого flush
  *        (для postProcessHTMLBlocks или postProcessToolCalls). По умолчанию postProcessHTMLBlocks.
  * @param {()=>void} [opts.onScroll]    — вызывается после flush (smartScrollToBottom).
+ * @param {boolean} [opts.preprocessed] — true, если push() получает уже display-текст
+ *        (stripMemoryBlock применять не нужно): убирает полнотекстовый скан на каждый push.
  */
 export function createStreamRenderer(opts = {}) {
     const el = opts.el || null;
     const onPostProcess = opts.onPostProcess || postProcessHTMLBlocks;
     const onScroll = opts.onScroll || (() => {});
+    const preprocessed = !!opts.preprocessed;
 
     let targetEl = el;
     let renderedLen = 0;     // длина displayText, уже зафиксированная в DOM
@@ -106,7 +109,7 @@ export function createStreamRenderer(opts = {}) {
          */
         push(fullText) {
             if (destroyed || !targetEl) return;
-            const displayText = stripMemoryBlock(fullText);
+            const displayText = preprocessed ? fullText : stripMemoryBlock(fullText);
             // Если displayText стал короче (memory-block был в середине и strip
             // вырезал его, или text был переписан серверной коррекцией):
             // безопасный путь — полный re-render displayText с нуля.

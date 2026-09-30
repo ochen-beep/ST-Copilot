@@ -7391,11 +7391,14 @@ ${scopeHtml}
    * @param {(el:HTMLElement)=>void} [opts.onPostProcess] — вызывается после каждого flush
    *        (для postProcessHTMLBlocks или postProcessToolCalls). По умолчанию postProcessHTMLBlocks.
    * @param {()=>void} [opts.onScroll]    — вызывается после flush (smartScrollToBottom).
+   * @param {boolean} [opts.preprocessed] — true, если push() получает уже display-текст
+   *        (stripMemoryBlock применять не нужно): убирает полнотекстовый скан на каждый push.
    */
   function createStreamRenderer(opts = {}) {
       const el = opts.el || null;
       const onPostProcess = opts.onPostProcess || postProcessHTMLBlocks;
       const onScroll = opts.onScroll || (() => {});
+      const preprocessed = !!opts.preprocessed;
 
       let targetEl = el;
       let renderedLen = 0;     // длина displayText, уже зафиксированная в DOM
@@ -7467,7 +7470,7 @@ ${scopeHtml}
            */
           push(fullText) {
               if (destroyed || !targetEl) return;
-              const displayText = stripMemoryBlock(fullText);
+              const displayText = preprocessed ? fullText : stripMemoryBlock(fullText);
               // Если displayText стал короче (memory-block был в середине и strip
               // вырезал его, или text был переписан серверной коррекцией):
               // безопасный путь — полный re-render displayText с нуля.
@@ -11539,21 +11542,22 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               if (bar) bar.style.display = 'flex';
           }
           if (!streamRenderer && streamContentEl) {
-              streamRenderer = createStreamRenderer({ el: streamContentEl, onScroll: () => smartScrollToBottom() });
+              streamRenderer = createStreamRenderer({ el: streamContentEl, preprocessed: true, onScroll: () => smartScrollToBottom() });
               streamRenderer.setCursor(cursorEl);
           }
           if (streamContentEl) {
               let procReasoning = reasoning || '';
-              let procText = stripMemoryBlock(text);
+              let procText = /```memory-update/i.test(text) ? stripMemoryBlock(text) : text;
               let tcIndex = 0;
 
-              if (procReasoning) {
+              if (procReasoning && /```tool_call/i.test(procReasoning)) {
                   const resR = extractToolCallPlaceholders(procReasoning, tcIndex);
                   procReasoning = resR.text;
                   tcIndex = resR.nextIndex;
               }
-              const resC = extractToolCallPlaceholders(procText, tcIndex);
-              procText = resC.text;
+              if (/```tool_call/i.test(procText)) {
+                  procText = extractToolCallPlaceholders(procText, tcIndex).text;
+              }
 
               const { content: disp } = getDisplayContent(procText, settings);
               if (streamRenderer) streamRenderer.push(disp);
@@ -15194,6 +15198,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       let _streamRafScheduled = false;
       let _streamPendingArgs = null;
       let streamRenderer = null;
+      let reasoningRenderer = null;
 
       const cleanupCursor = () => {
           // Сброс pending RAF: мы покидаем контекст стрима, и incidental flush после
@@ -15201,6 +15206,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           _streamRafScheduled = false;
           _streamPendingArgs = null;
           if (streamRenderer) { streamRenderer.destroy(); streamRenderer = null; }
+          if (reasoningRenderer) { reasoningRenderer.destroy(); reasoningRenderer = null; }
           if (cursorEl && cursorEl.parentNode) cursorEl.remove();
           cursorEl = null;
       };
@@ -15239,9 +15245,14 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
                   streamRenderer = createStreamRenderer({
                       el: streamContentEl,
+                      preprocessed: true,
                       onScroll: () => smartScrollToBottom(),
                   });
                   streamRenderer.setCursor(cursorEl);
+                  reasoningRenderer = createStreamRenderer({
+                      el: streamReasoningContentEl,
+                      preprocessed: true,
+                  });
 
                   const bar = document.getElementById('scp-thinking-bar');
                   if (bar) bar.style.display = 'flex';
@@ -15271,21 +15282,22 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       const _streamFlushChunk = ({ text, reasoning, reasoningMs, reasoningDone }) => {
           if (!streamContentEl) return;
           let procReasoning = reasoning || '';
-          let procText = stripMemoryBlock(text);
+          // Дешёвые guard'ы: полнотекстовые replace гоняются только когда маркеры есть.
+          let procText = /```memory-update/i.test(text) ? stripMemoryBlock(text) : text;
 
           let tcIndex = 0;
-          if (procReasoning) {
+          if (procReasoning && /```tool_call/i.test(procReasoning)) {
               const resR = extractToolCallPlaceholders(procReasoning, tcIndex);
               procReasoning = resR.text;
               tcIndex = resR.nextIndex;
           }
-          const resC = extractToolCallPlaceholders(procText, tcIndex);
-          procText = resC.text;
+          if (/```tool_call/i.test(procText)) {
+              procText = extractToolCallPlaceholders(procText, tcIndex).text;
+          }
 
           if (reasoning && streamReasoningBlockEl) {
               streamReasoningBlockEl.style.display = '';
-              streamReasoningContentEl.innerHTML = renderMarkdown(procReasoning);
-              postProcessHTMLBlocks(streamReasoningContentEl);
+              if (reasoningRenderer) reasoningRenderer.push(procReasoning);
               const secs = reasoningMs ? (reasoningMs / 1000).toFixed(1) : null;
               streamReasoningSummaryEl.textContent = reasoningDone
                   ? `Думал ${secs} с`
@@ -15354,24 +15366,23 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                   }
                   
                   let procReasoning = combinedReasoning;
-                  let procText = stripMemoryBlock(combinedText);
+                  let procText = /```memory-update/i.test(combinedText) ? stripMemoryBlock(combinedText) : combinedText;
                   let tcIndex = 0;
                   
-                  if (procReasoning) {
+                  if (procReasoning && /```tool_call/i.test(procReasoning)) {
                       const resR = extractToolCallPlaceholders(procReasoning, tcIndex);
                       procReasoning = resR.text;
                       tcIndex = resR.nextIndex;
                   }
-                  const resC = extractToolCallPlaceholders(procText, tcIndex);
-                  procText = resC.text;
+                  if (/```tool_call/i.test(procText)) {
+                      procText = extractToolCallPlaceholders(procText, tcIndex).text;
+                  }
 
                   if (combinedReasoning && streamReasoningBlockEl) {
                       streamReasoningBlockEl.style.display = '';
-                      streamReasoningContentEl.innerHTML = renderMarkdown(procReasoning);
-                      postProcessHTMLBlocks(streamReasoningContentEl);
+                      if (reasoningRenderer) reasoningRenderer.push(procReasoning);
                   }
-                  streamContentEl.innerHTML = renderMarkdown(procText);
-                  postProcessHTMLBlocks(streamContentEl);
+                  if (streamRenderer) streamRenderer.push(procText);
 
                   if (state.activeToolCalls.length || tcIndex > 0) {
                       postProcessToolCalls(streamMsgEl, state.activeToolCalls);
@@ -15594,13 +15605,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               if (bar) bar.style.display = 'flex';
           }
           if (!streamRenderer && streamContentEl) {
-              streamRenderer = createStreamRenderer({ el: streamContentEl, onScroll: () => smartScrollToBottom() });
+              streamRenderer = createStreamRenderer({ el: streamContentEl, preprocessed: true, onScroll: () => smartScrollToBottom() });
               streamRenderer.setCursor(cursorEl);
           }
           const combined = _joinContinuation(originalContent, text);
           let tcIndex = 0;
-          const resC = extractToolCallPlaceholders(combined, tcIndex);
-          let procText = resC.text;
+          let procText = /```memory-update/i.test(combined) ? stripMemoryBlock(combined) : combined;
+          if (/```tool_call/i.test(procText)) {
+              procText = extractToolCallPlaceholders(procText, tcIndex).text;
+          }
 
           const { content: disp } = getDisplayContent(procText, settings);
           if (streamRenderer) {
@@ -17499,25 +17512,31 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       _takeProfileSnapshot();
       updateMemoryDot();
 
+      // Кэш source→iframe: resize-посты из iframe идут часто, полный скан
+      // всех iframe на каждый пост — O(N) на сообщение; ищем один раз.
+      const _iframeBySource = new WeakMap();
+      const _findIframeBySource = src => {
+          let f = _iframeBySource.get(src);
+          if (f && f.isConnected) return f;
+          f = [...document.querySelectorAll('.scp-html-block-iframe')].find(x => {
+              try { return x.contentWindow === src; } catch(_) { return false; }
+          }) || null;
+          if (f) _iframeBySource.set(src, f);
+          return f;
+      };
       window.addEventListener('message', e => {
           if (!e.data || typeof e.data !== 'object') return;
           if (e.data.type === 'scp-iframe-h') {
-              document.querySelectorAll('.scp-html-block-iframe').forEach(f => {
-                  try { if (f.contentWindow === e.source) f.style.height = `${Math.max(40, Math.min(1200, e.data.h + 16))}px`; } catch(_) {}
-              });
+              const f = _findIframeBySource(e.source);
+              if (f) f.style.height = `${Math.max(40, Math.min(1200, e.data.h + 16))}px`;
           } else if (e.data.type === 'scp-iframe-bg') {
-              document.querySelectorAll('.scp-html-block-iframe').forEach(f => {
-                  try { if (f.contentWindow === e.source) f.style.background = e.data.hasBg ? 'transparent' : '#ffffff'; } catch(_) {}
-              });
+              const f = _findIframeBySource(e.source);
+              if (f) f.style.background = e.data.hasBg ? 'transparent' : '#ffffff';
           } else if (e.data.type === 'scp-iframe-err') {
-              document.querySelectorAll('.scp-html-block-iframe').forEach(f => {
-                  try {
-                      if (f.contentWindow === e.source) {
-                          const errEl = f.closest('.scp-html-block')?.querySelector('.scp-html-block-error');
-                          if (errEl) { errEl.textContent = `⚠ ${e.data.msg}`; errEl.style.display = ''; }
-                      }
-                  } catch(_) {}
-              });
+              const f = _findIframeBySource(e.source);
+              if (!f) return;
+              const errEl = f.closest('.scp-html-block')?.querySelector('.scp-html-block-error');
+              if (errEl) { errEl.textContent = `⚠ ${e.data.msg}`; errEl.style.display = ''; }
           }
       });
 

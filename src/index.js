@@ -589,25 +589,31 @@ async function init() {
     _takeProfileSnapshot();
     updateMemoryDot();
 
+    // Кэш source→iframe: resize-посты из iframe идут часто, полный скан
+    // всех iframe на каждый пост — O(N) на сообщение; ищем один раз.
+    const _iframeBySource = new WeakMap();
+    const _findIframeBySource = src => {
+        let f = _iframeBySource.get(src);
+        if (f && f.isConnected) return f;
+        f = [...document.querySelectorAll('.scp-html-block-iframe')].find(x => {
+            try { return x.contentWindow === src; } catch(_) { return false; }
+        }) || null;
+        if (f) _iframeBySource.set(src, f);
+        return f;
+    };
     window.addEventListener('message', e => {
         if (!e.data || typeof e.data !== 'object') return;
         if (e.data.type === 'scp-iframe-h') {
-            document.querySelectorAll('.scp-html-block-iframe').forEach(f => {
-                try { if (f.contentWindow === e.source) f.style.height = `${Math.max(40, Math.min(1200, e.data.h + 16))}px`; } catch(_) {}
-            });
+            const f = _findIframeBySource(e.source);
+            if (f) f.style.height = `${Math.max(40, Math.min(1200, e.data.h + 16))}px`;
         } else if (e.data.type === 'scp-iframe-bg') {
-            document.querySelectorAll('.scp-html-block-iframe').forEach(f => {
-                try { if (f.contentWindow === e.source) f.style.background = e.data.hasBg ? 'transparent' : '#ffffff'; } catch(_) {}
-            });
+            const f = _findIframeBySource(e.source);
+            if (f) f.style.background = e.data.hasBg ? 'transparent' : '#ffffff';
         } else if (e.data.type === 'scp-iframe-err') {
-            document.querySelectorAll('.scp-html-block-iframe').forEach(f => {
-                try {
-                    if (f.contentWindow === e.source) {
-                        const errEl = f.closest('.scp-html-block')?.querySelector('.scp-html-block-error');
-                        if (errEl) { errEl.textContent = `⚠ ${e.data.msg}`; errEl.style.display = ''; }
-                    }
-                } catch(_) {}
-            });
+            const f = _findIframeBySource(e.source);
+            if (!f) return;
+            const errEl = f.closest('.scp-html-block')?.querySelector('.scp-html-block-error');
+            if (errEl) { errEl.textContent = `⚠ ${e.data.msg}`; errEl.style.display = ''; }
         }
     });
 

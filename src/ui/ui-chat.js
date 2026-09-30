@@ -819,21 +819,22 @@ export async function _runSwipeRegen(session, msgId, wrapEl) {
             if (bar) bar.style.display = 'flex';
         }
         if (!streamRenderer && streamContentEl) {
-            streamRenderer = createStreamRenderer({ el: streamContentEl, onScroll: () => smartScrollToBottom() });
+            streamRenderer = createStreamRenderer({ el: streamContentEl, preprocessed: true, onScroll: () => smartScrollToBottom() });
             streamRenderer.setCursor(cursorEl);
         }
         if (streamContentEl) {
             let procReasoning = reasoning || '';
-            let procText = stripMemoryBlock(text);
+            let procText = /```memory-update/i.test(text) ? stripMemoryBlock(text) : text;
             let tcIndex = 0;
 
-            if (procReasoning) {
+            if (procReasoning && /```tool_call/i.test(procReasoning)) {
                 const resR = extractToolCallPlaceholders(procReasoning, tcIndex);
                 procReasoning = resR.text;
                 tcIndex = resR.nextIndex;
             }
-            const resC = extractToolCallPlaceholders(procText, tcIndex);
-            procText = resC.text;
+            if (/```tool_call/i.test(procText)) {
+                procText = extractToolCallPlaceholders(procText, tcIndex).text;
+            }
 
             const { content: disp } = getDisplayContent(procText, settings);
             if (streamRenderer) streamRenderer.push(disp);
