@@ -11,6 +11,9 @@ import { renderProposalCard, appendLBHistoryEl } from '../features/feature-loreb
 import { parseCharChangesFromText, stripCharChangesBlock, parseCharCreationFromText, stripCharCreationBlock } from '../features/feature-character-engine.js';
 import { renderCharProposalCard, renderCharCreationCard } from '../features/feature-character-ui.js';
 import { normalizeCharNamesInBlock, applySearchReplaceToField } from '../utils/util-text.js';
+import { cacheKey } from '../utils/util-hash.js';
+import { discoverProposalBlocks } from '../utils/util-block-discovery.js';
+import { createStreamRenderer } from './render/stream-renderer.js';
 import { parseChatChangesFromText, stripChatChangesBlock } from '../features/feature-chatedit-engine.js';
 import { renderChatProposalCard } from '../features/feature-chatedit-ui.js';
 import { stripMemoryBlock } from '../features/feature-memory.js';
@@ -38,11 +41,28 @@ export function renderMarkdown(text) {
         if (lang && lang.toLowerCase() === 'html') {
             const id = `scp-hb-${state.htmlBlockCounter++}`;
             state.htmlBlockRegistry.set(id, code.trim());
+            // Страховка от утечки: записи, которые никогда не будут потреблены
+            // postProcessHTMLBlocks (прерванный рендер), не должны жить вечно.
+            if (state.htmlBlockRegistry.size > 400) {
+                state.htmlBlockRegistry.delete(state.htmlBlockRegistry.keys().next().value);
+            }
             return `\x00H${id}\x00`;
         }
         const i = codeBlocks.length;
         const escaped = code.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        codeBlocks.push(`<pre class="scp-code-block${lang ? ` lang-${lang}` : ''}"><code>${escaped}</code></pre>`);
+        const langAttr = lang ? ` lang-${lang}` : '';
+        // Тулбар — чистый HTML, а не DOM-элемент: .scp-msg-content перезаписывается
+        // через innerHTML на каждом чанке стрима, поэтому обработчик клика живёт
+        // делегированно на #scp-messages (см. setupCodeBlockActions).
+        codeBlocks.push(
+            `<div class="scp-code-block-wrap${langAttr}">`
+            + `<div class="scp-code-toolbar">`
+            + `<span class="scp-code-lang">${escHtml(lang ? lang.toLowerCase() : 'код')}</span>`
+            + `<button type="button" class="scp-code-copy-btn" title="Копировать код">${I.copy}<span>Копировать</span></button>`
+            + `</div>`
+            + `<pre class="scp-code-block${langAttr}"><code>${escaped}</code></pre>`
+            + `</div>`
+        );
         return `\x00B${i}\x00`;
     });
 
@@ -253,7 +273,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     if (hasHtml) {
         return /<\/body>/i.test(code) ? code.replace(/<\/body>/i, cs + '</body>') : code + cs;
     }
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;font-family:system-ui,sans-serif;background:transparent}</style></head><body>${code}${cs}</body></html>`;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}html,body{margin:0;padding:4px;font-family:system-ui,sans-serif;background:transparent}</style></head><body>${code}${cs}</body></html>`;
 }
 
 export function createHTMLBlockEl(code) {
@@ -267,13 +287,13 @@ export function createHTMLBlockEl(code) {
     label.textContent = 'HTML';
     const previewBtn = document.createElement('button');
     previewBtn.className = 'scp-html-block-btn active';
-    previewBtn.textContent = 'Preview';
+    previewBtn.textContent = 'Просмотр';
     const codeBtn = document.createElement('button');
     codeBtn.className = 'scp-html-block-btn';
-    codeBtn.textContent = 'Code';
+    codeBtn.textContent = 'Код';
     const copyBtn = document.createElement('button');
     copyBtn.className = 'scp-html-block-btn';
-    copyBtn.textContent = 'Copy';
+    copyBtn.textContent = 'Копировать';
     copyBtn.addEventListener('click', e => { e.stopPropagation(); copyText(code); });
     toolbar.append(label, previewBtn, codeBtn, copyBtn);
 
@@ -312,7 +332,12 @@ export function createHTMLBlockEl(code) {
 export function postProcessHTMLBlocks(el) {
     el.querySelectorAll('.scp-html-block-ph').forEach(ph => {
         const code = state.htmlBlockRegistry.get(ph.dataset.hbid);
-        if (code !== undefined) ph.replaceWith(createHTMLBlockEl(code));
+        if (code !== undefined) {
+            // Запись читается ровно один раз для своего плейсхолдера — удаляем,
+            // чтобы реестр не рос с каждым стрим-рендером.
+            state.htmlBlockRegistry.delete(ph.dataset.hbid);
+            ph.replaceWith(createHTMLBlockEl(code));
+        }
     });
 }
 
@@ -399,7 +424,7 @@ export function _renderMsgBodyContent(msgEl, msg) {
         if (!rBlock) {
             rBlock = document.createElement('details');
             rBlock.className = 'scp-reasoning-block';
-            rBlock.innerHTML = `<summary class="scp-reasoning-summary">Reasoning</summary><div class="scp-reasoning-content"></div>`;
+            rBlock.innerHTML = `<summary class="scp-reasoning-summary">Размышления</summary><div class="scp-reasoning-content"></div>`;
             body.insertBefore(rBlock, body.firstChild);
         }
         rBlock.style.display = '';
@@ -430,10 +455,16 @@ export function _renderMsgBodyContent(msgEl, msg) {
     }
 
     if (contentEl) {
-        const lbChanges = parseLBChangesFromText(msg.content);
-        const charChanges = parseCharChangesFromText(msg.content);
-        const charCreation = parseCharCreationFromText(msg.content);
-        const chatChanges = parseChatChangesFromText(msg.content);
+        // Однопроходное обнаружение proposal-блоков: раньше тут всегда 4 парсера
+        // падали в text regex'ами по ~16 сканов即使 когда блоков нет. Теперь один
+        // лёгкий regex, затем вызываем только relevant парсеры.
+        // Парсеры НЕ меняются — они возвращают распарсенный контент, а discovery лишь
+        // решает, какие запускать. Это даёт 1 regex вместо 8-16 на типичном сообщении.
+        const flags = discoverProposalBlocks(msg.content);
+        const lbChanges = flags.lb ? parseLBChangesFromText(msg.content) : null;
+        const charChanges = flags.char ? parseCharChangesFromText(msg.content) : null;
+        const charCreation = flags.charCreate ? parseCharCreationFromText(msg.content) : null;
+        const chatChanges = flags.chat ? parseChatChangesFromText(msg.content) : null;
         const needsStrip = lbChanges?.length || charChanges?.length || charCreation || chatChanges?.length;
 
         if (needsStrip) {
@@ -490,15 +521,17 @@ export function _renderMsgBodyContent(msgEl, msg) {
 export function _updateMsgTokenCount(msgEl, content, forceRecalc = false) {
     const el = msgEl.querySelector ? msgEl.querySelector('.scp-msg-token-count') : null;
     if (!el) return;
+    // Используем тот же хэш-ключ, что и estimateTokens — консистентность кэша.
+    const key = cacheKey(content);
     if (!forceRecalc) {
-        const cached = state.tokenCountCache.get(content);
+        const cached = state.tokenCountCache.get(key);
         if (cached !== undefined) { el.textContent = `${cached}t`; return; }
     } else {
         el.textContent = '\u2026';
     }
     if (apiMod) {
         apiMod.estimateTokens(content).then(n => {
-            state.tokenCountCache.set(content, n);
+            // estimateTokens уже записал в кэш под тем же key — переписывать не нужно.
             if (el.isConnected) el.textContent = `${n}t`;
         });
     }
@@ -510,20 +543,29 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
     wrap.className = `scp-msg ${isUser ? 'scp-msg-user' : 'scp-msg-assistant'}`;
     wrap.dataset.id = msg.id;
 
-    const avatarWrap = document.createElement('div');
-    avatarWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0';
+    const header = document.createElement('div');
+    header.className = 'scp-msg-header';
 
     const avatar = document.createElement('div');
     avatar.className = 'scp-msg-avatar';
     avatar.innerHTML = isUser ? I.user : I.bot;
+
+    const meta = document.createElement('div');
+    meta.className = 'scp-msg-meta';
+    meta.textContent = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     const tokenCountEl = document.createElement('div');
     tokenCountEl.className = 'scp-msg-token-count';
     tokenCountEl.textContent = '…';
     _updateMsgTokenCount({ querySelector: () => tokenCountEl, isConnected: true }, msg.content);
 
-    avatarWrap.appendChild(avatar);
-    avatarWrap.appendChild(tokenCountEl);
+    const headerRight = document.createElement('div');
+    headerRight.className = 'scp-msg-header-right';
+    headerRight.appendChild(meta);
+    headerRight.appendChild(tokenCountEl);
+
+    header.appendChild(avatar);
+    header.appendChild(headerRight);
 
     const body = document.createElement('div');
     body.className = 'scp-msg-body';
@@ -531,10 +573,6 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
     const content = document.createElement('div');
     content.className = 'scp-msg-content';
     body.appendChild(content);
-
-    const meta = document.createElement('div');
-    meta.className = 'scp-msg-meta';
-    meta.textContent = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     const actions = document.createElement('div');
     actions.className = 'scp-msg-actions';
@@ -547,16 +585,16 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
         return b;
     };
 
-    actions.appendChild(makeBtn(I.copy, 'Copy', '', () => onCopy(msg)));
-    actions.appendChild(makeBtn(I.edit, 'Edit', '', () => onEdit(wrap, msg)));
-    actions.appendChild(makeBtn(I.refresh, 'Regen', '', () => onRegen(wrap, msg)));
-    actions.appendChild(makeBtn(I.trash, 'Delete', 'scp-msg-btn-danger', () => onDelete(wrap, msg)));
+    actions.appendChild(makeBtn(I.copy, 'Копировать', '', () => onCopy(msg)));
+    actions.appendChild(makeBtn(I.edit, 'Изменить', '', () => onEdit(wrap, msg)));
+    actions.appendChild(makeBtn(I.refresh, 'Перегенерировать', '', () => onRegen(wrap, msg)));
+    actions.appendChild(makeBtn(I.trash, 'Удалить', 'scp-msg-btn-danger', () => onDelete(wrap, msg)));
 
     const isStarred = isMessageStarred(msg.id);
-    const starBtn = makeBtn(isStarred ? I.starFill : I.star, isStarred ? 'Unstar' : 'Star message', `scp-msg-btn-star${isStarred ? ' starred' : ''}`, () => {
+    const starBtn = makeBtn(isStarred ? I.starFill : I.star, isStarred ? 'Убрать из избранного' : 'В избранное', `scp-msg-btn-star${isStarred ? ' starred' : ''}`, () => {
         const nowStarred = toggleStarMessage(msg.id);
         starBtn.innerHTML = nowStarred ? I.starFill : I.star;
-        starBtn.title = nowStarred ? 'Unstar' : 'Star message';
+        starBtn.title = nowStarred ? 'Убрать из избранного' : 'В избранное';
         starBtn.classList.toggle('starred', nowStarred);
         wrap.classList.toggle('scp-msg-starred', nowStarred);
         if (document.getElementById('scp-fav-panel')?.style.display !== 'none' && uiWdgMod) {
@@ -567,13 +605,13 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
     if (isStarred) wrap.classList.add('scp-msg-starred');
 
     if (!isUser) {
-        const continueBtn = makeBtn(I.continueArrow, 'Continue response', 'scp-msg-btn-continue', () => {
+        const continueBtn = makeBtn(I.continueArrow, 'Продолжить ответ', 'scp-msg-btn-continue', () => {
             if (apiMod) apiMod.runContinue(getCurrentSession(), msg.id);
         });
         actions.appendChild(continueBtn);
     }
 
-    body.appendChild(actions); body.appendChild(meta);
+    body.appendChild(actions);
 
     if (!isUser) {
         const swipeBar = document.createElement('div');
@@ -583,7 +621,7 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
         const prevBtn = document.createElement('button');
         prevBtn.className = 'scp-swipe-btn scp-swipe-prev';
         prevBtn.innerHTML = I.chevronLeft;
-        prevBtn.title = 'Previous swipe';
+        prevBtn.title = 'Предыдущий вариант';
         prevBtn.disabled = true;
 
         const counter = document.createElement('span');
@@ -592,7 +630,7 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
         const nextBtn = document.createElement('button');
         nextBtn.className = 'scp-swipe-btn scp-swipe-next';
         nextBtn.innerHTML = I.chevronRight;
-        nextBtn.title = 'New swipe (regenerate)';
+        nextBtn.title = 'Новый вариант (перегенерировать)';
 
         prevBtn.addEventListener('click', async () => {
             if (prevBtn.disabled || state.generating) return;
@@ -652,7 +690,7 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
         body.appendChild(swipeBar);
     }
 
-    wrap.appendChild(avatarWrap); wrap.appendChild(body);
+    wrap.appendChild(header); wrap.appendChild(body);
     _renderMsgBodyContent(wrap, msg);
     
     return wrap;
@@ -771,20 +809,35 @@ export async function _runSwipeRegen(session, msgId, wrapEl) {
     }
 
     let cursorEl = null;
-    const cleanupCursor = () => { if (cursorEl?.parentNode) cursorEl.remove(); cursorEl = null; };
+    const cleanupCursor = () => {
+        // Сброс pending RAF (см. api.js — тот же мотив).
+        _regenRafScheduled = false;
+        _regenPendingArgs = null;
+        if (streamRenderer) { streamRenderer.destroy(); streamRenderer = null; }
+        if (cursorEl?.parentNode) cursorEl.remove();
+        cursorEl = null;
+    };
+    // RAF throttle стриминга (см. runGenerate в api.js — тот же приём).
+    let _regenRafScheduled = false;
+    let _regenPendingArgs = null;
+    let streamRenderer = null;
 
-    const onChunk = (text, reasoning) => {
+    const _regenFlush = (text, reasoning) => {
         if (!cursorEl) {
             cursorEl = document.createElement('span');
             cursorEl.className = 'scp-stream-cursor';
             const bar = document.getElementById('scp-thinking-bar');
             if (bar) bar.style.display = 'flex';
         }
+        if (!streamRenderer && streamContentEl) {
+            streamRenderer = createStreamRenderer({ el: streamContentEl, onScroll: () => smartScrollToBottom() });
+            streamRenderer.setCursor(cursorEl);
+        }
         if (streamContentEl) {
             let procReasoning = reasoning || '';
             let procText = stripMemoryBlock(text);
             let tcIndex = 0;
-            
+
             if (procReasoning) {
                 const resR = extractToolCallPlaceholders(procReasoning, tcIndex);
                 procReasoning = resR.text;
@@ -794,9 +847,7 @@ export async function _runSwipeRegen(session, msgId, wrapEl) {
             procText = resC.text;
 
             const { content: disp } = getDisplayContent(procText, settings);
-            streamContentEl.innerHTML = renderMarkdown(disp);
-            if (procText) streamContentEl.appendChild(cursorEl);
-            postProcessHTMLBlocks(streamContentEl);
+            if (streamRenderer) streamRenderer.push(disp);
 
             if (tcIndex > 0) {
                 const liveTCs = parseToolCallsFromText((reasoning || '') + '\n' + text);
@@ -807,6 +858,23 @@ export async function _runSwipeRegen(session, msgId, wrapEl) {
             }
         }
         smartScrollToBottom();
+    };
+
+    const onChunk = (text, reasoning) => {
+        _regenPendingArgs = { text, reasoning };
+        if (!_regenRafScheduled && streamContentEl) {
+            _regenRafScheduled = true;
+            const schedule = (typeof requestAnimationFrame === 'function')
+                ? requestAnimationFrame
+                : (cb) => setTimeout(cb, 16);
+            schedule(() => {
+                _regenRafScheduled = false;
+                const args = _regenPendingArgs;
+                if (!args) return;
+                _regenPendingArgs = null;
+                _regenFlush(args.text, args.reasoning);
+            });
+        }
     };
 
     try {
@@ -949,6 +1017,45 @@ export function setupMessagesScrollTracking() {
     }, { passive: true });
 }
 
+/**
+ * Копирование блоков кода одним делегированным обработчиком.
+ *
+ * Делегирование обязательно: кнопки создаются строкой в renderMarkdown и
+ * пересоздаются на каждом `innerHTML =` (стриминг, свайпы, правка сообщения),
+ * поэтому прямой addEventListener на кнопку терялся бы вместе с узлом.
+ * Текст берём из textContent <code> — сущности уже распарсены браузером,
+ * а подсветка поиска оборачивает совпадения в <mark>, не меняя textContent.
+ */
+export function setupCodeBlockActions() {
+    const c = document.getElementById('scp-messages');
+    if (!c || c.dataset.scpCodeActionsBound) return;
+    c.dataset.scpCodeActionsBound = '1';
+
+    c.addEventListener('click', (e) => {
+        const btn = e.target instanceof Element ? e.target.closest('.scp-code-copy-btn') : null;
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const codeEl = btn.closest('.scp-code-block-wrap')?.querySelector('.scp-code-block code');
+        if (!codeEl) return;
+        copyText(codeEl.textContent);
+
+        const label = btn.querySelector('span');
+        if (!label) return;
+        const prev = label.textContent;
+        label.textContent = 'Скопировано';
+        btn.classList.add('copied');
+        // К следующему чанку стрима узла может уже не быть в DOM — таймер при этом
+        // отрабатывает вхолостую, поэтому просто проверяем isConnected.
+        setTimeout(() => {
+            if (!btn.isConnected) return;
+            label.textContent = prev;
+            btn.classList.remove('copied');
+        }, 1200);
+    });
+}
+
 // ─── Message List and Handlers ──────────────────────────────────────────
 
 export function addHistoryToSwipe(msgId, newLines, charName = null) {
@@ -1016,18 +1123,18 @@ export function handleEdit(wrapEl, msg) {
     const saveBtn = document.createElement('button');
     saveBtn.className = 'scp-edit-btn scp-edit-save';
     saveBtn.innerHTML = msg.role === 'user'
-        ? `${I.check}<span>Save & Resend</span>`
-        : `${I.check}<span>Save</span>`;
+        ? `${I.check}<span>Сохранить и отправить</span>`
+        : `${I.check}<span>Сохранить</span>`;
 
     const saveOnlyBtn = msg.role === 'user' ? document.createElement('button') : null;
     if (saveOnlyBtn) {
         saveOnlyBtn.className = 'scp-edit-btn scp-edit-cancel';
-        saveOnlyBtn.innerHTML = `${I.check}<span>Save</span>`;
+        saveOnlyBtn.innerHTML = `${I.check}<span>Сохранить</span>`;
     }
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'scp-edit-btn scp-edit-cancel';
-    cancelBtn.innerHTML = `${I.x}<span>Cancel</span>`;
+    cancelBtn.innerHTML = `${I.x}<span>Отмена</span>`;
 
     row.appendChild(saveBtn);
     if (saveOnlyBtn) row.appendChild(saveOnlyBtn);
@@ -1041,10 +1148,15 @@ export function handleEdit(wrapEl, msg) {
         const nc = document.createElement('div');
         nc.className = 'scp-msg-content';
 
-        const lbChanges = parseLBChangesFromText(textToRender);
-        const charChanges = parseCharChangesFromText(textToRender);
-        const charCreation = parseCharCreationFromText(textToRender);
-        const chatChanges = parseChatChangesFromText(textToRender);
+        // Однопроходное обнаружение proposal-блоков. Важное отличие от createMsgEl:
+        // здесь каждая ветка всё равно делает `.remove()` устаревшей карточки, если
+        // блок отсутствует, поэтому мы обязательно вызываем парсер по флагу
+        // (результат может быть null/[]), а не skip целиком — это сохраняет cleanup.
+        const flags = discoverProposalBlocks(textToRender);
+        const lbChanges = flags.lb ? parseLBChangesFromText(textToRender) : null;
+        const charChanges = flags.char ? parseCharChangesFromText(textToRender) : null;
+        const charCreation = flags.charCreate ? parseCharCreationFromText(textToRender) : null;
+        const chatChanges = flags.chat ? parseChatChangesFromText(textToRender) : null;
         let stripped = textToRender;
         
         if (lbChanges?.length) { 
@@ -1150,8 +1262,8 @@ export async function handleMessageRegen(wrapEl, msg) {
     if (needsConfirm) {
         const ok = await showCustomDialog({
             type: 'confirm',
-            title: 'Regenerate Message',
-            message: 'Regenerating will delete all subsequent messages. Continue?'
+            title: 'Перегенерировать сообщение',
+            message: 'Перегенерация удалит все последующие сообщения. Продолжить?'
         });
         if (!ok) return;
     }
@@ -1177,10 +1289,10 @@ export async function handleDelete(wrapEl, msg) {
     const isUser = msg.role === 'user';
     const confirmed = await showCustomDialog({
         type: 'confirm',
-        title: 'Delete Message',
+        title: 'Удалить сообщение',
         message: isUser
-            ? 'Delete this message and all subsequent messages?'
-            : 'Delete this assistant message?',
+            ? 'Удалить это сообщение и все последующие?'
+            : 'Удалить это сообщение ассистента?',
     });
     if (!confirmed) return;
     const session = getCurrentSession();
@@ -1209,8 +1321,8 @@ export function renderSession(session) {
                 <div class="scp-empty-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7" /><ellipse cx="12" cy="12" rx="11" ry="3" transform="rotate(-25 12 12)" /><circle cx="21.5" cy="7.5" r="1.5" fill="currentColor" stroke="none" /></svg>
                 </div>
-                <div class="scp-empty-title">New Session</div>
-                <div class="scp-empty-sub">Ask anything about your roleplay — continuity checks, character analysis, writing feedback, worldbuilding, and more.</div>
+                <div class="scp-empty-title">Новая сессия</div>
+                <div class="scp-empty-sub">Задавайте любые вопросы о вашем ролеплее — проверка континуальности, анализ персонажей, обратная связь по тексту, проработка мира и многое другое.</div>
             </div>`;
         updateMsgCount(session);
         return;
@@ -1315,6 +1427,8 @@ export function updateMsgCount(session) {
     const tel = document.getElementById('scp-token-count');
     if (!tel || !session) return;
 
+    // Дебаунс 600ms — меньше CPU при наборе текста без визуальной потери
+    // (пользователь не смотрит на цифру непрерывно во время печати).
     clearTimeout(_tokenCalcTid);
     _tokenCalcTid = setTimeout(() => {
         if (_isTokenCalculating) { _pendingTokenCalc = true; return; }
@@ -1322,31 +1436,16 @@ export function updateMsgCount(session) {
         const runCalc = async () => {
             _isTokenCalculating = true;
             try {
+                // Используем быстрое приближение (chars / 3.5) для实时-обновления
+                // индикатора токенов рядом с полем ввода. Точный подсчёт через
+                // assembleMessages + estimateTokens выполняется один раз при отправке
+                // в runGenerate / runContinue / _runSwipeRegen.
+                //
+                // Раньше тут был полноценный вызов assembleMessages (O(N×M): сообщения
+                // × активные лорбуки) плюс fallback на ту же формулу — теперь только
+                // быстрая оценка, дающая тот же результат, что и прежний fallback.
                 const settings = getEffectiveSettings();
                 const currentInput = document.getElementById('scp-input')?.value || '';
-                
-                if (apiMod && apiMod.assembleMessages && apiMod.estimateTokens) {
-                    try {
-                        const tempSess = { ...session, messages: [...session.messages] };
-                        if (currentInput.trim() || state.pendingAttachments?.length) {
-                            tempSess.messages.push({ 
-                                id: 'tmp', 
-                                role: 'user', 
-                                content: currentInput, 
-                                timestamp: Date.now(),
-                                attachments: state.pendingAttachments || []
-                            });
-                        }
-                        const builtMsgs = await apiMod.assembleMessages(tempSess, settings, null);
-                        const fullText = builtMsgs.map(m => m.content).join('\n');
-                        const tokens = await apiMod.estimateTokens(fullText);
-                        const node = document.getElementById('scp-token-count');
-                        if (node) node.textContent = `~${tokens} tkns`;
-                        return;
-                    } catch (e) {
-                        console.warn('ST-Copilot: Exact token calculation failed, falling back', e);
-                    }
-                }
 
                 const ctx = SillyTavern.getContext();
                 const incHidden = !!settings.includeHiddenMessages;
@@ -1388,7 +1487,7 @@ export function updateMsgCount(session) {
             }
         };
         runCalc();
-    }, 400);
+    }, 600);
 }
 
 export function updateDepthSlidersMax() {
@@ -1507,7 +1606,7 @@ export function _applyHighlightsInRoot(root) {
         acceptNode(node) {
             const p = node.parentElement;
             if (!p) return NodeFilter.FILTER_REJECT;
-            if (p.closest('.scp-msg-actions,.scp-msg-meta,.scp-msg-avatar,.scp-reasoning-summary,.scp-search-hl'))
+            if (p.closest('.scp-msg-actions,.scp-msg-meta,.scp-msg-avatar,.scp-reasoning-summary,.scp-search-hl,.scp-code-toolbar'))
                 return NodeFilter.FILTER_REJECT;
             if (!p.closest('.scp-msg-body')) return NodeFilter.FILTER_REJECT;
             if (regex) {
@@ -1659,7 +1758,7 @@ export function renderPickerMessages() {
 
     body.innerHTML = '';
     if (!msgs.length) {
-        body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--scp-text-muted)">No messages in current chat</div>';
+        body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--scp-text-muted)">В текущем чате нет сообщений</div>';
         _updatePickerCountEl(0);
         return;
     }
@@ -1777,7 +1876,7 @@ export function _updatePickerCountEl(count) {
     const el = document.getElementById('scp-picker-count');
     if (!el) return;
     const n = count !== undefined ? count : document.querySelectorAll('#scp-picker-body .scp-picker-row.selected').length;
-    el.textContent = `${n} selected`;
+    el.textContent = `${n} выбрано`;
 }
 
 export function setupChatPickerListeners() {
@@ -1833,7 +1932,7 @@ export function setGeneratingState(on) {
         bar.style.display = on ? 'flex' : 'none';
         if (on) {
             const t = document.getElementById('scp-thinking-text');
-            if (t) t.textContent = 'Thinking…';
+            if (t) t.textContent = 'Думаю…';
         }
     }
     if (sendBtn) sendBtn.disabled = on;
@@ -1843,6 +1942,8 @@ export function setGeneratingState(on) {
         _refreshContinueBtns();
         _refreshSwipeBars(getCurrentSession());
     }
+    // v2.10.0: pulse the launcher button during generation.
+    import('../ui/ui-launcher.js').then(m => m.refreshLauncher()).catch(() => {});
 }
 
 export function showGenerationError(err) {
@@ -1856,7 +1957,7 @@ export function showGenerationError(err) {
         }
     } else if (typeof err === 'object') {
         try {
-            errorSummary = "API or Network Error";
+            errorSummary = "Ошибка API или сети";
             fullError = JSON.stringify(err, null, 2);
         } catch(e) {
             fullError = String(err);
@@ -1871,13 +1972,13 @@ export function showGenerationError(err) {
 
     showCustomDialog({
         type: 'alert',
-        title: 'Generation Error',
+        title: 'Ошибка генерации',
         htmlMessage: `
             <div style="color:var(--scp-danger); margin-bottom: 10px; font-weight: 600; font-size: 14px; word-break: break-word; line-height: 1.4;">
                 ${escHtml(errorSummary)}
             </div>
             <div style="font-size: 12px; margin-bottom: 8px; color: var(--scp-text-muted);">
-                Please copy the technical details below and download Debug Log (from settings) to report the issue:
+                Пожалуйста, скопируйте технические подробности ниже и скачайте отладочный лог (из настроек), чтобы сообщить о проблеме:
             </div>
             <textarea style="width:100%; height:160px; background:rgba(0,0,0,0.4); color:var(--scp-text-muted); border:1px solid rgba(255,255,255,0.15); padding:8px; border-radius:6px; font-family:var(--scp-font-mono, monospace); resize:vertical; font-size:11px; white-space:pre; word-wrap:normal; overflow-x:auto;" readonly onclick="this.select()">${escHtml(fullError)}</textarea>
         `
@@ -1955,7 +2056,7 @@ export function setupDepthClickEdit() {
             
             const span = document.createElement('span');
             span.className = 'scp-depth-val scp-depth-clickable'; span.id = 'scp-depth-val';
-            span.title = 'Click to enter exact value'; span.textContent = val;
+            span.title = 'Нажмите, чтобы ввести точное значение'; span.textContent = val;
             
             input.parentNode.replaceChild(span, input);
             setupDepthClickEdit();

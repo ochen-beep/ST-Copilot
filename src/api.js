@@ -1,9 +1,10 @@
 import { DEFAULT_SYSTEM_PROMPT, EXT_DISPLAY } from './constants.js';
-import { state } from './state.js';
+import { state, invalidateSystemPromptCache, decideSystemPromptCache } from './state.js';
 import { getSettings, getEffectiveSettings, saveSettings, getCurrentSession, saveSessionsToMetadata, addMessage, expandMacros } from './session.js';
 import { _dbgAdd } from './utils/util-debug.js';
 import { escHtml } from './utils/util-dom.js';
 import { _ensureWrapped, normalizeCharNamesInBlock } from './utils/util-text.js';
+import { cacheKey, fnv1a32 } from './utils/util-hash.js';
 import { getCharInfo, getUserPersona } from './utils/util-st.js';
 import { recordStat, SM } from './features/feature-stats.js';
 import { _mergeContent } from './features/feature-attachments.js';
@@ -19,11 +20,48 @@ import { buildMemoryContextBlock, buildMemoryAIInstructions, processMemoryUpdate
 import { buildToolCallsSystemBlock, parseToolCallsFromText, executeTool, getEnabledTools } from './features/feature-tools-engine.js';
 
 import { updateMsgCount, smartScrollToBottom, setGeneratingState, showGenerationError, _renderMsgBodyContent, updateSwipeBar, _refreshSwipeBars, appendMsgEl } from './ui/ui-chat.js';
-import { getDisplayContent, extractToolCallPlaceholders, renderMarkdown, postProcessHTMLBlocks } from './ui/ui-chat.js'; 
+import { getDisplayContent, extractToolCallPlaceholders, renderMarkdown, postProcessHTMLBlocks } from './ui/ui-chat.js';
+import { createStreamRenderer } from './ui/render/stream-renderer.js';
 import { postProcessToolCalls, executeAskUser } from './features/feature-tools-ui.js';
 import { playCompletionSound } from './ui/ui-widgets.js';
 
 export async function buildSystemContent(settings) {
+    // Лёгкая синхронная подпись необходимых входов: быстрый FNV-1a над JSON(settings)
+    // + чар/группа/имена + активный список WI-книг. Страхует от редких кейсов, когда
+    // инвалидация не успела вызваться явным образом (см. invalidateSystemPromptCache).
+    const curSig = _computeSystemPromptSignature(settings);
+
+    const decision = decideSystemPromptCache(state, curSig);
+    if (decision.useCache) {
+        // Кэш хранит сам Promise<string>, возвращаем его без await — calling code
+        // (assembleMessages)继续保持 `await buildSystemContent(...)` семантику.
+        return state.systemPromptCache;
+    }
+
+    // miss — пересобираем, закэшируем Promise, чтобы конкурентные вызовы разделили работу.
+    // Note: deliberately assign cache BEFORE awaiting inside promise — иначе второй
+    // конкурентный вызов собрал бы свой Promise, и параллелизм терялся бы.
+    const promise = (async () => {
+        return _buildSystemContentInner(settings);
+    })();
+
+    state.systemPromptCache = promise;
+    state.systemPromptSig = curSig;
+    state.systemPromptDirty = false;
+
+    // При отказе пересборки — не держать посетителей на закэшированном rejected Promise:
+    // чистим кэш, чтобы следующий вызов попробовал снова (а не возвращал ту же ошибку).
+    promise.catch(() => {
+        // Только если это по-прежнему «наш» promise — иначе мы могли быть уже инвалидированы.
+        if (state.systemPromptCache === promise) {
+            invalidateSystemPromptCache('build-failure');
+        }
+    });
+
+    return promise;
+}
+
+async function _buildSystemContentInner(settings) {
     let sysPromptRaw = (typeof settings.systemPrompt === 'string' && settings.systemPrompt.trim()) ? settings.systemPrompt : DEFAULT_SYSTEM_PROMPT;
     const parts = [_ensureWrapped(sysPromptRaw, 'system_prompt')];
     const charInfo = getCharInfo();
@@ -67,7 +105,7 @@ export async function buildSystemContent(settings) {
     {
         const userName = ctx.name1 || 'User';
         let inner = `Name: ${userName}`;
-        
+
         if (settings.includeUserPersonality) {
             let hasEvolutia = false;
             if (settings.useAspectEvolutia) {
@@ -99,6 +137,36 @@ export async function buildSystemContent(settings) {
     }
 
     return parts.join('\n');
+}
+
+/**
+ * Лёгкая синхронная подпись входов, влияющих на системный промпт.
+ * Используется как страховка: сравнивается с прошлой подписью до возврата кэша
+ * (см. decideSystemPromptCache). Чистая функция, экспортирована для тестов.
+ */
+export function _computeSystemPromptSignature(settings) {
+    try {
+        const ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : {};
+        let activeWi = '';
+        try {
+            if (typeof window !== 'undefined' && Array.isArray(window.selected_world_info)) {
+                activeWi = window.selected_world_info.join(',');
+            }
+        } catch (_) {}
+        const charId = (ctx && ctx.characterId != null) ? String(ctx.characterId) : '';
+        const groupId = (ctx && ctx.groupId != null) ? String(ctx.groupId) : '';
+        const name1 = (ctx && ctx.name1 != null) ? String(ctx.name1) : '';
+        const name2 = (ctx && ctx.name2 != null) ? String(ctx.name2) : '';
+        // JSON.stringify(settings) — bounded (~десятки KB для типового эффективного settings),
+        // FNV-1a по этой строке = O(N) раз в buildSystemContent; приемлемо т.к. кэш режет
+        // количество вызовов до 1 за эпоху.
+        const settingsJson = (settings && typeof settings === 'object')
+            ? JSON.stringify(settings)
+            : '';
+        return fnv1a32(`${charId}|${groupId}|${name1}|${name2}|${activeWi}|${settingsJson}`);
+    } catch (_) {
+        return '';
+    }
 }
 
 export function _buildAiContextForHistoryMsg(msg) {
@@ -285,25 +353,29 @@ export async function estimateTokens(text) {
     if (Array.isArray(text)) {
         str = text.map(t => t.type === 'text' ? t.text : '').join('\n');
     }
-    
-    if (state.tokenCountCache.has(str)) return state.tokenCountCache.get(str);
-    if (state.tokenCountPromises.has(str)) return state.tokenCountPromises.get(str);
+
+    // Используем компактный хэш-ключ вместо полной строки-промпта
+    // (для типового промпта в 20k символов это экономит ~5MB+ памяти на 500 кэш-записей).
+    const key = cacheKey(str);
+
+    if (state.tokenCountCache.has(key)) return state.tokenCountCache.get(key);
+    if (state.tokenCountPromises.has(key)) return state.tokenCountPromises.get(key);
 
     const promise = (async () => {
         const ctx = SillyTavern.getContext();
-        
+
         try {
             if (typeof ctx.getTokenCountAsync === 'function') return await ctx.getTokenCountAsync(str);
             if (typeof window.getTokenCountAsync === 'function') return await window.getTokenCountAsync(str);
         } catch (_) {}
-        
+
         await new Promise(resolve => setTimeout(resolve, 0));
 
         try {
             if (typeof ctx.getTokenCount === 'function') return ctx.getTokenCount(str);
             if (typeof window.getTokenCount === 'function') return window.getTokenCount(str);
         } catch (_) {}
-        
+
         try {
             const res = await fetch('/api/tokencount', {
                 method: 'POST',
@@ -317,21 +389,21 @@ export async function estimateTokens(text) {
                 if (typeof data === 'number') return data;
             }
         } catch (_) {}
-        
+
         return Math.ceil(str.length / 3.5);
     })();
 
-    state.tokenCountPromises.set(str, promise);
+    state.tokenCountPromises.set(key, promise);
     try {
         const count = await promise;
         if (state.tokenCountCache.size > 500) {
             const keysToDel = Array.from(state.tokenCountCache.keys()).slice(0, 100);
             keysToDel.forEach(k => state.tokenCountCache.delete(k));
         }
-        state.tokenCountCache.set(str, count);
+        state.tokenCountCache.set(key, count);
         return count;
     } finally {
-        state.tokenCountPromises.delete(str);
+        state.tokenCountPromises.delete(key);
     }
 }
 
@@ -756,8 +828,20 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
     let isStreaming = false;
     let streamAccumText = '';
     let streamAccumReasoning = null;
+    // RAF-throttle стриминга: раньше на каждый чанк (~50-100ms) шёл полный
+    // innerHTML = renderMarkdown(stripMemoryBlock(text)) → O(N²) по ростущей длине.
+    // Теперь обновляем DOM не чаще 60fps — падение CPU без изменения визуального
+    // результата. _rafScheduled гасит дребезг дубль-чанков внутри одного кадра.
+    let _streamRafScheduled = false;
+    let _streamPendingArgs = null;
+    let streamRenderer = null;
 
     const cleanupCursor = () => {
+        // Сброс pending RAF: мы покидаем контекст стрима, и incidental flush после
+        // удаления эл-та курса мог бы бросать исключение или перерисовать устаревший DOM.
+        _streamRafScheduled = false;
+        _streamPendingArgs = null;
+        if (streamRenderer) { streamRenderer.destroy(); streamRenderer = null; }
         if (cursorEl && cursorEl.parentNode) cursorEl.remove();
         cursorEl = null;
     };
@@ -771,9 +855,9 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
             const placeholder = { id: `msg_${Date.now()}`, role: 'assistant', content: '', reasoning: null, timestamp: Date.now() };
             session.messages.push(placeholder);
             streamMsgId = placeholder.id;
-            
+
             appendMsgEl(placeholder, true);
-            
+
             streamMsgEl = document.querySelector(`.scp-msg[data-id="${streamMsgId}"]`);
             if (streamMsgEl) {
                 const body = streamMsgEl.querySelector('.scp-msg-body');
@@ -784,7 +868,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 streamReasoningBlockEl.style.display = 'none';
                 streamReasoningSummaryEl = document.createElement('summary');
                 streamReasoningSummaryEl.className = 'scp-reasoning-summary';
-                streamReasoningSummaryEl.textContent = 'Thinking…';
+                streamReasoningSummaryEl.textContent = 'Думаю…';
                 streamReasoningContentEl = document.createElement('div');
                 streamReasoningContentEl.className = 'scp-reasoning-content';
                 streamReasoningBlockEl.appendChild(streamReasoningSummaryEl);
@@ -794,45 +878,71 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 cursorEl = document.createElement('span');
                 cursorEl.className = 'scp-stream-cursor';
 
+                streamRenderer = createStreamRenderer({
+                    el: streamContentEl,
+                    onScroll: () => smartScrollToBottom(),
+                });
+                streamRenderer.setCursor(cursorEl);
+
                 const bar = document.getElementById('scp-thinking-bar');
                 if (bar) bar.style.display = 'flex';
             }
         }
 
-        if (streamContentEl) {
-            let procReasoning = reasoning || '';
-            let procText = stripMemoryBlock(text);
-            
-            let tcIndex = 0;
-            if (procReasoning) {
-                const resR = extractToolCallPlaceholders(procReasoning, tcIndex);
-                procReasoning = resR.text;
-                tcIndex = resR.nextIndex;
-            }
-            const resC = extractToolCallPlaceholders(procText, tcIndex);
-            procText = resC.text;
+        // RAF throttle: копим последний аргумент-набор, пере-рендер не чаще 60fps.
+        // Visual идентичен: при каждом flush'е рендерим текущий streamAccumText целиком
+        // (как и раньше — никакого дельта-merge), просто режем частоту.
+        _streamPendingArgs = { text, reasoning, reasoningMs, reasoningDone };
+        if (!_streamRafScheduled && streamContentEl) {
+            _streamRafScheduled = true;
+            const schedule = (typeof requestAnimationFrame === 'function')
+                ? requestAnimationFrame
+                : (cb) => setTimeout(cb, 16);
+            schedule(() => {
+                _streamRafScheduled = false;
+                const args = _streamPendingArgs;
+                if (!args) return;
+                _streamFlushChunk(args);
+                _streamPendingArgs = null;
+            });
+        }
+    };
 
-            if (reasoning && streamReasoningBlockEl) {
-                streamReasoningBlockEl.style.display = '';
-                streamReasoningContentEl.innerHTML = renderMarkdown(procReasoning);
-                postProcessHTMLBlocks(streamReasoningContentEl);
-                const secs = reasoningMs ? (reasoningMs / 1000).toFixed(1) : null;
-                streamReasoningSummaryEl.textContent = reasoningDone
-                    ? `Thought for ${secs}s`
-                    : secs ? `Thinking for ${secs}s…` : 'Thinking…';
-            }
+    // Тот же код рендера, что и раньше, но вызывается из RAF callback'а.
+    const _streamFlushChunk = ({ text, reasoning, reasoningMs, reasoningDone }) => {
+        if (!streamContentEl) return;
+        let procReasoning = reasoning || '';
+        let procText = stripMemoryBlock(text);
 
-            streamContentEl.innerHTML = renderMarkdown(procText);
-            if (procText) streamContentEl.appendChild(cursorEl);
-            postProcessHTMLBlocks(streamContentEl);
+        let tcIndex = 0;
+        if (procReasoning) {
+            const resR = extractToolCallPlaceholders(procReasoning, tcIndex);
+            procReasoning = resR.text;
+            tcIndex = resR.nextIndex;
+        }
+        const resC = extractToolCallPlaceholders(procText, tcIndex);
+        procText = resC.text;
 
-            if (state.activeToolCalls.length || tcIndex > 0) {
-                const liveTCs = parseToolCallsFromText((reasoning || '') + '\n' + text);
-                const displayed = liveTCs.map((tc, i) => state.activeToolCalls[i] || {
-                    id: `live_${i}`, name: tc.name, input: tc.input, status: 'running', result: undefined
-                });
-                postProcessToolCalls(streamMsgEl, displayed);
-            }
+        if (reasoning && streamReasoningBlockEl) {
+            streamReasoningBlockEl.style.display = '';
+            streamReasoningContentEl.innerHTML = renderMarkdown(procReasoning);
+            postProcessHTMLBlocks(streamReasoningContentEl);
+            const secs = reasoningMs ? (reasoningMs / 1000).toFixed(1) : null;
+            streamReasoningSummaryEl.textContent = reasoningDone
+                ? `Думал ${secs} с`
+                : secs ? `Думаю ${secs} с…` : 'Думаю…';
+        }
+
+        // Инкрементальный рендер: рендерер фиксирует дельту по безопасным
+        // границам markdown и троттлит через RAF — полный re-render на кадр не нужен.
+        streamRenderer.push(procText);
+
+        if (state.activeToolCalls.length || tcIndex > 0) {
+            const liveTCs = parseToolCallsFromText((reasoning || '') + '\n' + text);
+            const displayed = liveTCs.map((tc, i) => state.activeToolCalls[i] || {
+                id: `live_${i}`, name: tc.name, input: tc.input, status: 'running', result: undefined
+            });
+            postProcessToolCalls(streamMsgEl, displayed);
         }
         smartScrollToBottom();
     };
@@ -864,7 +974,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
         cleanupCursor();
         
         if (result && !result.text.trim() && !result.reasoning?.trim()) {
-            toastr.warning('⚠ Generation failed: AI returned an empty response.', EXT_DISPLAY, { timeOut: 10000 });
+            toastr.warning('⚠ Генерация не удалась: ИИ вернул пустой ответ.', EXT_DISPLAY, { timeOut: 10000 });
         }
 
         if (result !== null && settings.toolsEnabled && getEnabledTools().length > 0) {
@@ -954,7 +1064,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 extraHistory.push({ role: 'user', content: `<tool_results>\n${toolResultsText}\n</tool_results>\n\nCONTINUE your response using these results. Write exactly where you left off.` });
 
                 const thinkingText = document.getElementById('scp-thinking-text');
-                if (thinkingText) thinkingText.textContent = `Round ${round + 2}/${maxRounds + 1}…`;
+                if (thinkingText) thinkingText.textContent = `Раунд ${round + 2}/${maxRounds + 1}…`;
                 const bar = document.getElementById('scp-thinking-bar');
                 if (bar) bar.style.display = 'flex';
 
@@ -1100,23 +1210,33 @@ export async function runContinue(session, targetMsgId) {
     let isStreaming = false;
     let streamAccumContinuation = '';
     const originalContent = targetMsg.content;
+    // RAF throttle (см. runGenerate для обоснования).
+    let _contRafScheduled = false;
+    let _contPendingText = null;
+    let streamRenderer = null;
 
     const targetEl = document.querySelector(`.scp-msg[data-id="${targetMsgId}"]`);
     if (targetEl) streamContentEl = targetEl.querySelector('.scp-msg-content');
 
     const cleanupCursor = () => {
+        // Аналогично runGenerate: сброс pending RAF при cleanup.
+        _contRafScheduled = false;
+        _contPendingText = null;
+        if (streamRenderer) { streamRenderer.destroy(); streamRenderer = null; }
         if (cursorEl && cursorEl.parentNode) cursorEl.remove();
         cursorEl = null;
     };
 
-    const onChunk = (text) => {
-        isStreaming = true;
-        streamAccumContinuation = text;
+    const _contFlush = (text) => {
         if (!cursorEl) {
             cursorEl = document.createElement('span');
             cursorEl.className = 'scp-stream-cursor';
             const bar = document.getElementById('scp-thinking-bar');
             if (bar) bar.style.display = 'flex';
+        }
+        if (!streamRenderer && streamContentEl) {
+            streamRenderer = createStreamRenderer({ el: streamContentEl, onScroll: () => smartScrollToBottom() });
+            streamRenderer.setCursor(cursorEl);
         }
         const combined = _joinContinuation(originalContent, text);
         let tcIndex = 0;
@@ -1124,10 +1244,8 @@ export async function runContinue(session, targetMsgId) {
         let procText = resC.text;
 
         const { content: disp } = getDisplayContent(procText, settings);
-        if (streamContentEl) {
-            streamContentEl.innerHTML = renderMarkdown(disp);
-            streamContentEl.appendChild(cursorEl);
-            postProcessHTMLBlocks(streamContentEl);
+        if (streamRenderer) {
+            streamRenderer.push(disp);
 
             if (resC.nextIndex > 0) {
                 const liveTCs = parseToolCallsFromText(combined);
@@ -1138,6 +1256,25 @@ export async function runContinue(session, targetMsgId) {
             }
         }
         smartScrollToBottom();
+    };
+
+    const onChunk = (text) => {
+        isStreaming = true;
+        streamAccumContinuation = text;
+        _contPendingText = text;
+        if (!_contRafScheduled && streamContentEl) {
+            _contRafScheduled = true;
+            const schedule = (typeof requestAnimationFrame === 'function')
+                ? requestAnimationFrame
+                : (cb) => setTimeout(cb, 16);
+            schedule(() => {
+                _contRafScheduled = false;
+                const t = _contPendingText;
+                if (t == null) return;
+                _contPendingText = null;
+                _contFlush(t);
+            });
+        }
     };
 
     const _applyFinalContinuation = (fullCombined) => {
@@ -1182,7 +1319,7 @@ export async function runContinue(session, targetMsgId) {
         const combined = _joinContinuation(originalContent, continuation);
         
         if (isMaxTokens) {
-            toastr.warning('Generation stopped: reached Max Response Tokens limit.', EXT_DISPLAY, { timeOut: 10000 });
+            toastr.warning('Генерация остановлена: достигнут лимит максимальных токенов ответа.', EXT_DISPLAY, { timeOut: 10000 });
         }
 
         targetMsg.content = combined;
