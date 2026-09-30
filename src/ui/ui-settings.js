@@ -1,4 +1,4 @@
-import { THEME_PRESETS, THEME_VAR_DEFS, THEME_CSS_MAP, EXT_DISPLAY, DEFAULT_SYSTEM_PROMPT, DEFAULT_CHAR_EDIT_DIRECTIVE, DEFAULT_LB_MANAGE_PROMPT, DEFAULT_CHAT_EDIT_DIRECTIVE, TOOL_DEFINITIONS, DEFAULT_TOOLS_PROMPT, DEFAULT_MEMORY_PROMPT, I } from '../constants.js';
+import { THEME_PRESETS, THEME_VAR_DEFS, THEME_CSS_MAP, EXT_DISPLAY, DEFAULT_SYSTEM_PROMPT, DEFAULT_CHAR_EDIT_DIRECTIVE, DEFAULT_LB_MANAGE_PROMPT, DEFAULT_CHAT_EDIT_DIRECTIVE, DEFAULT_TOOLS_PROMPT, DEFAULT_MEMORY_PROMPT, I } from '../constants.js';
 import { state } from '../state.js';
 import { getSettings, saveSettings, getEffectiveSettings, setSessionOverride, clearAllSessionOverrides, getBindingKey, hasSessionOverrides, saveSessionsToMetadata, getCurrentSession, getSessionOverrides, getChatBucket, initChatBucket } from '../session.js';
 import { showCustomDialog, escHtml } from '../utils/util-dom.js';

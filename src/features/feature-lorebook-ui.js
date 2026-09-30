@@ -8,7 +8,7 @@ import { applySearchReplaceToField } from '../utils/util-text.js';
 import { openTextDiffModal } from '../utils/util-diff.js';
 
 import { applyCustomTheme, bringWindowToFront } from '../ui/ui-window.js';
-import { updateMsgCount, scrollToBottom, _renderMsgBodyContent, addHistoryToSwipe } from '../ui/ui-chat.js';
+import { updateMsgCount, scrollToBottom, addHistoryToSwipe } from '../ui/ui-chat.js';
 import { recordStat, SM } from './feature-stats.js';
 
 export function reconstructLBChangesBlock(pendingChanges) {

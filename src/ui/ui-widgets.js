@@ -1,7 +1,6 @@
-import { CHANGELOG, EXT_DISPLAY, I, DEFAULT_CHAR_EDIT_DIRECTIVE, DEFAULT_LB_MANAGE_PROMPT, DEFAULT_CHAT_EDIT_DIRECTIVE, QP_ICON_POOL } from '../constants.js';
-import { getSettings, saveSettings, getCurrentSession, getBindingKey, isMessageStarred, toggleStarMessage, getStarredMessages } from '../session.js';
-import { escHtml, showCustomDialog, copyText, autoResize } from '../utils/util-dom.js';
-import { _dbgAdd } from '../utils/util-debug.js';
+import { CHANGELOG, EXT_DISPLAY, I, QP_ICON_POOL } from '../constants.js';
+import { getSettings, saveSettings, getCurrentSession, toggleStarMessage, getStarredMessages } from '../session.js';
+import { escHtml, showCustomDialog, autoResize } from '../utils/util-dom.js';
 import { recordStat, SM } from '../features/feature-stats.js';
 import { _processAttachmentsBeforeSend } from '../features/feature-attachments.js';
 import { assembleMessages } from '../api.js';

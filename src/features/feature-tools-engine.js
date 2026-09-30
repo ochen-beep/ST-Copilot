@@ -10,14 +10,6 @@ export function getEnabledTools() {
     return TOOL_DEFINITIONS.filter(t => s[t.settingKey] !== false);
 }
 
-export function buildAnthropicToolsPayload() {
-    return getEnabledTools().map(t => ({
-        name: t.name,
-        description: t.label + ': ' + t.description,
-        input_schema: t.schema,
-    }));
-}
-
 export async function executeTool(toolName, toolInput) {
     const ctx = SillyTavern.getContext();
     switch (toolName) {

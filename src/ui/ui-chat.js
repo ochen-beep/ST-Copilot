@@ -1,16 +1,15 @@
-import { I, EXT_DISPLAY, THEME_PRESETS, WIN_ID } from '../constants.js';
+import { I, THEME_PRESETS } from '../constants.js';
 import { state } from '../state.js';
-import { getSettings, saveSettings, getCurrentSession, saveSessionsToMetadata, addMessage, deleteMsg, truncateAfter, truncateFrom, expandMacros, getEffectiveSettings, getBindingKey, initChatBucket, isMessageStarred, toggleStarMessage } from '../session.js';
+import { getSettings, saveSettings, getCurrentSession, saveSessionsToMetadata, deleteMsg, truncateAfter, truncateFrom, expandMacros, getEffectiveSettings, getBindingKey, initChatBucket, isMessageStarred, toggleStarMessage } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
 import { escHtml, autoResize, showCustomDialog, copyText } from '../utils/util-dom.js';
 import { getCharInfo } from '../utils/util-st.js';
-import { applyRegexIfEnabled } from '../integrations/integ-regex.js';
 
 import { parseLBChangesFromText, stripLBChangesBlock } from '../features/feature-lorebook-engine.js';
 import { renderProposalCard, appendLBHistoryEl } from '../features/feature-lorebook-ui.js';
 import { parseCharChangesFromText, stripCharChangesBlock, parseCharCreationFromText, stripCharCreationBlock } from '../features/feature-character-engine.js';
 import { renderCharProposalCard, renderCharCreationCard } from '../features/feature-character-ui.js';
-import { normalizeCharNamesInBlock, applySearchReplaceToField } from '../utils/util-text.js';
+import { normalizeCharNamesInBlock } from '../utils/util-text.js';
 import { cacheKey } from '../utils/util-hash.js';
 import { discoverProposalBlocks } from '../utils/util-block-discovery.js';
 import { createStreamRenderer } from './render/stream-renderer.js';
@@ -20,7 +19,7 @@ import { stripMemoryBlock } from '../features/feature-memory.js';
 import { parseToolCallsFromText } from '../features/feature-tools-engine.js';
 import { postProcessToolCalls } from '../features/feature-tools-ui.js';
 import { recordStat, SM } from '../features/feature-stats.js';
-import { _processAttachmentsBeforeSend, _mergeContent, _renderAttachmentPreviews, _openImageLightbox, _openTextLightbox } from '../features/feature-attachments.js';
+import { _openImageLightbox, _openTextLightbox } from '../features/feature-attachments.js';
 
 let apiMod = null;
 import('../api.js').then(m => apiMod = m);
@@ -715,16 +714,6 @@ export function getSwipesForMsg(session, msgId) {
     if (!msg.swipes) msg.swipes = [{ content: msg.content, reasoning: msg.reasoning || null }];
     if (msg.swipeIndex === undefined) msg.swipeIndex = 0;
     return msg;
-}
-
-export function addSwipe(session, msgId, content, reasoning = null) {
-    const msg = getSwipesForMsg(session, msgId);
-    if (!msg) return;
-    msg.swipes.push({ content, reasoning: reasoning || null });
-    msg.swipeIndex = msg.swipes.length - 1;
-    msg.content = content;
-    msg.reasoning = reasoning || null;
-    saveSessionsToMetadata();
 }
 
 export function navigateSwipe(session, msgId, dir) {

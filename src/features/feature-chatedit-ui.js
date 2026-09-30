@@ -1,5 +1,5 @@
 import { EXT_DISPLAY, I } from '../constants.js';
-import { getSettings, saveSettings, getCurrentSession, addMessage, saveSessionsToMetadata } from '../session.js';
+import { getCurrentSession, addMessage, saveSessionsToMetadata } from '../session.js';
 import { escHtml } from '../utils/util-dom.js';
 import { applySearchReplaceToField } from '../utils/util-text.js';
 import { openTextDiffModal } from '../utils/util-diff.js';

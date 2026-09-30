@@ -9,7 +9,6 @@ export const state = {
     searchIdx: -1,
     searchOpen: false,
     searchWholeWord: false,
-    searchHotkeyHandler: null,
     pendingAttachments: [],
     lbActiveBook: null,
     lbSearchQuery: '',
@@ -89,5 +88,5 @@ export const DBG_SKIP = new Set([
     'customTheme','savedThemes','sessions','starredMessages',
     'stats','quickPromptSets','customSounds','completionSoundData',
     'quickPrompts','profiles','promptPresets','altGreetingIndices',
-    'windowBgUrl','customBackgrounds','memories'
+    'memories'
 ]);

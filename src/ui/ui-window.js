@@ -1,7 +1,7 @@
 import { getSettings, saveSettings } from '../session.js';
 import { state } from '../state.js';
 import { THEME_CSS_MAP, THEME_PRESETS, WIN_ID, EXT_DISPLAY } from '../constants.js';
-import { scrollToBottom, saveScrollPosition, restoreScrollPosition } from './ui-chat.js';
+import { saveScrollPosition, restoreScrollPosition } from './ui-chat.js';
 
 const SCP_TOP_Z_INDEX = 2147483000;
 const WIN_POS_STORAGE_KEY = 'scp-win-pos';
@@ -123,13 +123,7 @@ export function makeResizable(target) {
     });
 }
 
-// v2.10.0: FAB drag/drop moved to ui-launcher.js (optional launcherMode 'floating'/'both').
-// Kept as no-op for backward-compat with any external callers.
-export function makeIconDraggable(_iconTarget) { /* no-op */ }
-
-// v2.10.0: FAB visibility is driven by ui-launcher.js (syncFloatingIcon) based on
-// launcherMode + window state. Kept as no-op for backward-compat.
-export function updateIconVisibility(_iconEl) { /* no-op */ }
+// v2.10.0: FAB drag/drop и видимость плавающей иконки живёт в ui-launcher.js.
 
 export function saveWindowState(windowEl) {
     if (!windowEl) return;
@@ -336,19 +330,6 @@ export function minimize() {
     state.copilotActive = false;
     saveSettings();
     _syncLauncher();
-}
-
-export function restoreFromMinimize() {
-    const windowEl = document.getElementById(WIN_ID);
-    const s = getSettings();
-    s.minimized = false;
-    if(windowEl) windowEl.style.display = 'flex';
-    state.copilotActive = true;
-    saveSettings();
-    _syncLauncher();
-    restoreScrollPosition();
-    bringWindowToFront();
-    _applyMobileMode();
 }
 
 export function hideWindow() {

@@ -1,5 +1,5 @@
 import { EXT_DISPLAY, EMBEDDED_BOOK_KEY, DEFAULT_LB_MANAGE_PROMPT, LB_FORMAT_BLOCK } from '../constants.js';
-import { getSettings, getCurrentSession, saveSettings, expandMacros } from '../session.js';
+import { getCurrentSession, saveSettings, expandMacros } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
 import { ST_WorldInfo, ST_Utils } from '../index.js';
 import { _repairJSON } from '../utils/util-text.js';
@@ -209,40 +209,6 @@ export function getActiveLorebookNames() {
     if (personaWorldName && typeof personaWorldName === 'string') names.add(personaWorldName);
 
     return [...names].filter(Boolean);
-}
-
-export function getBookSourceType(name) {
-    if (name === EMBEDDED_BOOK_KEY) return 'embedded';
-    const ctx = SillyTavern.getContext();
-    
-    const globalBooks = ST_WorldInfo?.selected_world_info || window.selected_world_info || [];
-    if (Array.isArray(globalBooks) && globalBooks.includes(name)) {
-        return 'global';
-    }
-
-    const charId = ctx.characterId;
-    const character = ctx.characters?.[charId];
-    if (character) {
-        const baseWorldName = character.data?.extensions?.world || character.world;
-        if (baseWorldName === name) return 'character';
-
-        let fileName = character.avatar;
-        if (ST_Utils && typeof ST_Utils.getCharaFilename === 'function') {
-            fileName = ST_Utils.getCharaFilename(charId);
-        }
-        const charLoreList = ST_WorldInfo?.world_info?.charLore || window.world_info?.charLore;
-        if (fileName && Array.isArray(charLoreList)) {
-            const extraCharLore = charLoreList.find(e => e.name === fileName);
-            if (extraCharLore?.extraBooks?.includes(name)) return 'character';
-        }
-    }
-
-    const wiKey = ST_WorldInfo?.METADATA_KEY || window.WI_METADATA_KEY || 'world_info';
-    if (ctx.chatMetadata?.[wiKey] === name) return 'chat';
-    
-    if (ctx.powerUserSettings?.persona_description_lorebook === name) return 'chat';
-
-    return 'manual';
 }
 
 export function wiEntriesToArray(data) {

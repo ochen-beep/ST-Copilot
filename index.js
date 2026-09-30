@@ -513,7 +513,7 @@ replacement text
   const THEME_PRESETS = {
           default: {
               label: 'Тёмное небо',
-              bg: 'rgb(0,0,0)', blur: 'none',
+              bg: 'rgb(0,0,0)',
               text: '#e2e2e6', textMuted: 'rgb(176,176,176)',
               accent: 'rgb(191,191,191)', accentDim: 'rgba(209,209,209,0.4)',
               accentBg: 'rgba(112,112,112,0.08)',
@@ -526,7 +526,7 @@ replacement text
           },
           blue_ocean : {
               label: 'Синий океан',
-              bg: 'rgb(18,18,22)', blur: 'none',
+              bg: 'rgb(18,18,22)',
               text: '#e2e2e6', textMuted: '#72728a',
               accent: '#7c6dfa', accentDim: 'rgba(124,109,250,0.45)',
               accentBg: 'rgba(124,109,250,0.12)',
@@ -539,7 +539,7 @@ replacement text
           },
           onyx_ivory: {
               label: 'Оникс и слоновая кость',
-              bg: 'rgb(17,17,17)', blur: 'none',
+              bg: 'rgb(17,17,17)',
               text: '#f4ede4', textMuted: '#b8a898',
               accent: '#d4c4b0', accentDim: 'rgba(212,196,176,0.4)',
               accentBg: 'rgba(212,196,176,0.08)',
@@ -552,7 +552,7 @@ replacement text
           },
           violet_sun: {
               label: 'Фиолет и солнце',
-              bg: 'rgb(20,8,42)', blur: 'none',
+              bg: 'rgb(20,8,42)',
               text: '#f0e8ff', textMuted: '#9a80c0',
               accent: '#ffd60a', accentDim: 'rgba(255,214,10,0.45)',
               accentBg: 'rgba(255,214,10,0.1)',
@@ -565,7 +565,7 @@ replacement text
           },
           forest_gold: {
               label: 'Лес и золото',
-              bg: 'rgb(2,16,10)', blur: 'none',
+              bg: 'rgb(2,16,10)',
               text: '#e8dfc8', textMuted: '#8a9e80',
               accent: '#d4a373', accentDim: 'rgba(212,163,115,0.45)',
               accentBg: 'rgba(212,163,115,0.1)',
@@ -578,7 +578,7 @@ replacement text
           },
           crimson_cream: {
               label: 'Багрянец и кремовый',
-              bg: 'rgb(28,4,4)', blur: 'none',
+              bg: 'rgb(28,4,4)',
               text: '#fff3e0', textMuted: '#c09070',
               accent: '#e85555', accentDim: 'rgba(214,40,40,0.45)',
               accentBg: 'rgba(214,40,40,0.1)',
@@ -591,7 +591,7 @@ replacement text
           },
           teal_midnight: {
               label: 'Бирюза и полночь',
-              bg: 'rgb(10,12,24)', blur: 'none',
+              bg: 'rgb(10,12,24)',
               text: '#d8f0ee', textMuted: '#5a8a88',
               accent: '#2ec4b6', accentDim: 'rgba(46,196,182,0.4)',
               accentBg: 'rgba(46,196,182,0.1)',
@@ -604,7 +604,7 @@ replacement text
           },
           ember_sand: {
               label: 'Уголь и песок',
-              bg: 'rgb(22,10,4)', blur: 'none',
+              bg: 'rgb(22,10,4)',
               text: '#f5ebe0', textMuted: '#b08060',
               accent: '#ff6f3c', accentDim: 'rgba(255,111,60,0.4)',
               accentBg: 'rgba(255,111,60,0.1)',
@@ -617,7 +617,7 @@ replacement text
           },
           sage_mist: {
               label: 'Шалфей и туман',
-              bg: 'rgb(10,18,14)', blur: 'none',
+              bg: 'rgb(10,18,14)',
               text: '#e7edeb', textMuted: '#7a9a88',
               accent: '#69a481', accentDim: 'rgba(105,164,129,0.4)',
               accentBg: 'rgba(105,164,129,0.1)',
@@ -630,7 +630,7 @@ replacement text
           },
           glass: {
               label: 'Стекло (тёмное)',
-              bg: 'rgb(40,40,55)', blur: 'none',
+              bg: 'rgb(40,40,55)',
               text: '#f0efff', textMuted: '#9898b8',
               accent: '#a78bfa', accentDim: 'rgba(167,139,250,0.5)',
               accentBg: 'rgba(167,139,250,0.14)',
@@ -643,7 +643,7 @@ replacement text
           },
           hacker: {
               label: 'Хакер',
-              bg: 'rgb(6,14,6)', blur: 'none',
+              bg: 'rgb(6,14,6)',
               text: '#88ee88', textMuted: '#3a6640',
               accent: '#00ff88', accentDim: 'rgba(0,255,136,0.45)',
               accentBg: 'rgba(0,255,136,0.08)',
@@ -656,7 +656,7 @@ replacement text
           },
           native: {
               label: 'Родная ST',
-              bg: 'var(--stBackplateColor, rgb(20,20,24))', blur: 'none',
+              bg: 'var(--stBackplateColor, rgb(20,20,24))',
               text: 'var(--SmartThemeBodyColorText, #e2e2e6)', textMuted: 'var(--SmartThemeBodyColorTextMuted, #72728a)',
               accent: 'var(--smartThemeMenuColorText, #7c6dfa)', accentDim: 'var(--white30a, rgba(255,255,255,0.3))',
               accentBg: 'var(--white10a, rgba(255,255,255,0.08))',
@@ -685,7 +685,6 @@ replacement text
           { key: 'codeBg',     label: 'Code BG',       hint: 'rgba(r,g,b,a)' },
           { key: 'danger',     label: 'Danger Color',  hint: '#ff5c5c' },
           { key: 'success',    label: 'Success Color', hint: '#4caf7d' },
-          { key: 'blur',       label: 'Blur',          hint: 'blur(14px)' },
           { key: 'border',     label: 'Border',        hint: '1px solid rgba(...)' },
           { key: 'radius',     label: 'Corner Radius', hint: '10px' },
           { key: 'shadow',     label: 'Shadow',        hint: 'CSS box-shadow' },
@@ -694,7 +693,7 @@ replacement text
       ];
 
   const THEME_CSS_MAP = {
-          bg: '--scp-bg', blur: '--scp-blur', border: '--scp-border',
+          bg: '--scp-bg', border: '--scp-border',
           text: '--scp-text', textMuted: '--scp-text-muted',
           accent: '--scp-accent', accentDim: '--scp-accent-dim', accentBg: '--scp-accent-bg',
           headerBg: '--scp-header-bg', toolbarBg: '--scp-toolbar-bg',
@@ -841,7 +840,6 @@ replacement text
           user: `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
           stop: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>`,
           book: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
-          opacity: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg>`,
           check: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
           chevron: `<svg class="scp-sess-chevron" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>`,
           gear: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
@@ -879,7 +877,6 @@ replacement text
       searchIdx: -1,
       searchOpen: false,
       searchWholeWord: false,
-      searchHotkeyHandler: null,
       pendingAttachments: [],
       lbActiveBook: null,
       lbSearchQuery: '',
@@ -959,8 +956,10 @@ replacement text
       'customTheme','savedThemes','sessions','starredMessages',
       'stats','quickPromptSets','customSounds','completionSoundData',
       'quickPrompts','profiles','promptPresets','altGreetingIndices',
-      'windowBgUrl','customBackgrounds','memories'
+      'memories'
   ]);
+
+  let _lastDiffTs = 0;
 
   function _dbgStrip(s) {
       const r = {};
@@ -983,6 +982,12 @@ replacement text
 
   function _dbgDiffSettings() {
       if (!DBG_STATE.snapshot) return;
+      // Троттлинг: saveSettings() вызывается до нескольких раз за генерацию,
+      // полный stringify всех ключей на каждый вызов — лишняя работа.
+      // Изменения за окно троттлинга не теряются: снапшот обновляется только здесь.
+      const now = Date.now();
+      if (now - _lastDiffTs < 1000) return;
+      _lastDiffTs = now;
       try {
           const cur = _dbgStrip(getSettings());
           const diff = {};
@@ -1488,121 +1493,129 @@ replacement text
   });
 
   // ─── Settings ───────────────────────────────────────────────────────────────
+  // Дефолты hoist'нуты на уровень модуля: getSettings() вызывается очень часто
+  // (каждый кадр физики лаунчера, каждый getEffectiveSettings, каждый recordStat),
+  // пересоздавать литерал из ~100 ключей на вызов — чистый churn.
+  const DEFAULT_SETTINGS = {
+      enabled: true,
+      performanceMode: true,
+      windowVisible: false,
+      minimized: false,
+      windowX: null, windowY: null,
+      windowW: 440, windowH: 600,
+      opacity: 95,
+      hotkey: 'Alt+Shift+C',
+      hotkeyEnabled: true,
+      searchHotkey: 'Ctrl+F',
+      searchHotkeyEnabled: true,
+      contextDepth: 15,
+      localHistoryLimit: 50,
+      connectionSource: 'default',
+      connectionProfileId: '',
+      customUrl: 'http://localhost:5000/v1',
+      customKey: '',
+      customModel: '',
+      maxTokens: 8048,
+      includeSystemPrompt: false,
+      includeAuthorsNote: true,
+      includeCharacterCard: true,
+      includeUserPersonality: true,
+      includeAlternateSwipes: false,
+      systemPrompt: DEFAULT_SYSTEM_PROMPT,
+      memoryManagePrompt: DEFAULT_MEMORY_PROMPT,
+      profiles: {},
+      activeProfile: '',
+      profileBindings: {},
+      customTheme: { ...THEME_PRESETS.default },
+      savedThemes: {},
+      activeThemeProfile: '',
+      sessions: {},
+      lorebookEnabled: true,
+      lorebookAutoKeyword: true,
+      lorebookSelectedBooks: [],
+      lorebookEntryOverrides: {},
+      lorebookAIManageEnabled: true,
+      lorebookManagePrompt: DEFAULT_LB_MANAGE_PROMPT,
+      lorebookSTScanDepth: 5,
+      lorebookCopilotScanDepth: 6,
+      floatingIconPersistent: false,
+      reasoningTrimStrings: '',
+      ghostModeOpacity: 15,
+      ghostModeHotkey: 'Alt+Shift+G',
+      ghostModeHotkeyEnabled: true,
+      quickPromptsVisible: false,
+      quickPrompts: [
+          { id: 'qp_d1', label: 'Анализ', icon: '🔍', text: 'Analyze the current scene and character motivations in detail.' },
+          { id: 'qp_d2', label: 'Идеи', icon: '💡', text: 'Give me 3 creative plot twist ideas for the current scene.' },
+          { id: 'qp_d3', label: 'Сводка', icon: '📋', text: 'Summarize everything that has happened in the roleplay so far.' },
+          { id: 'qp_d4', label: 'Чувства', icon: '💭', text: 'What is {{char}} likely feeling right now and why?' },
+          { id: 'qp_d5', label: 'Дальше?', icon: '🎯', text: 'What are the most interesting directions the story could go next?' },
+      ],
+      quickPromptSets: {},
+      activeQuickPromptSet: '',
+      promptPresets: {},
+      stats: { g:{}, c:{}, ch:{} },
+      changelogAutoShow: true,
+      lastSeenVersion: '',
+      starredMessages: {},
+      forceStreaming: 'auto',
+      applyRegexToContext: true,
+      charEditAIEnabled: true,
+      charEditPrompt: '',
+      charEditFields: {
+          tags: true, description: true, personality: true,
+          scenario: true, first_mes: true, mes_example: true,
+          alternate_greetings: false, authors_note: true,
+          system_prompt: true, post_history_instructions: true, name: false,
+      },
+      completionSound: 'none',
+      completionSoundVolume: 80,
+      completionSoundOnlyWhenUnfocused: false,
+      wobbleWindow: false,
+      altGreetingIndices: [],
+      chatEditAIEnabled: true,
+      chatEditPrompt: '',
+      lorebookExcludedBooks: [],
+      pickerPreviewLines: 1,
+      pickerPreviewLastLines: 0,
+      imageAnalysisMode: 'direct',
+      attachedFiles: [],
+      memoryEnabled: true,
+      memoryInject: true,
+      memoryScope: 'global',
+      memoryTag: 'memory-update',
+      memoryNotify: true,
+      memories: {},
+      toolsEnabled: true,
+      toolsThinking: false,
+      toolsMaxRounds: 5,
+      toolsEnabled_search_chat: true,
+      toolsEnabled_search_lorebook: true,
+      toolsEnabled_get_lorebooks: true,
+      toolsEnabled_ask_user: true,
+      toolsEnabled_get_char_info: true,
+      toolsEnabled_get_chat_stats: true,
+      toolsEnabled_get_recent_messages: true,
+      includeSummaryception: true,
+      useAspectEvolutia: true,
+      autoExpandMacros: false,
+      includeHiddenMessages: false,
+  };
+  // Ключи с объектными/массивными значениями: при первом сидинге отдаём копию,
+  // чтобы последующие мутации settings не протекали в общий DEFAULT_SETTINGS.
+  const CLONED_DEFAULT_KEYS = new Set([
+      'customTheme', 'profiles', 'profileBindings', 'sessions', 'lorebookSelectedBooks',
+      'lorebookEntryOverrides', 'quickPrompts', 'quickPromptSets', 'promptPresets',
+      'stats', 'starredMessages', 'charEditFields', 'altGreetingIndices',
+      'attachedFiles', 'memories',
+  ]);
+
   function getSettings() {
       const { extensionSettings } = SillyTavern.getContext();
       if (!extensionSettings[EXT_NAME]) extensionSettings[EXT_NAME] = {};
       const s = extensionSettings[EXT_NAME];
-      const defaults = {
-          enabled: true,
-          performanceMode: true,
-          windowVisible: false,
-          minimized: false,
-          windowX: null, windowY: null,
-          iconX: null, iconY: null,
-          windowW: 440, windowH: 600,
-          opacity: 95,
-          hotkey: 'Alt+Shift+C',
-          hotkeyEnabled: true,
-          searchHotkey: 'Ctrl+F',
-          searchHotkeyEnabled: true,
-          contextDepth: 15,
-          localHistoryLimit: 50,
-          connectionSource: 'default',
-          connectionProfileId: '',
-          customUrl: 'http://localhost:5000/v1',
-          customKey: '',
-          customModel: '',
-          maxTokens: 8048,
-          includeSystemPrompt: false,
-          includeAuthorsNote: true,
-          includeCharacterCard: true,
-          includeUserPersonality: true,
-          includeAlternateSwipes: false,
-          systemPrompt: DEFAULT_SYSTEM_PROMPT,
-          memoryManagePrompt: DEFAULT_MEMORY_PROMPT,
-          profiles: {},
-          activeProfile: '',
-          profileBindings: {},
-          customTheme: { ...THEME_PRESETS.default },
-          savedThemes: {},
-          activeThemeProfile: '',
-          sessions: {},
-          lorebookEnabled: true,
-          lorebookAutoKeyword: true,
-          lorebookSelectedBooks: [],
-          lorebookEntryOverrides: {},
-          lorebookAIManageEnabled: true,
-          lorebookManagePrompt: DEFAULT_LB_MANAGE_PROMPT,
-          lorebookSTScanDepth: 5,
-          lorebookCopilotScanDepth: 6,
-          floatingIconPersistent: false,
-          reasoningTrimStrings: '',
-          ghostModeOpacity: 15,
-          ghostModeHotkey: 'Alt+Shift+G',
-          ghostModeHotkeyEnabled: true,
-          quickPromptsVisible: false,
-          quickPrompts: [
-              { id: 'qp_d1', label: 'Анализ', icon: '🔍', text: 'Analyze the current scene and character motivations in detail.' },
-              { id: 'qp_d2', label: 'Идеи', icon: '💡', text: 'Give me 3 creative plot twist ideas for the current scene.' },
-              { id: 'qp_d3', label: 'Сводка', icon: '📋', text: 'Summarize everything that has happened in the roleplay so far.' },
-              { id: 'qp_d4', label: 'Чувства', icon: '💭', text: 'What is {{char}} likely feeling right now and why?' },
-              { id: 'qp_d5', label: 'Дальше?', icon: '🎯', text: 'What are the most interesting directions the story could go next?' },
-          ],
-          quickPromptSets: {},
-          activeQuickPromptSet: '',
-          promptPresets: {},
-          stats: { g:{}, c:{}, ch:{} },
-          changelogAutoShow: true,
-          lastSeenVersion: '',
-          starredMessages: {},
-          forceStreaming: 'auto',
-          applyRegexToContext: true,
-          charEditAIEnabled: true,
-          charEditPrompt: '',
-          charEditFields: {
-              tags: true, description: true, personality: true,
-              scenario: true, first_mes: true, mes_example: true,
-              alternate_greetings: false, authors_note: true,
-              system_prompt: true, post_history_instructions: true, name: false,
-          },
-          completionSound: 'none',
-          completionSoundVolume: 80,
-          completionSoundOnlyWhenUnfocused: false,
-          wobbleWindow: false,
-          altGreetingIndices: [],
-          chatEditAIEnabled: true,
-          chatEditPrompt: '',
-          lorebookExcludedBooks: [],
-          windowBgUrl: '',
-          windowBgDim: 50,
-          windowBgType: 'none',
-          pickerPreviewLines: 1,
-          pickerPreviewLastLines: 0,
-          imageAnalysisMode: 'direct',
-          attachedFiles: [],
-          memoryEnabled: true,
-          memoryInject: true,
-          memoryScope: 'global',
-          memoryTag: 'memory-update',
-          memoryNotify: true,
-          memories: {},
-          toolsEnabled: true,
-          toolsThinking: false,
-          toolsMaxRounds: 5,
-          toolsEnabled_search_chat: true,
-          toolsEnabled_search_lorebook: true,
-          toolsEnabled_get_lorebooks: true,
-          toolsEnabled_ask_user: true,
-          toolsEnabled_get_char_info: true,
-          toolsEnabled_get_chat_stats: true,
-          toolsEnabled_get_recent_messages: true,
-          includeSummaryception: true,
-          useAspectEvolutia: true,
-          autoExpandMacros: false,
-          includeHiddenMessages: false,
-      };
-      for (const [k, v] of Object.entries(defaults)) {
-          if (s[k] === undefined) s[k] = v;
+      for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
+          if (s[k] === undefined) s[k] = CLONED_DEFAULT_KEYS.has(k) ? JSON.parse(JSON.stringify(v)) : v;
       }
       // v2.10.0+: launcherMode replaces the removed floating FAB setting.
       // Users who had the persistent floating icon get the floating launcher by default.
@@ -1975,21 +1988,6 @@ replacement text
       return msg;
   }
 
-  function insertMessageAfter(session, afterMsgId, role, content, extra = {}) {
-      const msg = { id: genId('msg'), role, content, timestamp: Date.now(), ...extra };
-      const idx = afterMsgId ? session.messages.findIndex(m => m.id === afterMsgId) : -1;
-      if (idx !== -1) session.messages.splice(idx + 1, 0, msg);
-      else session.messages.push(msg);
-      if (session.messages.length > 400) session.messages = session.messages.slice(-400);
-      saveSessionsToMetadata();
-      return msg;
-  }
-
-  function updateMessage(session, msgId, newContent) {
-      const msg = session.messages.find(m => m.id === msgId);
-      if (msg) { msg.content = newContent; saveSessionsToMetadata(); }
-  }
-
   function truncateAfter(session, msgId) {
       const idx = session.messages.findIndex(m => m.id === msgId);
       if (idx !== -1) { session.messages.splice(idx + 1); saveSessionsToMetadata(); }
@@ -2213,7 +2211,6 @@ replacement text
     hasSessionOverrides: hasSessionOverrides,
     importSession: importSession,
     initChatBucket: initChatBucket,
-    insertMessageAfter: insertMessageAfter,
     isMessageStarred: isMessageStarred,
     loadSessionFile: loadSessionFile,
     saveSessionFile: saveSessionFile,
@@ -2224,8 +2221,7 @@ replacement text
     showSessionDialog: showSessionDialog,
     toggleStarMessage: toggleStarMessage,
     truncateAfter: truncateAfter,
-    truncateFrom: truncateFrom,
-    updateMessage: updateMessage
+    truncateFrom: truncateFrom
   });
 
   const wiCache = {};
@@ -2432,40 +2428,6 @@ replacement text
       if (personaWorldName && typeof personaWorldName === 'string') names.add(personaWorldName);
 
       return [...names].filter(Boolean);
-  }
-
-  function getBookSourceType(name) {
-      if (name === EMBEDDED_BOOK_KEY) return 'embedded';
-      const ctx = SillyTavern.getContext();
-      
-      const globalBooks = exports.ST_WorldInfo?.selected_world_info || window.selected_world_info || [];
-      if (Array.isArray(globalBooks) && globalBooks.includes(name)) {
-          return 'global';
-      }
-
-      const charId = ctx.characterId;
-      const character = ctx.characters?.[charId];
-      if (character) {
-          const baseWorldName = character.data?.extensions?.world || character.world;
-          if (baseWorldName === name) return 'character';
-
-          let fileName = character.avatar;
-          if (exports.ST_Utils && typeof exports.ST_Utils.getCharaFilename === 'function') {
-              fileName = exports.ST_Utils.getCharaFilename(charId);
-          }
-          const charLoreList = exports.ST_WorldInfo?.world_info?.charLore || window.world_info?.charLore;
-          if (fileName && Array.isArray(charLoreList)) {
-              const extraCharLore = charLoreList.find(e => e.name === fileName);
-              if (extraCharLore?.extraBooks?.includes(name)) return 'character';
-          }
-      }
-
-      const wiKey = exports.ST_WorldInfo?.METADATA_KEY || window.WI_METADATA_KEY || 'world_info';
-      if (ctx.chatMetadata?.[wiKey] === name) return 'chat';
-      
-      if (ctx.powerUserSettings?.persona_description_lorebook === name) return 'chat';
-
-      return 'manual';
   }
 
   function wiEntriesToArray(data) {
@@ -2952,7 +2914,6 @@ replacement text
     expandOutletsAsync: expandOutletsAsync,
     fetchWorldInfoBook: fetchWorldInfoBook,
     getActiveLorebookNames: getActiveLorebookNames,
-    getBookSourceType: getBookSourceType,
     getDisplayName: getDisplayName,
     getEmbeddedCharBook: getEmbeddedCharBook,
     getEntryOverrideKey: getEntryOverrideKey,
@@ -3058,36 +3019,6 @@ replacement text
   function getAuthorsNote() {
       const ctx = SillyTavern.getContext();
       return ctx.chatMetadata?.note_prompt || ctx.authorsNote || ctx.authors_note || '';
-  }
-
-  let _regexModule = false;
-
-  async function loadRegexModule() {
-      if (_regexModule !== false) return _regexModule;
-      try {
-          _regexModule = await import('/scripts/extensions/regex/engine.js');
-      } catch (e) {
-          _regexModule = null;
-      }
-      return _regexModule;
-  }
-
-  async function applyRegexIfEnabled(text, isUser, depth) {
-      if (!getEffectiveSettings().applyRegexToContext) return text;
-      try {
-          const mod = await loadRegexModule();
-          if (!mod?.getRegexedString) return text;
-          const placement = isUser
-              ? (mod.regex_placement?.USER_INPUT ?? 1)
-              : (mod.regex_placement?.AI_OUTPUT ?? 2);
-          const params = { isPrompt: true };
-          if (typeof depth === 'number') params.depth = depth;
-          const result = mod.getRegexedString(text, placement, params);
-          const resolved = (result instanceof Promise) ? await result : result;
-          return (typeof resolved === 'string') ? resolved : text;
-      } catch (e) {
-          return text;
-      }
   }
 
   function computeLCS(a, b) {
@@ -11505,16 +11436,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       return msg;
   }
 
-  function addSwipe(session, msgId, content, reasoning = null) {
-      const msg = getSwipesForMsg(session, msgId);
-      if (!msg) return;
-      msg.swipes.push({ content, reasoning: reasoning || null });
-      msg.swipeIndex = msg.swipes.length - 1;
-      msg.content = content;
-      msg.reasoning = reasoning || null;
-      saveSessionsToMetadata();
-  }
-
   function navigateSwipe(session, msgId, dir) {
       const msg = getSwipesForMsg(session, msgId);
       if (!msg || msg.swipes.length < 2) return false;
@@ -12910,7 +12831,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     _updateMsgTokenCount: _updateMsgTokenCount,
     _updatePickerCountEl: _updatePickerCountEl,
     addHistoryToSwipe: addHistoryToSwipe,
-    addSwipe: addSwipe,
     appendMsgEl: appendMsgEl,
     clearSearchHighlights: clearSearchHighlights,
     closeChatPicker: closeChatPicker,
@@ -13080,13 +13000,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       });
   }
 
-  // v2.10.0: FAB drag/drop moved to ui-launcher.js (optional launcherMode 'floating'/'both').
-  // Kept as no-op for backward-compat with any external callers.
-  function makeIconDraggable$1(_iconTarget) { /* no-op */ }
-
-  // v2.10.0: FAB visibility is driven by ui-launcher.js (syncFloatingIcon) based on
-  // launcherMode + window state. Kept as no-op for backward-compat.
-  function updateIconVisibility(_iconEl) { /* no-op */ }
+  // v2.10.0: FAB drag/drop и видимость плавающей иконки живёт в ui-launcher.js.
 
   function saveWindowState(windowEl) {
       if (!windowEl) return;
@@ -13295,19 +13209,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       _syncLauncher();
   }
 
-  function restoreFromMinimize() {
-      const windowEl = document.getElementById(WIN_ID);
-      const s = getSettings();
-      s.minimized = false;
-      if(windowEl) windowEl.style.display = 'flex';
-      state.copilotActive = true;
-      saveSettings$1();
-      _syncLauncher();
-      restoreScrollPosition();
-      bringWindowToFront();
-      _applyMobileMode();
-  }
-
   function hideWindow() {
       saveScrollPosition();
       const windowEl = document.getElementById(WIN_ID);
@@ -13357,10 +13258,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     bringWindowToFront: bringWindowToFront,
     hideWindow: hideWindow,
     makeDraggable: makeDraggable,
-    makeIconDraggable: makeIconDraggable$1,
     makeResizable: makeResizable,
     minimize: minimize,
-    restoreFromMinimize: restoreFromMinimize,
     restoreWindowState: restoreWindowState,
     saveWindowState: saveWindowState,
     setGhostMode: setGhostMode,
@@ -13368,8 +13267,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     setupHotkey: setupHotkey,
     showWindow: showWindow,
     toggleGhostMode: toggleGhostMode,
-    toggleVisibility: toggleVisibility,
-    updateIconVisibility: updateIconVisibility
+    toggleVisibility: toggleVisibility
   });
 
   // v2.10.0 — Launcher buttons for the Copilot window.
@@ -13543,8 +13441,12 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
   function watchLauncherHost() {
       if (_launcherObserver) _launcherObserver.disconnect();
       const sendForm = document.querySelector('#send_form') || document.body;
+      // RAF-коалесцинг: мутации поддерева send_form идут пачками (печать, тулбары),
+      // ensureLauncher() достаточно позвать один раз на кадр.
+      let _moRaf = 0;
       _launcherObserver = new MutationObserver(() => {
-          ensureLauncher();
+          if (_moRaf) return;
+          _moRaf = requestAnimationFrame(() => { _moRaf = 0; ensureLauncher(); });
       });
       _launcherObserver.observe(sendForm, { childList: true, subtree: true });
   }
@@ -14450,6 +14352,36 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           return template.replace('{{summary}}', summaryText).trim();
       } catch(_) {}
       return null;
+  }
+
+  let _regexModule = false;
+
+  async function loadRegexModule() {
+      if (_regexModule !== false) return _regexModule;
+      try {
+          _regexModule = await import('/scripts/extensions/regex/engine.js');
+      } catch (e) {
+          _regexModule = null;
+      }
+      return _regexModule;
+  }
+
+  async function applyRegexIfEnabled(text, isUser, depth) {
+      if (!getEffectiveSettings().applyRegexToContext) return text;
+      try {
+          const mod = await loadRegexModule();
+          if (!mod?.getRegexedString) return text;
+          const placement = isUser
+              ? (mod.regex_placement?.USER_INPUT ?? 1)
+              : (mod.regex_placement?.AI_OUTPUT ?? 2);
+          const params = { isPrompt: true };
+          if (typeof depth === 'number') params.depth = depth;
+          const result = mod.getRegexedString(text, placement, params);
+          const resolved = (result instanceof Promise) ? await result : result;
+          return (typeof resolved === 'string') ? resolved : text;
+      } catch (e) {
+          return text;
+      }
   }
 
   async function buildSystemContent(settings) {
@@ -17152,8 +17084,14 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           state.copilotActive = !!clickedInside;
       }, true);
 
+      let _resizeDebounceId = 0;
       window.addEventListener('resize', () => {
-          if (windowEl && windowEl.style.display !== 'none') {
+          // Дебаунс: раньше на каждый тик resize шли localStorage.getItem +
+          // JSON.parse + getBoundingClientRect (forced layout).
+          clearTimeout(_resizeDebounceId);
+          _resizeDebounceId = setTimeout(() => {
+              _resizeDebounceId = 0;
+              if (!(windowEl && windowEl.style.display !== 'none')) return;
               try {
                   const saved = localStorage.getItem('scp-win-pos');
                   if (saved) {
@@ -17167,7 +17105,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                       }
                   }
               } catch(e) {}
-          }
+          }, 150);
       });
 
       document.getElementById('scp-min-btn')?.addEventListener('click', () => minimize());

@@ -1,5 +1,5 @@
 import { EXT_DISPLAY, CHAT_EDIT_FORMAT_BLOCK, DEFAULT_CHAT_EDIT_DIRECTIVE } from '../constants.js';
-import { getSettings, getCurrentSession, addMessage } from '../session.js';
+import { getCurrentSession, addMessage } from '../session.js';
 import { applySearchReplaceToField, _repairJSON } from '../utils/util-text.js';
 import { escHtml } from '../utils/util-dom.js';
 

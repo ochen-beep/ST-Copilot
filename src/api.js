@@ -1,6 +1,6 @@
 import { DEFAULT_SYSTEM_PROMPT, EXT_DISPLAY } from './constants.js';
 import { state, invalidateSystemPromptCache, decideSystemPromptCache } from './state.js';
-import { getSettings, getEffectiveSettings, saveSettings, getCurrentSession, saveSessionsToMetadata, addMessage, expandMacros } from './session.js';
+import { getEffectiveSettings, getCurrentSession, saveSessionsToMetadata, addMessage } from './session.js';
 import { _dbgAdd } from './utils/util-debug.js';
 import { escHtml } from './utils/util-dom.js';
 import { _ensureWrapped, normalizeCharNamesInBlock } from './utils/util-text.js';
@@ -9,7 +9,7 @@ import { getCharInfo, getUserPersona } from './utils/util-st.js';
 import { recordStat, SM } from './features/feature-stats.js';
 import { _mergeContent } from './features/feature-attachments.js';
 
-import { _getAspectEvolutiaCharFields, _getAspectEvolutiaPersonaFields } from './integrations/integ-evolutia.js';
+import { _getAspectEvolutiaPersonaFields } from './integrations/integ-evolutia.js';
 import { _getSummaryceptionSummary } from './integrations/integ-summaryception.js';
 import { applyRegexIfEnabled } from './integrations/integ-regex.js';
 
@@ -19,7 +19,7 @@ import { buildChatEditAIInstructions } from './features/feature-chatedit-engine.
 import { buildMemoryContextBlock, buildMemoryAIInstructions, processMemoryUpdates, stripMemoryBlock } from './features/feature-memory.js';
 import { buildToolCallsSystemBlock, parseToolCallsFromText, executeTool, getEnabledTools } from './features/feature-tools-engine.js';
 
-import { updateMsgCount, smartScrollToBottom, setGeneratingState, showGenerationError, _renderMsgBodyContent, updateSwipeBar, _refreshSwipeBars, appendMsgEl } from './ui/ui-chat.js';
+import { updateMsgCount, smartScrollToBottom, setGeneratingState, showGenerationError, _renderMsgBodyContent, _refreshSwipeBars, appendMsgEl } from './ui/ui-chat.js';
 import { getDisplayContent, extractToolCallPlaceholders, renderMarkdown, postProcessHTMLBlocks } from './ui/ui-chat.js';
 import { createStreamRenderer } from './ui/render/stream-renderer.js';
 import { postProcessToolCalls, executeAskUser } from './features/feature-tools-ui.js';

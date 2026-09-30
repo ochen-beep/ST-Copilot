@@ -172,8 +172,12 @@ function defaultToggle() {
 export function watchLauncherHost() {
     if (_launcherObserver) _launcherObserver.disconnect();
     const sendForm = document.querySelector('#send_form') || document.body;
+    // RAF-коалесцинг: мутации поддерева send_form идут пачками (печать, тулбары),
+    // ensureLauncher() достаточно позвать один раз на кадр.
+    let _moRaf = 0;
     _launcherObserver = new MutationObserver(() => {
-        ensureLauncher();
+        if (_moRaf) return;
+        _moRaf = requestAnimationFrame(() => { _moRaf = 0; ensureLauncher(); });
     });
     _launcherObserver.observe(sendForm, { childList: true, subtree: true });
 }

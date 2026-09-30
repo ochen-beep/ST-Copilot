@@ -1,8 +1,8 @@
-import { EXT_DISPLAY, CHAR_EDIT_FORMAT_BLOCK, CHAR_CREATE_FORMAT_BLOCK, DEFAULT_CHAR_EDIT_DIRECTIVE } from '../constants.js';
-import { getSettings, getCurrentSession } from '../session.js';
+import { CHAR_EDIT_FORMAT_BLOCK, CHAR_CREATE_FORMAT_BLOCK, DEFAULT_CHAR_EDIT_DIRECTIVE } from '../constants.js';
+import { getSettings } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
 import { escHtml } from '../utils/util-dom.js';
-import { _sanitizeProposedTags, applySearchReplaceToField, _repairJSON, _ensureWrapped, levenshtein } from '../utils/util-text.js';
+import { _sanitizeProposedTags, _repairJSON, _ensureWrapped, levenshtein } from '../utils/util-text.js';
 import { getTagsForCharacter, getUserPersona, getAuthorsNote } from '../utils/util-st.js';
 import { _getAspectEvolutiaCharFields, _getAspectEvolutiaPersonaFields } from '../integrations/integ-evolutia.js';
 

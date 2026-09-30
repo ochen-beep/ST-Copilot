@@ -1,5 +1,5 @@
 import { state } from '../state.js';
-import { _fileToDataUrl, escHtml } from '../utils/util-dom.js';
+import { _fileToDataUrl } from '../utils/util-dom.js';
 import { _dbgAdd } from '../utils/util-debug.js';
 import { _getCaptionViaExtension } from '../integrations/integ-captioning.js';
 import { getSettings, getCurrentSession } from '../session.js';

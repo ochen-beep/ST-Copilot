@@ -1,18 +1,18 @@
-import { EXT_NAME, EXT_DISPLAY, CHANGELOG, I, WIN_ID, ICON_ID, MODAL_ID, ICON_STORAGE_KEY } from './constants.js';
+import { EXT_DISPLAY, CHANGELOG, I, WIN_ID, ICON_ID, MODAL_ID } from './constants.js';
 import { state } from './state.js';
-import { getSettings, saveSettings, initChatBucket, getChatBucket, setActiveSession, deleteCurrentSession, getCurrentSession, exportCurrentSession, importSession, showSessionDialog } from './session.js';
-import { _dbgSetupGlobalErrorHandlers, _dbgAdd, dbgDownload, _dbgSnapshotSettings } from './utils/util-debug.js';
-import { showCustomDialog, escHtml, autoResize, copyText } from './utils/util-dom.js';
+import { getSettings, saveSettings, getChatBucket, setActiveSession, deleteCurrentSession, getCurrentSession, exportCurrentSession, importSession, showSessionDialog } from './session.js';
+import { _dbgSetupGlobalErrorHandlers, _dbgAdd, _dbgSnapshotSettings } from './utils/util-debug.js';
+import { showCustomDialog, autoResize, copyText } from './utils/util-dom.js';
 import { setupExternalWIChangeListener } from './features/feature-lorebook-engine.js';
 
-import { restoreWindowState, applyCustomTheme, applyWindowBackground, hideWindow, showWindow, minimize, toggleVisibility, makeDraggable, makeResizable, toggleGhostMode, setupGhostHotkey, setupHotkey, bringWindowToFront } from './ui/ui-window.js';
+import { restoreWindowState, hideWindow, minimize, toggleVisibility, makeDraggable, makeResizable, toggleGhostMode, setupGhostHotkey, setupHotkey, bringWindowToFront } from './ui/ui-window.js';
 import { ensureLauncher, watchLauncherHost, refreshLauncher, applyMobileMode, initViewportSync, observeStChrome } from './ui/ui-launcher.js';
 import { setupSettingsPanelListeners, setupSettingsHandlers, updateSettingsUI, updateProfilesList, updateSPConnProfileList, _takeProfileSnapshot, openSettingsPanel, syncOverlayUI } from './ui/ui-settings.js';
 import { setupLorebookManagerListeners, openLorebookManager } from './features/feature-lorebook-ui.js';
 import { setupCharacterManagerListeners, openCharacterManager } from './features/feature-character-manager-ui.js';
 import { updateMemoryDot } from './features/feature-memory.js';
 import { setupChatPickerListeners, onChatChanged, updateDepthSlidersMax, renderSession, openSearch, navigateSearch, performSearch, closeSearch, openChatPicker, toggleSearchWholeWord, setupDepthClickEdit, updateMsgCount, setupSearchHotkey, setupMessagesScrollTracking, setupCodeBlockActions } from './ui/ui-chat.js';
-import { checkChangelogAutoShow, setupChangelogListeners, openChangelog, openFavoritesPanel, closeFavoritesPanel, openInspector, renderQuickPromptsBar } from './ui/ui-widgets.js';
+import { checkChangelogAutoShow, setupChangelogListeners, openFavoritesPanel, closeFavoritesPanel, openInspector, renderQuickPromptsBar } from './ui/ui-widgets.js';
 import { _setupAttachButton } from './features/feature-attachments.js';
 
 import * as apiMod from './api.js';
@@ -174,8 +174,14 @@ function attachWindowListeners() {
         state.copilotActive = !!clickedInside;
     }, true);
 
+    let _resizeDebounceId = 0;
     window.addEventListener('resize', () => {
-        if (windowEl && windowEl.style.display !== 'none') {
+        // Дебаунс: раньше на каждый тик resize шли localStorage.getItem +
+        // JSON.parse + getBoundingClientRect (forced layout).
+        clearTimeout(_resizeDebounceId);
+        _resizeDebounceId = setTimeout(() => {
+            _resizeDebounceId = 0;
+            if (!(windowEl && windowEl.style.display !== 'none')) return;
             try {
                 const saved = localStorage.getItem('scp-win-pos');
                 if (saved) {
@@ -189,7 +195,7 @@ function attachWindowListeners() {
                     }
                 }
             } catch(e) {}
-        }
+        }, 150);
     });
 
     document.getElementById('scp-min-btn')?.addEventListener('click', () => minimize());

@@ -7,9 +7,9 @@
 
 .scp-window {
     --scp-bg:          rgb(18,18,22);
-    --scp-blur:        none;
     --scp-border:      1px solid rgba(255,255,255,0.09);
     --scp-shadow:      0 2px 8px rgba(0,0,0,0.4);
+    --scp-warning:     #ffb432;
     --scp-text:        #e2e2e6;
     --scp-text-muted:  #72728a;
     --scp-accent:      #7c6dfa;
@@ -116,9 +116,6 @@
 .scp-hbtn-close:hover { color: var(--scp-danger); background: rgba(255,92,92,0.1); }
 
 .scp-opacity-wrap { position: relative; display: flex; }
-.scp-opacity-pop {
-    display: none !important;
-}
 
 /* ── Ghost Mode ──────────────────────────────────────────────── */
 
@@ -383,12 +380,6 @@
     font-size: 12px; line-height: 1.75;
     max-width: 260px; opacity: 0.45;
 }
-.scp-empty-hint { font-size: 11px; opacity: 0.3; }
-.scp-empty-hint kbd {
-    display: inline-block; padding: 1px 5px; border-radius: 3px;
-    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
-    font-family: var(--scp-font-mono); font-size: 10px;
-}
 
 /* ── Single Message ──────────────────────────────────────────── */
 
@@ -445,12 +436,6 @@
 .scp-msg-content strong { color: var(--scp-text); font-weight: 600; }
 .scp-msg-content em { font-style: italic; color: var(--scp-text-muted); }
 
-.scp-h1, .scp-h2, .scp-h3 {
-    display: block; font-weight: 700; color: var(--scp-accent); margin: 4px 0 2px;
-}
-.scp-h1 { font-size: 15px; }
-.scp-h2 { font-size: 13px; }
-.scp-h3 { font-size: 12px; }
 
 .scp-inline-code {
     font-family: var(--scp-font-mono); font-size: 11.5px;
@@ -1004,10 +989,6 @@
     letter-spacing: 0.02em;
 }
 
-.scp-settings-section {
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 8px; overflow: hidden; margin-bottom: 6px;
-}
 
 .scp-profile-bar {
     display: flex; align-items: center; gap: 6px;
@@ -1062,21 +1043,6 @@
 
 /* ── Theme Editor ────────────────────────────────────────────── */
 
-.scp-theme-preset-row { margin-bottom: 10px; }
-.scp-theme-preset-label {
-    font-size: 10px; color: var(--SmartThemeBodyColorTextMuted, #888);
-    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
-}
-.scp-theme-preset-btns { display: flex; flex-wrap: wrap; gap: 5px; }
-.scp-preset-pill {
-    padding: 3px 10px; border-radius: 20px; font-size: 11px; cursor: pointer;
-    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-    color: var(--SmartThemeBodyColorTextMuted, #888);
-    transition: all 0.15s; font-family: var(--primaryFontFamily, system-ui);
-}
-.scp-preset-pill:hover {
-    background: rgba(124,109,250,0.15); border-color: rgba(124,109,250,0.4); color: #a99bfb;
-}
 
 .scp-profile-bar select optgroup {
     background: #1a1a20;
@@ -1789,7 +1755,6 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     overscroll-behavior: contain;
     -webkit-tap-highlight-color: transparent;
     --scp-bg: rgb(18,18,22);
-    --scp-blur: none;
     --scp-border: 1px solid rgba(255,255,255,0.09);
     --scp-text: #e2e2e6;
     --scp-text-muted: #72728a;
@@ -1854,8 +1819,6 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
 
 .scp-lb-header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
-.scp-lb-toggle-wrap { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
-.scp-lb-toggle-label { font-size: 11px; color: var(--scp-text-muted); white-space: nowrap; }
 .scp-lb-toggle {
     width: 34px; height: 18px; border-radius: 9px;
     background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
@@ -1934,21 +1897,9 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .scp-lb-book-meta { font-size: 10px; color: var(--scp-text-muted); }
-.scp-lb-book-active-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--scp-success); flex-shrink: 0;
-    box-shadow: 0 0 6px rgba(76,175,125,0.6);
-    animation: scp-pulse 2s infinite;
-}
 @keyframes scp-pulse {
     0%,100% { box-shadow: 0 0 4px rgba(76,175,125,0.5); }
     50% { box-shadow: 0 0 10px rgba(76,175,125,0.9); }
-}
-.scp-lb-embedded-badge {
-    display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 3px;
-    background: var(--scp-accent-bg); color: var(--scp-accent);
-    border: 1px solid var(--scp-accent-dim); vertical-align: middle; margin-left: 4px;
-    font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
 }
 
 /* ── Source Badges ───────────────────────────────────────────── */
@@ -1960,7 +1911,6 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
 .scp-lb-src-global { background: rgba(76,175,125,0.18); color: #4caf7d; border: 1px solid rgba(76,175,125,0.35); }
 .scp-lb-src-character { background: var(--scp-accent-bg); color: var(--scp-accent); border: 1px solid var(--scp-accent-dim); }
 .scp-lb-src-chat { background: rgba(255,180,50,0.15); color: #ffb432; border: 1px solid rgba(255,180,50,0.3); }
-.scp-lb-src-embedded { background: rgba(255,255,255,0.06); color: var(--scp-text-muted); border: 1px solid rgba(255,255,255,0.1); }
 .scp-lb-src-persona { background: rgba(168,85,247,0.15); color: #a855f7; border: 1px solid rgba(168,85,247,0.3); }
 
 /* ── LB Main Panel ───────────────────────────────────────────── */
@@ -2134,7 +2084,6 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
 .scp-lb-detail-status.status-disabled:hover { background: rgba(255,92,92,0.2); }
 
 .scp-lb-detail-injection { display: flex; gap: 5px; }
-.scp-lb-inj-hint { font-size: 10px; color: var(--scp-text-muted); line-height: 1.5; font-style: italic; }
 .scp-lb-inj-btn {
     padding: 3px 10px; border-radius: 5px; font-size: 11px; cursor: pointer;
     background: rgba(255,255,255,0.04); border: var(--scp-border);
@@ -2153,7 +2102,6 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
 .scp-lb-footer-info { font-size: 11px; color: var(--scp-text-muted); }
-.scp-lb-footer-ctx { font-size: 11px; color: var(--scp-accent); opacity: 0.8; }
 
 /* ── Proposal Card ───────────────────────────────────────────── */
 .scp-lb-proposal-card {
@@ -2196,9 +2144,7 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
 .scp-lb-proposal-add .scp-lb-proposal-action { background: rgba(76,175,125,0.12); border-color: rgba(76,175,125,0.3); color: var(--scp-success); }
 .scp-lb-proposal-edit .scp-lb-proposal-action { background: var(--scp-accent-bg); border-color: var(--scp-accent-dim); color: var(--scp-accent); }
 .scp-lb-proposal-delete .scp-lb-proposal-action { background: rgba(255,92,92,0.1); border-color: rgba(255,92,92,0.3); color: var(--scp-danger); }
-.scp-lb-proposal-item-info { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .scp-lb-proposal-name { font-size: 12px; font-weight: 600; color: var(--scp-text); }
-.scp-lb-proposal-world { font-size: 10px; color: var(--scp-text-muted); }
 .scp-lb-proposal-preview { font-size: 11px; color: var(--scp-text-muted); margin-top: 5px; font-style: italic; line-height: 1.5; }
 .scp-lb-proposal-triggers { font-size: 10px; color: var(--scp-accent); opacity: 0.7; margin-top: 3px; }
 .scp-lb-proposal-diff-btn {
@@ -2222,8 +2168,6 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     background: rgba(255,92,92,0.08); border-color: rgba(255,92,92,0.3); color: rgba(255,92,92,0.7);
 }
 .scp-lb-proposal-reject:hover { background: rgba(255,92,92,0.18); color: var(--scp-danger); }
-.scp-lb-proposal-done { padding: 8px; text-align: center; font-size: 12px; color: var(--scp-text-muted); }
-.scp-lb-proposal-rejected { color: rgba(255,92,92,0.5) !important; }
 
 /* ── Inline lorebook world dropdown (proposal card) ──────────── */
 .scp-lb-proposal-world-dd {
@@ -2550,9 +2494,6 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
 .scp-diff-modal-title { display: flex; align-items: center; gap: 7px; color: var(--scp-accent); font-size: 13px; font-weight: 600; }
 .scp-diff-body { padding: 0 !important; overflow: auto; max-height: 60vh; }
 .scp-diff-unified { font-family: var(--scp-font-mono, monospace); font-size: 12px; line-height: 1.7; }
-.scp-diff-row { padding: 1px 12px; display: flex; gap: 8px; transition: background 0.1s; }
-.scp-diff-row:hover { filter: brightness(1.15); }
-.scp-diff-text { flex: 1; white-space: pre-wrap; word-break: break-word; min-width: 0; }
 
 .scp-diff-word-add { 
     background: rgba(76, 175, 125, 0.45); 
@@ -2655,8 +2596,6 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
         grid-column: 1 / -1; grid-row: 2;
         width: 100%; order: unset;
     }
-    .scp-lb-toggle-wrap { flex-direction: column; gap: 3px; align-items: center; }
-    .scp-lb-toggle-label { display: block; font-size: 9px; line-height: 1; }
     .scp-lb-toggle { width: 30px; height: 16px; }
     .scp-lb-toggle-knob { width: 10px; height: 10px; }
     .scp-lb-toggle.active .scp-lb-toggle-knob { transform: translateX(14px); }
@@ -2713,12 +2652,7 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     .scp-lb-book-info { width: 100%; }
     .scp-lb-book-name { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
     .scp-lb-book-meta { font-size: 9px; }
-    .scp-lb-book-active-dot {
-        width: 5px; height: 5px;
-        position: absolute; top: 5px; right: 5px;
-    }
     .scp-lb-src-badge { font-size: 8px; min-width: 13px; height: 13px; }
-    .scp-lb-embedded-badge { display: none; }
 
     .scp-lb-main { flex: 1; min-height: 0; }
     .scp-lb-main-toolbar {
@@ -2754,7 +2688,6 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     /* Footer: minimal */
     .scp-lb-footer { padding: 6px 12px; }
     .scp-lb-footer-info { font-size: 10px; }
-    .scp-lb-footer-ctx { font-size: 10px; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -2774,7 +2707,6 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     padding: 16px;
     overscroll-behavior: contain;
     --scp-bg: rgb(18,18,22);
-    --scp-blur: none;
     --scp-border: 1px solid rgba(255,255,255,0.09);
     --scp-text: #e2e2e6;
     --scp-text-muted: #72728a;
@@ -4167,7 +4099,6 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
 
 /* ── Window custom background (removed in v2.10.0 — performance) ── */
 /* Custom image/video backgrounds disabled for performance. Class kept as no-op for backward-compat. */
-.scp-window.scp-has-bg { /* no-op */ }
 
 /* ── Attachment bar ──────────────────────────────────────────── */
 .scp-attachment-bar {
@@ -4327,44 +4258,12 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
 }
 
 /* ── Lorebook footer note ────────────────────────────────────── */
-.scp-lb-footer-note {
-    font-size: 10px;
-    color: var(--scp-danger);
-    opacity: 0.8;
-}
 
 /* ── Video Background ────────────────────────────────────────── */
-.scp-bg-video {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    z-index: -2;
-    border-radius: var(--scp-radius);
-    pointer-events: none;
-}
 
 /* ── Background Fit Modes ── */
-.scp-window.bg-cover::before, .scp-bg-video.bg-cover { object-fit: cover; background-size: cover; }
-.scp-window.bg-contain::before, .scp-bg-video.bg-contain { object-fit: contain; background-size: contain; background-repeat: no-repeat; }
-.scp-window.bg-fill::before, .scp-bg-video.bg-fill { object-fit: fill; background-size: 100% 100%; }
-.scp-window.bg-center::before, .scp-bg-video.bg-center { object-fit: none; background-position: center; background-repeat: no-repeat; }
 
 /* ── Media Background Engine ── */
-.scp-bg-media {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    z-index: -2;
-    border-radius: var(--scp-radius);
-    pointer-events: none;
-}
-.scp-bg-media.bg-cover { object-fit: cover; }
-.scp-bg-media.bg-contain { object-fit: contain; }
-.scp-bg-media.bg-fill { object-fit: fill; }
-.scp-bg-media.bg-center { object-fit: none; }
 
 /* ── Stream Modes Settings Fix ── */
 .st-copilot-settings .scp-stream-btn {
@@ -4466,13 +4365,6 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
 }
 .scp-memory-item:hover { border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); }
 
-.scp-memory-item-icon {
-    color: var(--scp-accent);
-    font-size: 12px;
-    flex-shrink: 0;
-    margin-top: 1px;
-    opacity: 0.7;
-}
 
 .scp-memory-item-body {
     flex: 1;
@@ -4599,14 +4491,10 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
 }
 .scp-tool-toggle-row:hover { border-color: rgba(255,255,255,0.1); }
 
-.scp-tool-toggle-info { flex: 1; min-width: 0; }
 .scp-tool-toggle-name { font-size: 12px; font-weight: 600; color: var(--scp-text); }
 .scp-tool-toggle-desc { font-size: 10px; color: var(--scp-text-muted); margin-top: 2px; line-height: 1.4; }
 
 /* Tool call bubble in message */
-.scp-tool-call-wrap {
-    margin: 6px 0;
-}
 
 .scp-tool-call-item {
     border-radius: 8px;
@@ -4983,7 +4871,6 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
 .scp-ctx-nav-system { color:var(--scp-accent) !important; }
 .scp-ctx-nav-user { color:#5bc0eb !important; }
 .scp-ctx-nav-assistant { color:var(--scp-success) !important; }
-.scp-ctx-nav-divider { height:1px; background:rgba(255,255,255,0.06); margin:4px 0; }
 .scp-ctx-body { flex:1; height:100%; overflow-y:auto; padding:10px 14px 20px; position:relative; scroll-behavior:smooth; }
 .scp-ctx-block { margin-bottom:16px; }
 .scp-ctx-block-header { font-size:10px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; padding:5px 10px; border-radius:6px 6px 0 0; }
@@ -4995,7 +4882,6 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
 .scp-ctx-pre { font-size:calc(var(--scp-font-size, 13px) - 2px); line-height:1.55; white-space:pre-wrap; word-break:break-word; margin:0; font-family:var(--scp-font,monospace); color:var(--scp-text); }
 .scp-ctx-hl-tag { color:#71b7fb; }
 .scp-ctx-hl-macro { color:#ffd670; }
-.scp-ctx-hl-header { color:var(--scp-accent); font-weight:600; }
 .scp-ctx-anchor { display:block; position:relative; top:-8px; }
 
 /* ── Mobile Settings Tabs Fix (3x2 grid) ── */
@@ -5105,7 +4991,6 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
     box-sizing: border-box; padding: 16px;
     overscroll-behavior: contain;
     --scp-bg: rgb(18,18,22);
-    --scp-blur: none;
     --scp-border: 1px solid rgba(255,255,255,0.09);
     --scp-text: #e2e2e6;
     --scp-text-muted: #72728a;
@@ -5236,7 +5121,6 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
 .scp-char-field-textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
 .scp-char-field-input:focus, .scp-char-field-textarea:focus { border-color: var(--scp-accent-dim); }
 
-.scp-char-save-footer { display: flex; gap: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); }
 
 .scp-char-ov-hint { font-size: 11px; color: var(--scp-text-muted); font-style: italic; margin-bottom: 6px; }
 .scp-char-ov-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; transition: background 0.15s; }

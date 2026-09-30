@@ -1,5 +1,4 @@
 import { _fileToDataUrl } from '../utils/util-dom.js';
-import { _dbgAdd } from '../utils/util-debug.js';
 
 export async function _getCaptionViaExtension(file) {
     const ctx = SillyTavern.getContext();

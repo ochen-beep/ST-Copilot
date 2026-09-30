@@ -510,7 +510,7 @@ export const CHANGELOG = [
 export const THEME_PRESETS = {
         default: {
             label: 'Тёмное небо',
-            bg: 'rgb(0,0,0)', blur: 'none',
+            bg: 'rgb(0,0,0)',
             text: '#e2e2e6', textMuted: 'rgb(176,176,176)',
             accent: 'rgb(191,191,191)', accentDim: 'rgba(209,209,209,0.4)',
             accentBg: 'rgba(112,112,112,0.08)',
@@ -523,7 +523,7 @@ export const THEME_PRESETS = {
         },
         blue_ocean : {
             label: 'Синий океан',
-            bg: 'rgb(18,18,22)', blur: 'none',
+            bg: 'rgb(18,18,22)',
             text: '#e2e2e6', textMuted: '#72728a',
             accent: '#7c6dfa', accentDim: 'rgba(124,109,250,0.45)',
             accentBg: 'rgba(124,109,250,0.12)',
@@ -536,7 +536,7 @@ export const THEME_PRESETS = {
         },
         onyx_ivory: {
             label: 'Оникс и слоновая кость',
-            bg: 'rgb(17,17,17)', blur: 'none',
+            bg: 'rgb(17,17,17)',
             text: '#f4ede4', textMuted: '#b8a898',
             accent: '#d4c4b0', accentDim: 'rgba(212,196,176,0.4)',
             accentBg: 'rgba(212,196,176,0.08)',
@@ -549,7 +549,7 @@ export const THEME_PRESETS = {
         },
         violet_sun: {
             label: 'Фиолет и солнце',
-            bg: 'rgb(20,8,42)', blur: 'none',
+            bg: 'rgb(20,8,42)',
             text: '#f0e8ff', textMuted: '#9a80c0',
             accent: '#ffd60a', accentDim: 'rgba(255,214,10,0.45)',
             accentBg: 'rgba(255,214,10,0.1)',
@@ -562,7 +562,7 @@ export const THEME_PRESETS = {
         },
         forest_gold: {
             label: 'Лес и золото',
-            bg: 'rgb(2,16,10)', blur: 'none',
+            bg: 'rgb(2,16,10)',
             text: '#e8dfc8', textMuted: '#8a9e80',
             accent: '#d4a373', accentDim: 'rgba(212,163,115,0.45)',
             accentBg: 'rgba(212,163,115,0.1)',
@@ -575,7 +575,7 @@ export const THEME_PRESETS = {
         },
         crimson_cream: {
             label: 'Багрянец и кремовый',
-            bg: 'rgb(28,4,4)', blur: 'none',
+            bg: 'rgb(28,4,4)',
             text: '#fff3e0', textMuted: '#c09070',
             accent: '#e85555', accentDim: 'rgba(214,40,40,0.45)',
             accentBg: 'rgba(214,40,40,0.1)',
@@ -588,7 +588,7 @@ export const THEME_PRESETS = {
         },
         teal_midnight: {
             label: 'Бирюза и полночь',
-            bg: 'rgb(10,12,24)', blur: 'none',
+            bg: 'rgb(10,12,24)',
             text: '#d8f0ee', textMuted: '#5a8a88',
             accent: '#2ec4b6', accentDim: 'rgba(46,196,182,0.4)',
             accentBg: 'rgba(46,196,182,0.1)',
@@ -601,7 +601,7 @@ export const THEME_PRESETS = {
         },
         ember_sand: {
             label: 'Уголь и песок',
-            bg: 'rgb(22,10,4)', blur: 'none',
+            bg: 'rgb(22,10,4)',
             text: '#f5ebe0', textMuted: '#b08060',
             accent: '#ff6f3c', accentDim: 'rgba(255,111,60,0.4)',
             accentBg: 'rgba(255,111,60,0.1)',
@@ -614,7 +614,7 @@ export const THEME_PRESETS = {
         },
         sage_mist: {
             label: 'Шалфей и туман',
-            bg: 'rgb(10,18,14)', blur: 'none',
+            bg: 'rgb(10,18,14)',
             text: '#e7edeb', textMuted: '#7a9a88',
             accent: '#69a481', accentDim: 'rgba(105,164,129,0.4)',
             accentBg: 'rgba(105,164,129,0.1)',
@@ -627,7 +627,7 @@ export const THEME_PRESETS = {
         },
         glass: {
             label: 'Стекло (тёмное)',
-            bg: 'rgb(40,40,55)', blur: 'none',
+            bg: 'rgb(40,40,55)',
             text: '#f0efff', textMuted: '#9898b8',
             accent: '#a78bfa', accentDim: 'rgba(167,139,250,0.5)',
             accentBg: 'rgba(167,139,250,0.14)',
@@ -640,7 +640,7 @@ export const THEME_PRESETS = {
         },
         hacker: {
             label: 'Хакер',
-            bg: 'rgb(6,14,6)', blur: 'none',
+            bg: 'rgb(6,14,6)',
             text: '#88ee88', textMuted: '#3a6640',
             accent: '#00ff88', accentDim: 'rgba(0,255,136,0.45)',
             accentBg: 'rgba(0,255,136,0.08)',
@@ -653,7 +653,7 @@ export const THEME_PRESETS = {
         },
         native: {
             label: 'Родная ST',
-            bg: 'var(--stBackplateColor, rgb(20,20,24))', blur: 'none',
+            bg: 'var(--stBackplateColor, rgb(20,20,24))',
             text: 'var(--SmartThemeBodyColorText, #e2e2e6)', textMuted: 'var(--SmartThemeBodyColorTextMuted, #72728a)',
             accent: 'var(--smartThemeMenuColorText, #7c6dfa)', accentDim: 'var(--white30a, rgba(255,255,255,0.3))',
             accentBg: 'var(--white10a, rgba(255,255,255,0.08))',
@@ -682,7 +682,6 @@ export const THEME_VAR_DEFS = [
         { key: 'codeBg',     label: 'Code BG',       hint: 'rgba(r,g,b,a)' },
         { key: 'danger',     label: 'Danger Color',  hint: '#ff5c5c' },
         { key: 'success',    label: 'Success Color', hint: '#4caf7d' },
-        { key: 'blur',       label: 'Blur',          hint: 'blur(14px)' },
         { key: 'border',     label: 'Border',        hint: '1px solid rgba(...)' },
         { key: 'radius',     label: 'Corner Radius', hint: '10px' },
         { key: 'shadow',     label: 'Shadow',        hint: 'CSS box-shadow' },
@@ -691,7 +690,7 @@ export const THEME_VAR_DEFS = [
     ];
 
 export const THEME_CSS_MAP = {
-        bg: '--scp-bg', blur: '--scp-blur', border: '--scp-border',
+        bg: '--scp-bg', border: '--scp-border',
         text: '--scp-text', textMuted: '--scp-text-muted',
         accent: '--scp-accent', accentDim: '--scp-accent-dim', accentBg: '--scp-accent-bg',
         headerBg: '--scp-header-bg', toolbarBg: '--scp-toolbar-bg',
@@ -838,7 +837,6 @@ export const I = {
         user: `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
         stop: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>`,
         book: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
-        opacity: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg>`,
         check: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
         chevron: `<svg class="scp-sess-chevron" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>`,
         gear: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,

@@ -3,6 +3,8 @@ import { DBG_STATE, DBG_SKIP } from '../state.js';
 import { getSettings, getCurrentSession, hasSessionOverrides } from '../session.js';
 import { extVersion } from '../index.js';
 
+let _lastDiffTs = 0;
+
 export function _dbgStrip(s) {
     const r = {};
     for (const [k, v] of Object.entries(s)) { if (!DBG_SKIP.has(k)) r[k] = v; }
@@ -24,6 +26,12 @@ export function _dbgSnapshotSettings() {
 
 export function _dbgDiffSettings() {
     if (!DBG_STATE.snapshot) return;
+    // Троттлинг: saveSettings() вызывается до нескольких раз за генерацию,
+    // полный stringify всех ключей на каждый вызов — лишняя работа.
+    // Изменения за окно троттлинга не теряются: снапшот обновляется только здесь.
+    const now = Date.now();
+    if (now - _lastDiffTs < 1000) return;
+    _lastDiffTs = now;
     try {
         const cur = _dbgStrip(getSettings());
         const diff = {};
