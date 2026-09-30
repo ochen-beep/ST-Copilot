@@ -6,10 +6,10 @@
 /* ── Base Variable Defaults ──────────────────────────────────── */
 
 .scp-window {
-    --scp-bg:          rgba(18,18,22,0.94);
-    --scp-blur:        blur(14px);
+    --scp-bg:          rgb(18,18,22);
+    --scp-blur:        none;
     --scp-border:      1px solid rgba(255,255,255,0.09);
-    --scp-shadow:      0 24px 64px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4);
+    --scp-shadow:      0 2px 8px rgba(0,0,0,0.4);
     --scp-text:        #e2e2e6;
     --scp-text-muted:  #72728a;
     --scp-accent:      #7c6dfa;
@@ -37,8 +37,6 @@
     width: 440px; height: 600px;
     min-width: 380px; min-height: 300px;
     background: var(--scp-bg);
-    backdrop-filter: var(--scp-blur);
-    -webkit-backdrop-filter: var(--scp-blur);
     border: var(--scp-border);
     border-radius: var(--scp-radius);
     box-shadow: var(--scp-shadow);
@@ -96,17 +94,15 @@
     gap: 8px;
 }
 .scp-header:active { cursor: grabbing; }
-.scp-header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.scp-logo { display: flex; align-items: center; color: var(--scp-accent); flex-shrink: 0; }
-.scp-title {
-    font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
-    text-transform: uppercase; color: var(--scp-text); flex-shrink: 0;
-}
+.scp-header-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 1; overflow: visible; }
+/* Compact context widget (depth slider + value) embedded in the header. */
+.scp-ctx-widget { display: flex; align-items: center; gap: 4px; flex-shrink: 1; min-width: 0; }
 .scp-char-badge {
     display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 20px;
     background: var(--scp-accent-bg); color: var(--scp-accent);
     border: 1px solid var(--scp-accent-dim);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;
+    flex-shrink: 0;
 }
 .scp-header-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 
@@ -176,16 +172,6 @@
 
 /* ── Toolbar ─────────────────────────────────────────────────── */
 
-.scp-toolbar {
-    flex-shrink: 0;
-    display: flex; align-items: center; gap: 5px;
-    padding: 6px 10px;
-    background: var(--scp-toolbar-bg);
-    border-bottom: var(--scp-border);
-    overflow: visible;
-    white-space: nowrap;
-}
-
 /* ── Session Dropdown ────────────────────────────────────────── */
 
 .scp-sess-wrap { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 120px; }
@@ -223,7 +209,7 @@
     min-width: 200px; width: max-content; max-width: 400px;
     background: var(--scp-bg); border: var(--scp-border);
     border-radius: 10px;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     z-index: 99950; overflow: hidden;
 }
 .scp-sess-panel.open {
@@ -325,16 +311,6 @@
 .scp-tbtn-danger:hover { color: var(--scp-danger); background: rgba(255,92,92,0.08); border-color: rgba(255,92,92,0.3); }
 
 
-.scp-toolbar-sep {
-    width: 1px; height: 18px; background: rgba(255,255,255,0.08);
-    flex-shrink: 0; margin: 0 2px;
-}
-
-.scp-depth-label {
-    font-size: 10px; color: var(--scp-text-muted);
-    text-transform: uppercase; letter-spacing: 0.05em; flex-shrink: 0;
-}
-
 .scp-depth-val {
     font-size: 11px; color: var(--scp-accent);
     width: 26px; height: 20px; min-width: 26px;
@@ -421,20 +397,30 @@
     border-radius: 8px; transition: background 0.15s; position: relative;
 }
 .scp-msg:hover .scp-msg-actions { opacity: 1; pointer-events: auto; }
-.scp-msg-user { 
-    background: var(--scp-msg-user-bg); 
-    flex-direction: row-reverse; 
-    text-align: left; 
+.scp-msg-user {
+    background: var(--scp-msg-user-bg);
+    text-align: left;
 }
-.scp-msg-user .scp-msg-body { 
-    align-items: flex-end; 
-    padding-left: 2.5%; 
+.scp-msg-user .scp-msg-body {
+    align-items: stretch;
 }
-.scp-msg-assistant { 
-    background: var(--scp-msg-ai-bg); 
+.scp-msg-assistant {
+    background: var(--scp-msg-ai-bg);
 }
-.scp-msg-assistant .scp-msg-body {
-    padding-right: 3.5%;
+/* User/assistant messages use a column layout: a thin header (avatar + meta/tokens)
+   acts as a separator on top, the body fills the full width below. */
+.scp-msg-user, .scp-msg-assistant {
+    flex-direction: column;
+    gap: 4px;
+}
+.scp-msg-header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; flex-shrink: 0; padding: 0 2px;
+    user-select: none;
+}
+.scp-msg-user .scp-msg-header { flex-direction: row-reverse; }
+.scp-msg-header-right {
+    display: flex; align-items: center; gap: 8px;
 }
 
 .scp-msg-avatar {
@@ -478,6 +464,46 @@
     margin: 6px 0; color: var(--scp-text); white-space: pre;
 }
 
+/* Обёртка блока кода с тулбаром (язык + копировать). Визуально повторяет
+   .scp-html-block-toolbar, чтобы оба типа блоков выглядели одинаково. */
+.scp-code-block-wrap {
+    margin: 6px 0; overflow: hidden;
+    background: var(--scp-code-bg);
+    border: 1px solid rgba(255,255,255,0.07); border-radius: 6px;
+}
+/* Рамка и отступы уезжают на обёртку — у самого <pre> их убираем.
+   Селектор скоупится обёрткой, чтобы не задеть .scp-html-block-code. */
+.scp-code-block-wrap .scp-code-block {
+    margin: 0; border: none; border-radius: 0; background: none;
+}
+.scp-code-toolbar {
+    display: flex; align-items: center; gap: 4px;
+    padding: 3px 5px 3px 10px;
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.scp-code-lang {
+    flex: 1; min-width: 0;
+    font-family: var(--scp-font-mono); font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--scp-text-muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.scp-code-copy-btn {
+    display: inline-flex; align-items: center; gap: 4px; flex: none;
+    background: none; border: 1px solid transparent; border-radius: 4px;
+    color: var(--scp-text-muted); cursor: pointer;
+    font-family: var(--scp-font); font-size: 10px; padding: 2px 8px;
+    transition: all 0.15s;
+}
+.scp-code-copy-btn:hover,
+.scp-code-copy-btn.copied {
+    color: var(--scp-accent);
+    background: var(--scp-accent-bg);
+    border-color: var(--scp-accent-dim);
+}
+.scp-code-copy-btn svg { overflow: visible; flex-shrink: 0; width: 11px; height: 11px; }
+
 .scp-msg-meta { 
     font-size: 10px; color: var(--scp-text-muted); 
     position: absolute; bottom: 0; left: 0; 
@@ -486,8 +512,17 @@
 
 .scp-msg-actions {
     display: flex; gap: 3px; opacity: 0; pointer-events: none;
-    transition: opacity 0.15s; 
+    transition: opacity 0.15s;
     position: absolute; bottom: -2px; right: 0;
+}
+/* Touch screens have no reliable :hover — a tap flashes it then drops it,
+   so the buttons "blink and vanish". Force them always visible there. */
+@media (hover: none) {
+    .scp-msg-actions {
+        opacity: 1; pointer-events: auto;
+        position: relative; bottom: auto; right: auto;
+        margin-top: 4px;
+    }
 }
 
 .scp-msg-btn {
@@ -499,6 +534,13 @@
 .scp-msg-btn:hover { color: var(--scp-accent); background: var(--scp-accent-bg); border-color: var(--scp-accent-dim); }
 .scp-msg-btn-danger:hover { color: var(--scp-danger); background: rgba(255,92,92,0.08); border-color: rgba(255,92,92,0.3); }
 .scp-msg.is-editing .scp-msg-actions { display: none; }
+
+/* Bigger tap targets on touch so the always-visible buttons are usable with a finger. */
+@media (hover: none) {
+    .scp-msg-btn { width: 32px; height: 32px; }
+    .scp-msg-btn svg { width: 16px; height: 16px; }
+    .scp-msg-actions { gap: 2px; }
+}
 
 .scp-msg-attachments {
     display: flex;
@@ -644,32 +686,76 @@
 .scp-send-btn:active { transform: scale(0.93); }
 .scp-send-btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 
-/* ── Dock Icon ───────────────────────────────────────────────── */
+/* ── Launcher buttons ──────────────────────────────────────────── */
+/* v2.10.0: inline button in ST's quick-reply bar (#qr--bar), plus the optional
+   floating dock-icon FAB. Which launchers are shown is set by launcherMode
+   ('bar' | 'floating' | 'both'). */
+
+.scp-launcher {
+    display: inline-flex; align-items: center; justify-content: center;
+    /* #qr--bar is display:flex with flex-wrap:wrap. Be a fixed-size flex item so
+       the launcher never grows/shrinks or forces siblings to wrap on mobile. */
+    flex: 0 0 auto;
+    min-width: 40px; min-height: 36px; padding: 0 10px !important;
+    border-radius: 8px; cursor: pointer; user-select: none;
+    color: var(--SmartThemeBodyColor, var(--scp-text, rgba(255,255,255,0.82)));
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.10);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, filter 0.15s;
+    white-space: nowrap;
+    font-size: 16px; /* emoji sizing */
+}
+@media (hover: hover) {
+    .scp-launcher:hover { background: rgba(255,255,255,0.12); }
+}
+.scp-launcher.scp_launcher_active {
+    background: color-mix(in srgb, var(--scp-accent, #7c6dfa) 28%, rgba(255,255,255,0.06));
+    border-color: color-mix(in srgb, var(--scp-accent, #7c6dfa) 55%, transparent);
+    color: var(--scp-accent, #7c6dfa);
+}
+.scp-launcher.scp_generating {
+    animation: scp-launcher-pulse 1.4s ease-in-out infinite;
+    will-change: transform;
+}
+@keyframes scp-launcher-pulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .scp-launcher.scp_generating { animation: none; opacity: 0.8; will-change: auto; }
+}
+
+/* ── Floating dock icon (FAB) ─────────────────────────────────── */
+/* v2.10.0: restored as an optional launcher mode (launcherMode: 'floating' | 'both').
+   Position is set inline by JS (persisted in localStorage); bottom/right below are
+   the default placement until a saved position is restored. */
 
 .scp-dock-icon {
-    position: fixed; 
-    bottom: 80px; 
+    position: fixed;
+    bottom: 80px;
     right: 20px;
-    width: 46px; 
-    height: 46px; 
+    width: 46px;
+    height: 46px;
     border-radius: 50%;
-    background: var(--scp-accent-bg); 
-    border: 1px solid var(--scp-accent-dim);
-    color: var(--scp-accent); 
+    background: var(--scp-accent-bg, rgba(124,109,250,0.15));
+    border: 1px solid var(--scp-accent-dim, rgba(124,109,250,0.5));
+    color: var(--scp-accent, #7c6dfa);
     cursor: pointer;
-    display: flex; 
-    align-items: center; 
+    display: flex;
+    align-items: center;
     justify-content: center;
     z-index: 99999;
     box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-    transition: transform 0.2s;
+    transition: transform 0.2s, background 0.2s, color 0.2s;
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
     animation: scp-dock-appear 0.25s cubic-bezier(0.34,1.56,0.64,1);
 }
 .scp-dock-icon:hover {
-    background: var(--scp-accent); color: #fff;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 20px var(--scp-accent-dim);
+    background: var(--scp-accent, #7c6dfa);
+    color: #fff;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 20px var(--scp-accent-dim, rgba(124,109,250,0.5));
     transform: scale(1.08);
 }
 .scp-dock-icon.scp-icon-dragging {
@@ -678,14 +764,64 @@
     will-change: left, top;
     transform: scale(1.0) !important;
 }
+.scp-dock-icon.scp_generating {
+    animation: scp-dock-pulse 1.4s ease-in-out infinite;
+    will-change: transform;
+}
+@keyframes scp-dock-pulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.12); }
+}
 .scp-dock-pulse {
     position: absolute; width: 10px; height: 10px; border-radius: 50%;
-    background: var(--scp-success); top: 2px; right: 2px;
+    background: var(--scp-success, #43d17c); top: 2px; right: 2px;
     border: 2px solid rgba(0,0,0,0.5);
 }
 @keyframes scp-dock-appear {
     from { transform: scale(0.4); opacity: 0; }
     to   { transform: scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .scp-dock-icon.scp_generating { animation: none; opacity: 0.8; will-change: auto; }
+    .scp-dock-icon { animation: none; }
+}
+
+/* ── Mobile fullscreen window mode ────────────────────────────── */
+/* v2.10.0: window fills viewport, avoids ST chrome (top-bar + send_form). */
+
+@media screen and (max-width: 900px) {
+    #scp-window.scp_mobile {
+        position: fixed !important;
+        top: var(--scp-st-top, 0px) !important;
+        left: 0 !important; right: 0 !important;
+        width: 100% !important; max-width: 100% !important;
+        height: calc(100dvh - var(--scp-st-top, 0px) - var(--scp-st-bottom, 0px)) !important;
+        max-height: calc(100dvh - var(--scp-st-top, 0px) - var(--scp-st-bottom, 0px)) !important;
+        transform: none !important;
+        border: none !important; border-radius: 0 !important;
+        box-shadow: none !important;
+        padding-top: env(safe-area-inset-top, 0);
+        padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+    #scp-window.scp_mobile .scp-messages {
+        flex: 1 !important; min-height: 0 !important; max-height: none !important;
+        -webkit-overflow-scrolling: touch;
+    }
+    #scp-window.scp_mobile .scp-header { cursor: default !important; touch-action: pan-y !important; }
+    #scp-window.scp_mobile .scp-rh { display: none !important; }
+    .scp-dock-icon {
+        bottom: 120px;
+        right: 16px;
+    }
+}
+/* dvh fallback for older browsers */
+@supports not (height: 100dvh) {
+    @media screen and (max-width: 900px) {
+        #scp-window.scp_mobile {
+            height: calc(100vh - var(--scp-st-top, 0px) - var(--scp-st-bottom, 0px)) !important;
+            max-height: calc(100vh - var(--scp-st-top, 0px) - var(--scp-st-bottom, 0px)) !important;
+        }
+    }
 }
 
 /* ── Context Inspector Modal ─────────────────────────────────── */
@@ -696,7 +832,7 @@
     width: 100%; width: 100vw;
     height: 100vh; height: 100dvh;
     background: rgba(0,0,0,0.82);
-    backdrop-filter: blur(8px); z-index: 99999;
+    backdrop-filter: none; z-index: 99999;
     display: flex; align-items: center; justify-content: center;
     animation: scp-modal-fade 0.15s ease;
     box-sizing: border-box;
@@ -706,7 +842,7 @@
 
 .scp-modal {
     background: var(--scp-bg); border: var(--scp-border);
-    border-radius: 12px; box-shadow: 0 32px 80px rgba(0,0,0,0.7);
+    border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     width: 680px; max-width: 100%; max-height: 80vh; max-height: 80dvh;
     display: flex; flex-direction: column; overflow: hidden;
     animation: scp-modal-slide 0.18s cubic-bezier(0.34,1.56,0.64,1);
@@ -755,7 +891,7 @@
     width: 100%; width: 100vw;
     height: 100vh; height: 100dvh;
     background: rgba(0,0,0,0.72);
-    backdrop-filter: blur(8px); z-index: 999999;
+    backdrop-filter: none; z-index: 999999;
     display: flex; align-items: center; justify-content: center;
     opacity: 0; transition: opacity 0.15s;
     box-sizing: border-box;
@@ -772,7 +908,7 @@
     min-width: 280px; max-width: 440px; width: min(90vw, 440px);
     max-height: calc(100dvh - 40px); max-height: calc(100vh - 40px);
     overflow-y: auto;
-    box-shadow: 0 40px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04) inset;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     animation: scp-dialog-in 0.2s cubic-bezier(0.34,1.56,0.64,1);
     color: var(--SmartThemeBodyColorText, #e2e2e6);
     font-family: var(--primaryFontFamily, system-ui, sans-serif);
@@ -991,7 +1127,7 @@
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 10px;
     padding: 12px;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.65), 0 4px 12px rgba(0,0,0,0.35);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     display: flex; flex-direction: column; gap: 10px;
     width: 210px;
     animation: scp-panel-in 0.15s ease;
@@ -1318,9 +1454,11 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
 /* ── HTML Block ──────────────────────────────────────────────── */
 
 .scp-html-block {
-    margin: 8px 0;
+    margin: 8px -5px;
     border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 8px;
+    border-left: none;
+    border-right: none;
+    border-radius: 5px;
     overflow: hidden;
     background: rgba(0,0,0,0.15);
 }
@@ -1472,8 +1610,8 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
         0 24px 64px rgba(0,0,0,0.72),
         0 6px 20px rgba(0,0,0,0.45),
         0 0 0 1px rgba(255,255,255,0.04) inset;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -1616,15 +1754,10 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
         max-width: calc(100vw - 10px) !important;
         max-height: calc(100dvh - 10px) !important;
     }
-    .scp-toolbar { padding: 6px 5px; gap: 4px; }
     .scp-tbtn { width: 24px; height: 24px; }
     .scp-sess-wrap { min-width: 110px; }
     .scp-depth-slider { width: 40px; }
 
-    .scp-dock-icon {
-        bottom: 120px;
-        right: 16px;
-    }
     .scp-dialog-box {
         width: min(90vw, 420px);
         max-height: calc(90dvh - 40px);
@@ -1648,15 +1781,15 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     width: 100%; width: 100vw;
     height: 100vh; height: 100dvh;
     background: rgba(0,0,0,0.72);
-    backdrop-filter: blur(6px); z-index: 99998;
+    backdrop-filter: none; z-index: 99998;
     display: flex; align-items: center; justify-content: center;
     animation: scp-modal-fade 0.18s ease;
     box-sizing: border-box;
     padding: 16px;
     overscroll-behavior: contain;
     -webkit-tap-highlight-color: transparent;
-    --scp-bg: rgba(18,18,22,0.97);
-    --scp-blur: blur(14px);
+    --scp-bg: rgb(18,18,22);
+    --scp-blur: none;
     --scp-border: 1px solid rgba(255,255,255,0.09);
     --scp-text: #e2e2e6;
     --scp-text-muted: #72728a;
@@ -1679,11 +1812,11 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     height: min(760px, calc(100vh - 32px));
     height: min(760px, calc(100dvh - 32px));
     background: var(--scp-bg);
-    backdrop-filter: var(--scp-blur);
-    -webkit-backdrop-filter: var(--scp-blur);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     border: var(--scp-border);
     border-radius: 14px;
-    box-shadow: var(--scp-shadow), 0 0 0 1px rgba(255,255,255,0.04) inset;
+    box-shadow: var(--scp-shadow);
     display: flex; flex-direction: column; overflow: hidden;
     color: var(--scp-text);
     font-family: var(--scp-font);
@@ -1936,7 +2069,7 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
 .scp-lb-entry-detail {
     position: absolute; inset: 0;
     background: var(--scp-bg);
-    backdrop-filter: var(--scp-blur);
+    backdrop-filter: none;
     display: flex; flex-direction: column; overflow: hidden;
     animation: scp-panel-in 0.18s cubic-bezier(0.34,1.2,0.64,1);
 }
@@ -2139,7 +2272,7 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     min-width: 180px; width: max-content; max-width: 280px;
     background: var(--scp-bg); border: var(--scp-border);
     border-radius: 10px;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     z-index: 99960; overflow: hidden;
     padding: 5px;
 }
@@ -2633,15 +2766,15 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     top: 0; left: 0;
     width: 100vw; height: 100vh; height: 100dvh;
     background: rgba(0,0,0,0.72);
-    backdrop-filter: blur(6px);
+    backdrop-filter: none;
     z-index: 99997;
     display: flex; align-items: center; justify-content: center;
     animation: scp-modal-fade 0.18s ease;
     box-sizing: border-box;
     padding: 16px;
     overscroll-behavior: contain;
-    --scp-bg: rgba(18,18,22,0.97);
-    --scp-blur: blur(14px);
+    --scp-bg: rgb(18,18,22);
+    --scp-blur: none;
     --scp-border: 1px solid rgba(255,255,255,0.09);
     --scp-text: #e2e2e6;
     --scp-text-muted: #72728a;
@@ -2664,11 +2797,11 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     height: min(88vh, 880px);
     height: min(88dvh, 880px);
     background: var(--scp-bg);
-    backdrop-filter: var(--scp-blur);
-    -webkit-backdrop-filter: var(--scp-blur);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     border: var(--scp-border);
     border-radius: 14px;
-    box-shadow: var(--scp-shadow), 0 0 0 1px rgba(255,255,255,0.04) inset;
+    box-shadow: var(--scp-shadow);
     display: flex; flex-direction: column; overflow: hidden;
     color: var(--scp-text);
     font-family: var(--scp-font);
@@ -3034,7 +3167,7 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     background: var(--SmartThemeBlurTrans, rgba(14,14,18,0.98));
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 10px;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.65), 0 4px 12px rgba(0,0,0,0.35);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     animation: scp-panel-in 0.15s ease;
     max-width: min(320px, 92vw);
 }
@@ -3381,7 +3514,7 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     min-width: 72px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
     z-index: 10;
-    backdrop-filter: blur(8px);
+    backdrop-filter: none;
     animation: scp-fade-in 0.1s ease;
 }
 
@@ -3649,8 +3782,8 @@ details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: ro
     position: absolute;
     inset: 0;
     background: var(--scp-bg);
-    backdrop-filter: var(--scp-blur);
-    -webkit-backdrop-filter: var(--scp-blur);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     display: flex;
     flex-direction: column;
     z-index: 20;
@@ -3900,13 +4033,17 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
     font-size: 9px;
     color: var(--scp-text-muted);
     opacity: 0.55;
-    text-align: center;
-    margin-top: 4px;
     letter-spacing: 0.03em;
     font-variant-numeric: tabular-nums;
     user-select: none;
     pointer-events: none;
     line-height: 1;
+}
+/* In user/assistant messages the meta (timestamp) lives in the header, not absolute in body */
+.scp-msg-user .scp-msg-meta, .scp-msg-assistant .scp-msg-meta {
+    position: static;
+    opacity: 0.5;
+    font-size: 10px;
 }
 
 /* ── Swipes ───────────────────────────────────────────────────── */
@@ -4028,28 +4165,9 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
     border-radius: 4px;
 }
 
-/* ── Window custom background ────────────────────────────────── */
-.scp-window.scp-has-bg {
-    background: none !important;
-}
-.scp-window.scp-has-bg::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: var(--scp-radius);
-    background-image: var(--scp-bg-image, none);
-    background-size: cover;
-    background-position: center;
-    z-index: -2;
-}
-.scp-window.scp-has-bg::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: var(--scp-radius);
-    background: rgba(0,0,0,var(--scp-bg-dim, 0.5));
-    z-index: -1;
-}
+/* ── Window custom background (removed in v2.10.0 — performance) ── */
+/* Custom image/video backgrounds disabled for performance. Class kept as no-op for backward-compat. */
+.scp-window.scp-has-bg { /* no-op */ }
 
 /* ── Attachment bar ──────────────────────────────────────────── */
 .scp-attachment-bar {
@@ -4171,7 +4289,7 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
     align-items: center;
     justify-content: center;
     animation: scp-modal-fade 0.15s ease;
-    backdrop-filter: blur(4px);
+    backdrop-filter: none;
     cursor: zoom-in;
 }
 .scp-lightbox-text {
@@ -4740,7 +4858,7 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
 
 /* ── Memory Toast Enhancements ── */
 .scp-memory-toast {
-    box-shadow: 0 16px 40px rgba(0,0,0,0.8) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4) !important;
     border-left: 4px solid var(--scp-accent) !important;
     transform-origin: bottom right;
 }
@@ -4959,7 +5077,7 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
     min-width: 170px; width: max-content;
     background: var(--scp-bg); border: var(--scp-border);
     border-radius: 10px;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     z-index: 99950; overflow: hidden; padding: 5px;
 }
 .scp-menu-panel.open { display: block; animation: scp-panel-in 0.15s ease; }
@@ -4981,13 +5099,13 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
     position: fixed; top: 0; left: 0;
     width: 100vw; height: 100vh; height: 100dvh;
     background: rgba(0,0,0,0.72);
-    backdrop-filter: blur(6px); z-index: 99998;
+    backdrop-filter: none; z-index: 99998;
     display: flex; align-items: center; justify-content: center;
     animation: scp-modal-fade 0.18s ease;
     box-sizing: border-box; padding: 16px;
     overscroll-behavior: contain;
-    --scp-bg: rgba(18,18,22,0.97);
-    --scp-blur: blur(14px);
+    --scp-bg: rgb(18,18,22);
+    --scp-blur: none;
     --scp-border: 1px solid rgba(255,255,255,0.09);
     --scp-text: #e2e2e6;
     --scp-text-muted: #72728a;
@@ -5008,11 +5126,11 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
     height: min(720px, calc(100vh - 32px));
     height: min(720px, calc(100dvh - 32px));
     background: var(--scp-bg);
-    backdrop-filter: var(--scp-blur);
-    -webkit-backdrop-filter: var(--scp-blur);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     border: var(--scp-border);
     border-radius: 14px;
-    box-shadow: var(--scp-shadow), 0 0 0 1px rgba(255,255,255,0.04) inset;
+    box-shadow: var(--scp-shadow);
     display: flex; flex-direction: column; overflow: hidden;
     color: var(--scp-text); font-family: var(--scp-font);
     animation: scp-modal-slide 0.22s cubic-bezier(0.34,1.4,0.64,1);
@@ -5067,7 +5185,7 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
     content: ''; position: absolute; inset: 0;
     background-image: var(--scp-char-banner-img, none);
     background-size: cover; background-position: center;
-    filter: blur(15px) saturate(1.2); transform: scale(1.1); z-index: 0;
+    transform: scale(1.1); z-index: 0;
 }
 .scp-char-banner::after {
     content: ''; position: absolute; inset: 0;
@@ -5142,7 +5260,7 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
     background: rgba(0, 0, 0, 0.65) !important;
     border-color: rgba(255, 255, 255, 0.15) !important;
     color: #fff !important;
-    backdrop-filter: blur(6px);
+    backdrop-filter: none;
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 .scp-char-banner-save-btn {

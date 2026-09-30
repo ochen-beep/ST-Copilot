@@ -1,6 +1,6 @@
 import { getSettings, saveSettings } from '../session.js';
 import { state } from '../state.js';
-import { THEME_CSS_MAP, THEME_PRESETS, ICON_STORAGE_KEY, WIN_ID, EXT_DISPLAY } from '../constants.js';
+import { THEME_CSS_MAP, THEME_PRESETS, WIN_ID, EXT_DISPLAY } from '../constants.js';
 import { scrollToBottom, saveScrollPosition, restoreScrollPosition } from './ui-chat.js';
 
 const SCP_TOP_Z_INDEX = 2147483000;
@@ -25,157 +25,54 @@ export function bringWindowToFront() {
 }
 
 export function makeDraggable(handle, target) {
-    let active = false, ox = 0, oy = 0, sl = 0, st = 0;
-    let _rafId = null;
-    let _anchorX = 0, _anchorY = 0;
-
-    let tx = 0, ty = 0;
-    let cx = 0, cy = 0;
-    let vx = 0, vy = 0;
-
-    let rotX = 0, rotY = 0, rotZ = 0, skewX = 0, skewY = 0;
-    let vRotX = 0, vRotY = 0, vRotZ = 0, vSkewX = 0, vSkewY = 0;
-
-    let isWobbly = true;
-
-    const tick = () => {
-        if (!active && 
-            Math.abs(vx) < 0.1 && Math.abs(vy) < 0.1 &&
-            Math.abs(vRotX) < 0.1 && Math.abs(vRotY) < 0.1 && Math.abs(vRotZ) < 0.1 &&
-            Math.abs(rotX) < 0.1 && Math.abs(rotY) < 0.1 && Math.abs(rotZ) < 0.1 &&
-            Math.abs(tx - cx) < 0.5 && Math.abs(ty - cy) < 0.5) {
-            
-            target.style.transform = '';
-            target.style.transformOrigin = '';
-            target.style.left = `${Math.max(0, tx)}px`;
-            target.style.top = `${Math.max(0, ty)}px`;
-            _rafId = null;
-            
-            vx = vy = 0;
-            rotX = rotY = rotZ = skewX = skewY = 0;
-            vRotX = vRotY = vRotZ = vSkewX = vSkewY = 0;
-            
-            saveWindowState(target);
-            return;
-        }
-
-        if (isWobbly) {
-            const tension = 0.28;   
-            const friction = 0.62;  
-            const aTension = 0.18;  
-            const aFriction = 0.72; 
-
-            const dx = tx - cx;
-            const dy = ty - cy;
-            
-            vx = (vx + dx * tension) * friction;
-            vy = (vy + dy * tension) * friction;
-            cx += vx;
-            cy += vy;
-
-            const targetRotY = dx * 0.12 + vx * 0.02; 
-            const targetRotX = -(dy * 0.12 + vy * 0.02);
-            const targetRotZ = (-dx * _anchorY + dy * _anchorX) * 0.05;
-            const targetSkewX = -vx * 0.03;
-            const targetSkewY = -vy * 0.03;
-
-            vRotX = (vRotX + (targetRotX - rotX) * aTension) * aFriction;
-            vRotY = (vRotY + (targetRotY - rotY) * aTension) * aFriction;
-            vRotZ = (vRotZ + (targetRotZ - rotZ) * aTension) * aFriction;
-            vSkewX = (vSkewX + (targetSkewX - skewX) * aTension) * aFriction;
-            vSkewY = (vSkewY + (targetSkewY - skewY) * aTension) * aFriction;
-
-            rotX += vRotX;
-            rotY += vRotY;
-            rotZ += vRotZ;
-            skewX += vSkewX;
-            skewY += vSkewY;
-
-            const clamp = (val, max) => Math.max(-max, Math.min(max, val));
-            const cRotX = clamp(rotX, 15);
-            const cRotY = clamp(rotY, 15);
-            const cRotZ = clamp(rotZ, 8);
-            const cSkewX = clamp(skewX, 5);
-            const cSkewY = clamp(skewY, 5);
-
-            const speed = Math.sqrt(vx*vx + vy*vy);
-            const scaleStr = Math.max(0.98, 1 - speed * 0.0004);
-
-            target.style.left = `${cx}px`;
-            target.style.top = `${cy}px`;
-            
-            target.style.transformOrigin = `${(_anchorX * 50 + 50)}% ${(_anchorY * 50 + 50)}%`;
-            target.style.transform = `perspective(1200px) scale(${scaleStr}) rotateX(${cRotX}deg) rotateY(${cRotY}deg) rotateZ(${cRotZ}deg) skew(${cSkewX}deg, ${cSkewY}deg)`;
-        } else {
-            cx = tx; cy = ty;
-            vx = vy = 0;
-            rotX = rotY = rotZ = skewX = skewY = 0;
-            vRotX = vRotY = vRotZ = vSkewX = vSkewY = 0;
-
-            target.style.transform = '';
-            target.style.left = `${Math.max(0, cx)}px`;
-            target.style.top = `${Math.max(0, cy)}px`;
-        }
-
-        _rafId = requestAnimationFrame(tick);
-    };
+    // v2.10.0: simplified to straight drag — no wobble/spring physics (performance).
+    let active = false, offsetX = 0, offsetY = 0;
 
     handle.addEventListener('pointerdown', e => {
-        if (e.target.closest('.scp-hbtn,.scp-tbtn,select,input,button,.scp-opacity-wrap,.scp-rh,.scp-sess-dropdown,.scp-sess-wrap')) return;
-        
-        isWobbly = getSettings().wobbleWindow !== false && !getSettings().performanceMode;
+        if (e.target.closest('.scp-hbtn,.scp-tbtn,select,input,button,.scp-opacity-wrap,.scp-rh,.scp-sess-dropdown,.scp-sess-wrap,.scp-menu-dropdown,.scp-pick-wrap,.scp-ctx-widget,.scp-depth-clickable,.scp-char-badge,.scp-pick-badge')) return;
 
-        if (_rafId && isWobbly) {
-            sl = cx; 
-            st = cy;
-            const w = target.offsetWidth;
-            const h = target.offsetHeight;
-            _anchorX = (e.clientX - (sl + w/2)) / (w/2);
-            _anchorY = (e.clientY - (st + h/2)) / (h/2);
-        } else {
-            const r = target.getBoundingClientRect();
-            sl = r.left; 
-            st = r.top;
-            _anchorX = (e.clientX - (r.left + r.width/2)) / (r.width/2);
-            _anchorY = (e.clientY - (r.top + r.height/2)) / (r.height/2);
-            
-            cx = sl; cy = st;
-            vx = vy = 0;
-            rotX = rotY = rotZ = skewX = skewY = 0;
-            vRotX = vRotY = vRotZ = vSkewX = vSkewY = 0;
-        }
+        // Skip drag on mobile — window is fullscreen there.
+        const isMobile = window.innerWidth <= 900 || ('ontouchstart' in window && window.innerWidth <= 1366);
+        if (isMobile) return;
 
-        ox = e.clientX; oy = e.clientY; 
-        tx = sl; ty = st;
+        const r = target.getBoundingClientRect();
+        offsetX = e.clientX - r.left;
+        offsetY = e.clientY - r.top;
 
         active = true;
         handle.setPointerCapture(e.pointerId);
         target.classList.add('scp-dragging');
         e.preventDefault();
-        
-        if (!_rafId) _rafId = requestAnimationFrame(tick);
     });
 
     handle.addEventListener('pointermove', e => {
         if (!active) return;
-        tx = Math.max(0, sl + (e.clientX - ox));
-        ty = Math.max(0, st + (e.clientY - oy));
+        const left = Math.max(0, Math.min(window.innerWidth - target.offsetWidth, e.clientX - offsetX));
+        const top = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - offsetY));
+        target.style.left = `${left}px`;
+        target.style.top = `${top}px`;
+        target.style.right = 'auto';
     });
 
-    const onEnd = () => {
+    const endDrag = e => {
         if (!active) return;
         active = false;
+        try { handle.releasePointerCapture(e.pointerId); } catch(_) {}
         target.classList.remove('scp-dragging');
-        if (!isWobbly) saveWindowState(target);
+        saveWindowState(target);
     };
-
-    handle.addEventListener('pointerup', onEnd);
-    handle.addEventListener('pointercancel', onEnd);
-    handle.style.touchAction = 'none';
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
 }
 
 export function makeResizable(target) {
     const MIN_W = 320, MIN_H = 300;
+    // v2.10.0: resize disabled on mobile — window is fullscreen there.
+    const isMobile = window.innerWidth <= 900 || ('ontouchstart' in window && window.innerWidth <= 1366);
+    if (isMobile) {
+        target.querySelectorAll('.scp-rh').forEach(h => { h.style.display = 'none'; });
+        return;
+    }
     target.querySelectorAll('.scp-rh').forEach(h => {
         const dir = [...h.classList].find(c => /^scp-rh-\w/.test(c))?.replace('scp-rh-', '') || '';
         let active = false, sw, sh, sl, st, sx, sy, _rafId = null, _s = {};
@@ -226,150 +123,13 @@ export function makeResizable(target) {
     });
 }
 
-export function makeIconDraggable(iconTarget) {
-    let dragging = false;
-    let active = false;
-    let offsetX = 0, offsetY = 0;
-    let startX = 0, startY = 0;
-    let _rafId = null;
+// v2.10.0: FAB drag/drop moved to ui-launcher.js (optional launcherMode 'floating'/'both').
+// Kept as no-op for backward-compat with any external callers.
+export function makeIconDraggable(_iconTarget) { /* no-op */ }
 
-    let tx = 0, ty = 0;
-    let cx = 0, cy = 0;
-    let vx = 0, vy = 0;
-
-    let stretch = 0;
-    let vStretch = 0;
-    let angle = 0;
-
-    const tick = () => {
-        const isWobbly = getSettings().wobbleWindow !== false && !getSettings().performanceMode;
-
-        if (!active && !dragging &&
-            Math.abs(vx) < 0.05 && Math.abs(vy) < 0.05 &&
-            Math.abs(tx - cx) < 0.5 && Math.abs(ty - cy) < 0.5 &&
-            Math.abs(stretch) < 0.005 && Math.abs(vStretch) < 0.005) {
-            
-            iconTarget.style.transform = '';
-            iconTarget.style.left = `${tx}px`;
-            iconTarget.style.top = `${ty}px`;
-            _rafId = null;
-            vx = vy = stretch = vStretch = 0;
-            
-            localStorage.setItem(ICON_STORAGE_KEY, JSON.stringify({
-                left: iconTarget.style.left,
-                top: iconTarget.style.top,
-            }));
-            return;
-        }
-
-        if (isWobbly) {
-            const tension = 0.28;   
-            const friction = 0.62;  
-
-            const dx = tx - cx;
-            const dy = ty - cy;
-
-            vx = (vx + dx * tension) * friction;
-            vy = (vy + dy * tension) * friction;
-            cx += vx;
-            cy += vy;
-
-            const speed = Math.sqrt(vx * vx + vy * vy);
-            const targetStretch = Math.min(0.35, speed * 0.015);
-            
-            const sTension = 0.22;
-            const sFriction = 0.68;
-            const dStretch = targetStretch - stretch;
-            vStretch = (vStretch + dStretch * sTension) * sFriction;
-            stretch += vStretch;
-
-            if (speed > 0.5) {
-                angle = Math.atan2(vy, vx) * (180 / Math.PI);
-            }
-
-            iconTarget.style.left = `${cx}px`;
-            iconTarget.style.top = `${cy}px`;
-            iconTarget.style.transform = `rotate(${angle}deg) scale(${1 + stretch}, ${1 - stretch}) rotate(${-angle}deg)`;
-        } else {
-            cx = tx; cy = ty;
-            vx = vy = stretch = vStretch = 0;
-            iconTarget.style.transform = '';
-            iconTarget.style.left = `${tx}px`;
-            iconTarget.style.top = `${ty}px`;
-        }
-
-        _rafId = requestAnimationFrame(tick);
-    };
-
-    iconTarget.addEventListener('pointerdown', e => {
-        if (e.pointerType === 'mouse' && e.button !== 0) return;
-        
-        dragging = false;
-        active = true;
-        
-        const r = iconTarget.getBoundingClientRect();
-        offsetX = e.clientX - r.left;
-        offsetY = e.clientY - r.top;
-        
-        startX = r.left;
-        startY = r.top;
-        
-        cx = r.left;
-        cy = r.top;
-        tx = cx;
-        ty = cy;
-        vx = vy = stretch = vStretch = 0;
-
-        iconTarget.setPointerCapture(e.pointerId);
-        e.preventDefault();
-    });
-
-    iconTarget.addEventListener('pointermove', e => {
-        if (!iconTarget.hasPointerCapture(e.pointerId)) return;
-        
-        const rawX = e.clientX - offsetX;
-        const rawY = e.clientY - offsetY;
-        
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        
-        tx = Math.max(0, Math.min(viewportWidth - 46, rawX));
-        ty = Math.max(0, Math.min(viewportHeight - 46, rawY));
-        
-        const moveDist = Math.sqrt((tx - startX) * (tx - startX) + (ty - startY) * (ty - startY));
-        if (!dragging && moveDist > 6) {
-            dragging = true;
-            iconTarget.classList.add('scp-icon-dragging');
-        }
-
-        if (!_rafId) _rafId = requestAnimationFrame(tick);
-    });
-
-    iconTarget.addEventListener('pointerup', e => {
-        if (iconTarget.hasPointerCapture(e.pointerId)) {
-            iconTarget.releasePointerCapture(e.pointerId);
-        }
-        active = false;
-        iconTarget.classList.remove('scp-icon-dragging');
-        
-        if (dragging) {
-            dragging = false;
-        } else {
-            toggleVisibility();
-        }
-    });
-
-    iconTarget.addEventListener('pointercancel', e => {
-        if (iconTarget.hasPointerCapture(e.pointerId)) {
-            iconTarget.releasePointerCapture(e.pointerId);
-        }
-        dragging = false;
-        active = false;
-        iconTarget.classList.remove('scp-icon-dragging');
-    });
-
-    iconTarget.style.touchAction = 'none';
-}
+// v2.10.0: FAB visibility is driven by ui-launcher.js (syncFloatingIcon) based on
+// launcherMode + window state. Kept as no-op for backward-compat.
+export function updateIconVisibility(_iconEl) { /* no-op */ }
 
 export function saveWindowState(windowEl) {
     if (!windowEl) return;
@@ -434,54 +194,18 @@ export function applyCustomTheme(theme) {
 }
 
 export function applyWindowBackground() {
+    // v2.10.0: Custom image/video backgrounds removed for performance.
+    // Function kept as no-op for backward-compat with settings UI calls.
     const windowEl = document.getElementById(WIN_ID);
     if (!windowEl) return;
-    const s = getSettings();
-    const bgId = s.windowBg || 'none';
-    const dim = (s.windowBgDim ?? 50) / 100;
-
     windowEl.style.removeProperty('--scp-bg-image');
+    windowEl.style.removeProperty('--scp-bg-dim');
     windowEl.classList.remove('scp-has-bg');
-    
-    let mediaEl = document.getElementById('scp-bg-media');
-
-    if (bgId === 'none' || !s.customBackgrounds || !s.customBackgrounds[bgId]) {
-        if (mediaEl) mediaEl.remove();
-        return;
-    }
-
-    const bg = s.customBackgrounds[bgId];
-    const fit = bg.fit || 'cover';
-
-    const isVideo = bg.isVideo;
-    if (mediaEl) {
-        const isVideoTag = mediaEl.tagName.toLowerCase() === 'video';
-        if (isVideo !== isVideoTag) {
-            mediaEl.remove();
-            mediaEl = null;
-        }
-    }
-
-    if (!mediaEl) {
-        mediaEl = document.createElement(isVideo ? 'video' : 'img');
-        mediaEl.id = 'scp-bg-media';
-        if (isVideo) {
-            mediaEl.autoplay = true; 
-            mediaEl.loop = true; 
-            mediaEl.muted = true; 
-            mediaEl.playsInline = true;
-        }
-        windowEl.insertBefore(mediaEl, windowEl.firstChild);
-    }
-
-    mediaEl.className = `scp-bg-media bg-${fit}`;
-    if (mediaEl.src !== bg.dataUrl) mediaEl.src = bg.dataUrl;
-    
-    windowEl.style.setProperty('--scp-bg-dim', dim);
-    windowEl.classList.add('scp-has-bg');
+    const mediaEl = document.getElementById('scp-bg-media');
+    if (mediaEl) mediaEl.remove();
 }
 
-export function restoreWindowState(windowEl, iconEl) {
+export function restoreWindowState(windowEl) {
     const s = getSettings(); if (!windowEl) return;
     const isMobile = window.innerWidth <= 900 || ('ontouchstart' in window && window.innerWidth <= 1366);
 
@@ -522,41 +246,7 @@ export function restoreWindowState(windowEl, iconEl) {
             windowEl.style.right = 'auto';
         }
     }
-    
-    if (iconEl) {
-        const savedIconPos = localStorage.getItem(ICON_STORAGE_KEY);
-        let posValid = false;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        const iconSize = 46;
 
-        if (savedIconPos) {
-            try {
-                const pos = JSON.parse(savedIconPos);
-                const left = parseFloat(pos.left);
-                const top = parseFloat(pos.top);
-                if (!isNaN(left) && !isNaN(top) && left >= 0 && top >= 0 && left + iconSize <= vw && top + iconSize <= vh) {
-                    iconEl.style.left = `${left}px`;
-                    iconEl.style.top = `${top}px`;
-                    iconEl.style.bottom = 'auto';
-                    iconEl.style.right = 'auto';
-                    posValid = true;
-                }
-            } catch {
-                localStorage.removeItem(ICON_STORAGE_KEY);
-            }
-        }
-        
-        if (!posValid) {
-            const defaultRight = isMobile ? 16 : 20;
-            const defaultBottom = isMobile ? 120 : 80;
-            iconEl.style.left = `${Math.max(0, vw - iconSize - defaultRight)}px`;
-            iconEl.style.top = `${Math.max(0, vh - iconSize - defaultBottom)}px`;
-            iconEl.style.bottom = 'auto';
-            iconEl.style.right = 'auto';
-        }
-    }
-    
     if (isMobile) {
         windowEl.style.width = `${Math.min(w, Math.floor(window.innerWidth * 0.94), 560)}px`;
         windowEl.style.height = `${Math.min(h, Math.floor(window.innerHeight * 0.82), 700)}px`;
@@ -564,25 +254,10 @@ export function restoreWindowState(windowEl, iconEl) {
         windowEl.style.width = `${w}px`;
         windowEl.style.height = `${h}px`;
     }
-    windowEl.style.opacity = ((s.opacity || 95) / 100).toString();
+    // v2.10.0: window is always solid (opacity 1) for performance; opacity only used by Ghost Mode.
+    windowEl.style.opacity = '1';
     applyCustomTheme(s.customTheme || THEME_PRESETS.default);
     applyWindowBackground();
-}
-
-export function updateIconVisibility(iconEl) {
-    if (!iconEl) return;
-    const s = getSettings();
-    
-    if (!s.enabled) {
-        iconEl.style.setProperty('display', 'none', 'important');
-        return;
-    }
-    
-    if (s.minimized || s.floatingIconPersistent) {
-        iconEl.style.setProperty('display', 'flex', 'important');
-    } else {
-        iconEl.style.setProperty('display', 'none', 'important');
-    }
 }
 
 export function setGhostMode(enabled) {
@@ -599,7 +274,7 @@ export function setGhostMode(enabled) {
         ghostBtn?.classList.add('active');
     } else {
         windowEl.classList.remove('scp-ghost-mode');
-        windowEl.style.opacity = ((s.opacity ?? 95) / 100).toString();
+        windowEl.style.opacity = '1';
         ghostBtn?.classList.remove('active');
     }
 }
@@ -651,111 +326,69 @@ export function setupGhostHotkey() {
     document.addEventListener('keydown', _ghostHotkeyHandler);
 }
 
-export function minimize() { 
+export function minimize() {
     saveScrollPosition();
     const windowEl = document.getElementById(WIN_ID);
-    const iconEl = document.getElementById('scp-dock-icon');
-    setGhostMode(false); 
-    const s = getSettings(); 
-    s.minimized = true; 
-    if(windowEl) windowEl.style.display = 'none'; 
+    setGhostMode(false);
+    const s = getSettings();
+    s.minimized = true;
+    if(windowEl) windowEl.style.display = 'none';
     state.copilotActive = false;
-    saveSettings(); 
-    updateIconVisibility(iconEl);
+    saveSettings();
+    _syncLauncher();
 }
 
-export function restoreFromMinimize() { 
+export function restoreFromMinimize() {
     const windowEl = document.getElementById(WIN_ID);
-    const iconEl = document.getElementById('scp-dock-icon');
-    const s = getSettings(); 
-    s.minimized = false; 
-    if(windowEl) windowEl.style.display = 'flex'; 
+    const s = getSettings();
+    s.minimized = false;
+    if(windowEl) windowEl.style.display = 'flex';
     state.copilotActive = true;
-    saveSettings(); 
-    updateIconVisibility(iconEl);
-    restoreScrollPosition(); 
+    saveSettings();
+    _syncLauncher();
+    restoreScrollPosition();
     bringWindowToFront();
+    _applyMobileMode();
 }
 
-export function hideWindow() { 
+export function hideWindow() {
     saveScrollPosition();
     const windowEl = document.getElementById(WIN_ID);
-    const iconEl = document.getElementById('scp-dock-icon');
-    setGhostMode(false); 
-    const s = getSettings(); 
-    s.windowVisible = false; 
-    s.minimized = false; 
-    if(windowEl) windowEl.style.display = 'none'; 
+    setGhostMode(false);
+    const s = getSettings();
+    s.windowVisible = false;
+    s.minimized = false;
+    if(windowEl) windowEl.style.display = 'none';
     state.copilotActive = false;
-    saveSettings(); 
-    updateIconVisibility(iconEl);
+    saveSettings();
+    _syncLauncher();
 }
 
 export function showWindow() {
     const windowEl = document.getElementById(WIN_ID);
-    const iconEl = document.getElementById('scp-dock-icon');
-    const s = getSettings(); 
-    if (!s.enabled) { toastr.warning('ST-Copilot is disabled.', EXT_DISPLAY); return; }
-    s.windowVisible = true; 
+    const s = getSettings();
+    if (!s.enabled) { toastr.warning('ST-Copilot отключён.', EXT_DISPLAY); return; }
+    s.windowVisible = true;
     s.minimized = false;
     if(windowEl) windowEl.style.display = 'flex';
     state.copilotActive = true;
-    saveSettings(); 
-    updateIconVisibility(iconEl);
+    saveSettings();
+    _syncLauncher();
     restoreScrollPosition();
     bringWindowToFront();
+    _applyMobileMode();
+}
+
+// v2.10.0: sync launcher state + mobile mode via lazy import (avoid circular deps).
+function _syncLauncher() {
+    import('./ui-launcher.js').then(m => m.refreshLauncher()).catch(() => {});
+}
+function _applyMobileMode() {
+    import('./ui-launcher.js').then(m => m.applyMobileMode()).catch(() => {});
 }
 
 export function toggleVisibility() {
     const s = getSettings();
     if (!s.windowVisible || s.minimized) { showWindow(); return; }
     if (s.floatingIconPersistent) { hideWindow(); } else { minimize(); }
-}
-
-export async function _uploadBgToST(file) {
-    const formData = new FormData();
-    formData.append('avatar', file);
-    const ctx = SillyTavern.getContext();
-    const headers = ctx.getRequestHeaders();
-    delete headers['Content-Type'];
-    const res = await fetch('/api/backgrounds/upload', {
-        method: 'POST',
-        headers,
-        body: formData
-    });
-    if (res.ok) {
-        const text = await res.text();
-        let filename = text;
-        try { const j = JSON.parse(text); if (j.path) filename = j.path; } catch(e){}
-        if (!filename.startsWith('/')) filename = `/backgrounds/${filename}`;
-        return filename;
-    }
-    throw new Error('Background upload failed');
-}
-
-export function _setupBgUpload(btnId, inputId, onUploadSuccess) {
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-    btn.addEventListener('click', () => {
-        const inp = document.createElement('input');
-        inp.type = 'file';
-        inp.accept = 'image/*,video/mp4,video/webm';
-        inp.onchange = async () => {
-            const file = inp.files[0];
-            if (!file) return;
-            if (file.size > 25 * 1024 * 1024) { toastr.warning('File is too large (>25MB). Use URL instead.', 'ST-Copilot'); return; }
-            const url = await _uploadBgToST(file).catch(() => null);
-            if (url) {
-                getSettings().windowBgUrl = url;
-                saveSettings();
-                const urlInput = document.getElementById(inputId);
-                if (urlInput) urlInput.value = url;
-                applyWindowBackground();
-                if (onUploadSuccess) onUploadSuccess();
-            } else {
-                toastr.error('Failed to upload background.', 'ST-Copilot');
-            }
-        };
-        inp.click();
-    });
 }
