@@ -519,13 +519,27 @@ async function init() {
     const s = getSettings();
     const windowEl = document.getElementById(WIN_ID);
 
-    if (s.windowVisible && !s.minimized && windowEl) {
-        windowEl.style.display = 'flex';
-        state.copilotActive = true;
-    } else if (windowEl) {
-        windowEl.style.display = 'none';
-        state.copilotActive = false;
-    }
+    // Расширения инициализируются внутри firstLoadInit(), когда сплеш
+    // «Инициализация…» ещё не убран: показ окна откладываем до APP_READY,
+    // иначе окно всплывает поверх загрузки таверны.
+    const runWhenAppReady = (fn) => {
+        if (!document.querySelector('#loader.splash-screen')) { fn(); return; }
+        const es0 = ctx.eventSource || window.eventSource;
+        const et0 = ctx.event_types || window.event_types || {};
+        if (es0) es0.on(et0.APP_READY || 'app_ready', fn);
+        else fn();
+    };
+
+    const applySavedVisibility = () => {
+        if (s.windowVisible && !s.minimized && windowEl) {
+            windowEl.style.display = 'flex';
+            state.copilotActive = true;
+        } else if (windowEl) {
+            windowEl.style.display = 'none';
+            state.copilotActive = false;
+        }
+    };
+    runWhenAppReady(applySavedVisibility);
 
     // v2.10.0: inline launcher button + fullscreen mobile mode + viewport sync.
     ensureLauncher({ onToggle: () => toggleVisibility() });
@@ -585,7 +599,7 @@ async function init() {
     }
     
     addWandButton();
-    checkChangelogAutoShow();
+    runWhenAppReady(checkChangelogAutoShow);
     _takeProfileSnapshot();
     updateMemoryDot();
 
