@@ -1,8 +1,12 @@
 import { DEFAULT_TOOLS_PROMPT, TOOL_CALL_FORMAT_BLOCK, TOOL_DEFINITIONS } from '../constants.js';
 import { getSettings } from '../session.js';
+import { state } from '../state.js';
 import { _ensureWrapped } from '../utils/util-text.js';
+import { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls } from '../utils/util-tool-parse.js';
 import { getCharInfo, getTagsForCharacter } from '../utils/util-st.js';
 import { fetchWorldInfoBook, getDisplayName, getActiveLorebookNames, wiEntriesToArray } from './feature-lorebook-engine.js';
+
+export { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls };
 
 export function getEnabledTools() {
     const s = getSettings();
@@ -173,6 +177,65 @@ export async function executeTool(toolName, toolInput) {
         case 'ask_user': {
             return { __ask_user: true, question: toolInput.question, context: toolInput.context };
         }
+        case 'read_url': {
+            const url = String(toolInput.url || '').trim();
+            if (!/^https?:\/\//i.test(url)) return { error: 'Требуется полный http(s) URL.' };
+            const res = await fetch('/api/search/visit', {
+                method: 'POST',
+                headers: ctx.getRequestHeaders(),
+                body: JSON.stringify({ url }),
+            });
+            if (!res.ok) return { error: `Не удалось загрузить страницу (HTTP ${res.status}). Сайт может блокировать ботов или требовать JS.` };
+            const html = await res.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            doc.querySelectorAll('script,style,noscript,svg,iframe,nav,footer,header,form').forEach(el => el.remove());
+            const text = (doc.body?.innerText || doc.body?.textContent || '')
+                .replace(/[ \t]{2,}/g, ' ')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+            const max = Math.min(toolInput.max_chars ?? 6000, 20000);
+            return {
+                url,
+                title: doc.title || null,
+                total_length: text.length,
+                text: text.length > max ? text.slice(0, max) + '…[truncated — уточните max_chars или читайте страницу по частям]' : text,
+            };
+        }
+        case 'search_web': {
+            const provider = String(toolInput.provider || 'zai');
+            const query = String(toolInput.query || '').trim();
+            if (!query) return { error: 'Пустой поисковый запрос.' };
+            const bodies = {
+                zai: { query },
+                tavily: { query },
+                serper: { query },
+                serpapi: { query },
+                searxng: { baseUrl: toolInput.searxng_url, query },
+            };
+            const body = bodies[provider];
+            if (!body) return { error: `Неизвестный провайдер: ${provider}.` };
+            if (provider === 'searxng' && !body.baseUrl) return { error: 'Для provider=searxng требуется параметр searxng_url.' };
+            const res = await fetch(`/api/search/${provider}`, {
+                method: 'POST',
+                headers: ctx.getRequestHeaders(),
+                body: JSON.stringify(body),
+            });
+            if (res.status === 400) return { error: `Провайдер ${provider} не настроен: добавьте API-ключ в ST (Secrets) или выберите другого провайдера.` };
+            if (!res.ok) return { error: `Поиск не удался (HTTP ${res.status}).` };
+            const raw = await res.text();
+            let parsed;
+            try { parsed = JSON.parse(raw); } catch (_) { parsed = null; }
+            const max = 4000;
+            const payload = parsed !== null && raw.length > max ? raw.slice(0, max) + '…[truncated]' : (parsed ?? raw);
+            return { provider, query, results: payload };
+        }
+        case 'todo_write': {
+            const todos = Array.isArray(toolInput.todos) ? toolInput.todos : [];
+            // ponytail: план живёт в карточке тула (input+result); отдельная панель — когда запросят
+            state.agentTodos = todos.map(t => ({ content: String(t.content || ''), status: t.status === 'completed' ? 'completed' : t.status === 'in_progress' ? 'in_progress' : 'pending' }));
+            const done = state.agentTodos.filter(t => t.status === 'completed').length;
+            return { ok: true, progress: `${done}/${state.agentTodos.length}`, todos: state.agentTodos };
+        }
         case 'get_char_info': {
             const charInfoFull = getCharInfo();
             if (!charInfoFull) return { error: 'Нет активного персонажа.' };
@@ -226,65 +289,13 @@ export async function executeTool(toolName, toolInput) {
     }
 }
 
-export function parseToolCallsFromText(text) {
-    const results = [];
-    const re = /```tool_call\n?([\s\S]*?)(?:```|$)/gi;
-    let m;
-    while ((m = re.exec(text)) !== null) {
-        const rawBlock = m[1].trim();
-        if (!rawBlock) continue;
-
-        let extracted = [];
-
-        try {
-            const parsed = JSON.parse(rawBlock);
-            if (Array.isArray(parsed)) {
-                extracted = parsed.filter(p => p && p.name).map(p => ({ name: p.name, input: p.input || {} }));
-            } else if (parsed && parsed.name) {
-                extracted.push({ name: parsed.name, input: parsed.input || {} });
-            }
-        } catch (_) {}
-
-        if (!extracted.length) {
-            try {
-                const fixedRaw = '[' + rawBlock.replace(/}\s*{/g, '},{') + ']';
-                const parsed = JSON.parse(fixedRaw);
-                if (Array.isArray(parsed)) {
-                    extracted = parsed.filter(p => p && p.name).map(p => ({ name: p.name, input: p.input || {} }));
-                }
-            } catch (_) {}
-        }
-
-        if (!extracted.length) {
-            const lines = rawBlock.split('\n');
-            for (const line of lines) {
-                if (!line.trim()) continue;
-                try {
-                    const parsed = JSON.parse(line.trim());
-                    if (parsed && parsed.name) {
-                        extracted.push({ name: parsed.name, input: parsed.input || {} });
-                    }
-                } catch (_) {}
-            }
-        }
-
-        if (!extracted.length) {
-            const nameMatch = rawBlock.match(/"name"\s*:\s*"([^"]+)"/);
-            if (nameMatch) {
-                extracted.push({ name: nameMatch[1], input: {} });
-            } else {
-                extracted.push({ name: 'parsing...', input: {} });
-            }
-        }
-
-        results.push(...extracted);
-    }
-    return results;
+export function toOpenAITools() {
+    return getEnabledTools().map(t => ({
+        type: 'function',
+        function: { name: t.name, description: t.description, parameters: t.schema },
+    }));
 }
 
-export function stripToolCallsFromText(text) {
-    return text.replace(/```tool_call[\s\S]*?```/gi, '').trim();
-}
 
 export function buildToolCallsSystemBlock() {
     const tools = getEnabledTools();

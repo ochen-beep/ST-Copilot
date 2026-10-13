@@ -823,6 +823,65 @@ replacement text
                   },
               },
           },
+          {
+              id: 'read_url',
+              name: 'read_url',
+              label: 'Read Web Page',
+              icon: 'fa-globe',
+              description: 'Fetch a public web page via the SillyTavern server and return its readable text (scripts/styles/nav stripped). Use search_web first to find URLs. Cannot access localhost/private network addresses.',
+              settingKey: 'toolsEnabled_read_url',
+              schema: {
+                  type: 'object',
+                  properties: {
+                      url: { type: 'string', description: 'Full http(s) URL of the page to read' },
+                      max_chars: { type: 'number', description: 'Max characters of text to return (default 6000, max 20000)' },
+                  },
+                  required: ['url'],
+              },
+          },
+          {
+              id: 'search_web',
+              name: 'search_web',
+              label: 'Web Search',
+              icon: 'fa-magnifying-glass',
+              description: 'Web search via the SillyTavern server. Requires a search provider key configured in ST Secrets (Z.AI, Tavily, Serper, SerpApi) or a SearXNG instance URL. Returns provider results (title/link/snippet). Follow up with read_url on promising links.',
+              settingKey: 'toolsEnabled_search_web',
+              schema: {
+                  type: 'object',
+                  properties: {
+                      query: { type: 'string', description: 'Search query' },
+                      provider: { type: 'string', enum: ['zai', 'tavily', 'serper', 'serpapi', 'searxng'], description: 'Search provider (default: zai)' },
+                      searxng_url: { type: 'string', description: 'SearXNG instance base URL (required when provider is searxng)' },
+                  },
+                  required: ['query'],
+              },
+          },
+          {
+              id: 'todo_write',
+              name: 'todo_write',
+              label: 'Task Plan',
+              icon: 'fa-list-check',
+              description: 'Maintain a visible task plan for multi-step work. Rewrite the FULL list on every update; set exactly one item to in_progress before working on it and completed right after.',
+              settingKey: 'toolsEnabled_todo_write',
+              schema: {
+                  type: 'object',
+                  properties: {
+                      todos: {
+                          type: 'array',
+                          items: {
+                              type: 'object',
+                              properties: {
+                                  content: { type: 'string' },
+                                  status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] },
+                              },
+                              required: ['content', 'status'],
+                          },
+                          description: 'The full current task list',
+                      },
+                  },
+                  required: ['todos'],
+              },
+          },
       ];
 
   const I = {
@@ -1589,6 +1648,7 @@ replacement text
       toolsEnabled: true,
       toolsThinking: false,
       toolsMaxRounds: 5,
+      toolsProtocol: 'text',
       toolsEnabled_search_chat: true,
       toolsEnabled_search_lorebook: true,
       toolsEnabled_get_lorebooks: true,
@@ -1596,6 +1656,9 @@ replacement text
       toolsEnabled_get_char_info: true,
       toolsEnabled_get_chat_stats: true,
       toolsEnabled_get_recent_messages: true,
+      toolsEnabled_read_url: true,
+      toolsEnabled_search_web: true,
+      toolsEnabled_todo_write: true,
       includeSummaryception: true,
       useAspectEvolutia: true,
       autoExpandMacros: false,
@@ -8602,6 +8665,105 @@ ${scopeHtml}
       bringWindowToFront();
   }
 
+  // Чистый парсер текстовых tool-протоколов: без импортов и ST-зависимостей,
+  // чтобы тесты и любые потребители не тянули граф движков/точку входа.
+
+  // Два текстовых протокола: ```tool_call фенсы (наш формат) и <tool_call> теги
+  // (Hermes-формат — его спонтанно эмитят модели, затюненные на function calling).
+  const TOOL_BLOCK_PATTERNS = [
+      /```tool_call\n?([\s\S]*?)(?:```|$)/gi,
+      /<tool_call>\s*([\s\S]*?)<\/tool_call>/gi,
+  ];
+
+  function parseToolCallBlock(rawBlock) {
+      if (!rawBlock) return [];
+
+      let extracted = [];
+
+      try {
+          const parsed = JSON.parse(rawBlock);
+          if (Array.isArray(parsed)) {
+              extracted = parsed.filter(p => p && p.name).map(p => ({ name: p.name, input: p.input || p.arguments || {} }));
+          } else if (parsed && parsed.name) {
+              extracted.push({ name: parsed.name, input: parsed.input || parsed.arguments || {} });
+          }
+      } catch (_) {}
+
+      if (!extracted.length) {
+          try {
+              const fixedRaw = '[' + rawBlock.replace(/}\s*{/g, '},{') + ']';
+              const parsed = JSON.parse(fixedRaw);
+              if (Array.isArray(parsed)) {
+                  extracted = parsed.filter(p => p && p.name).map(p => ({ name: p.name, input: p.input || p.arguments || {} }));
+              }
+          } catch (_) {}
+      }
+
+      if (!extracted.length) {
+          const lines = rawBlock.split('\n');
+          for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                  const parsed = JSON.parse(line.trim());
+                  if (parsed && parsed.name) {
+                      extracted.push({ name: parsed.name, input: parsed.input || parsed.arguments || {} });
+                  }
+              } catch (_) {}
+          }
+      }
+
+      if (!extracted.length) {
+          const nameMatch = rawBlock.match(/"name"\s*:\s*"([^"]+)"/);
+          if (nameMatch) {
+              extracted.push({ name: nameMatch[1], input: {} });
+          } else {
+              extracted.push({ name: 'parsing...', input: {} });
+          }
+      }
+
+      return extracted;
+  }
+
+  function parseToolCallsFromText(text) {
+      if (!text) return [];
+      const results = [];
+      const seen = new Set();
+      for (const re of TOOL_BLOCK_PATTERNS) {
+          re.lastIndex = 0;
+          let m;
+          while ((m = re.exec(text)) !== null) {
+              const rawBlock = m[1].trim();
+              // Фенсовый паттерн (незакрытый фенс) может захватить блок, целиком
+              // обёрнутый в <tool_call>-теги, и деградировать до {input:{}} —
+              // оставляем его hermes-паттерну.
+              if (re !== TOOL_BLOCK_PATTERNS[0] || !/^<tool_call>[\s\S]*<\/tool_call>$/.test(rawBlock)) {
+                  for (const tc of parseToolCallBlock(rawBlock)) {
+                      const key = `${tc.name}|${JSON.stringify(tc.input)}`;
+                      if (seen.has(key)) continue;
+                      seen.add(key);
+                      results.push(tc);
+                  }
+              }
+          }
+      }
+      return results;
+  }
+
+  // Нативный function calling:choices[0].message.tool_calls из нестримингового
+  // ответа → нормализованные вызовы для executeTool.
+  function extractProviderToolCalls(value) {
+      const raw = value?.choices?.[0]?.message?.tool_calls;
+      if (!Array.isArray(raw) || raw.length === 0) return null;
+      const calls = [];
+      for (const tc of raw) {
+          if (!tc?.function?.name) continue;
+          let input = {};
+          try { input = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
+          calls.push({ callId: tc.id || `call_${calls.length}`, name: tc.function.name, input });
+      }
+      return calls.length ? { calls, raw } : null;
+  }
+
   function getEnabledTools() {
       const s = getSettings();
       if (!s.toolsEnabled) return [];
@@ -8771,6 +8933,65 @@ ${scopeHtml}
           case 'ask_user': {
               return { __ask_user: true, question: toolInput.question, context: toolInput.context };
           }
+          case 'read_url': {
+              const url = String(toolInput.url || '').trim();
+              if (!/^https?:\/\//i.test(url)) return { error: 'Требуется полный http(s) URL.' };
+              const res = await fetch('/api/search/visit', {
+                  method: 'POST',
+                  headers: ctx.getRequestHeaders(),
+                  body: JSON.stringify({ url }),
+              });
+              if (!res.ok) return { error: `Не удалось загрузить страницу (HTTP ${res.status}). Сайт может блокировать ботов или требовать JS.` };
+              const html = await res.text();
+              const doc = new DOMParser().parseFromString(html, 'text/html');
+              doc.querySelectorAll('script,style,noscript,svg,iframe,nav,footer,header,form').forEach(el => el.remove());
+              const text = (doc.body?.innerText || doc.body?.textContent || '')
+                  .replace(/[ \t]{2,}/g, ' ')
+                  .replace(/\n{3,}/g, '\n\n')
+                  .trim();
+              const max = Math.min(toolInput.max_chars ?? 6000, 20000);
+              return {
+                  url,
+                  title: doc.title || null,
+                  total_length: text.length,
+                  text: text.length > max ? text.slice(0, max) + '…[truncated — уточните max_chars или читайте страницу по частям]' : text,
+              };
+          }
+          case 'search_web': {
+              const provider = String(toolInput.provider || 'zai');
+              const query = String(toolInput.query || '').trim();
+              if (!query) return { error: 'Пустой поисковый запрос.' };
+              const bodies = {
+                  zai: { query },
+                  tavily: { query },
+                  serper: { query },
+                  serpapi: { query },
+                  searxng: { baseUrl: toolInput.searxng_url, query },
+              };
+              const body = bodies[provider];
+              if (!body) return { error: `Неизвестный провайдер: ${provider}.` };
+              if (provider === 'searxng' && !body.baseUrl) return { error: 'Для provider=searxng требуется параметр searxng_url.' };
+              const res = await fetch(`/api/search/${provider}`, {
+                  method: 'POST',
+                  headers: ctx.getRequestHeaders(),
+                  body: JSON.stringify(body),
+              });
+              if (res.status === 400) return { error: `Провайдер ${provider} не настроен: добавьте API-ключ в ST (Secrets) или выберите другого провайдера.` };
+              if (!res.ok) return { error: `Поиск не удался (HTTP ${res.status}).` };
+              const raw = await res.text();
+              let parsed;
+              try { parsed = JSON.parse(raw); } catch (_) { parsed = null; }
+              const max = 4000;
+              const payload = parsed !== null && raw.length > max ? raw.slice(0, max) + '…[truncated]' : (parsed ?? raw);
+              return { provider, query, results: payload };
+          }
+          case 'todo_write': {
+              const todos = Array.isArray(toolInput.todos) ? toolInput.todos : [];
+              // ponytail: план живёт в карточке тула (input+result); отдельная панель — когда запросят
+              state.agentTodos = todos.map(t => ({ content: String(t.content || ''), status: t.status === 'completed' ? 'completed' : t.status === 'in_progress' ? 'in_progress' : 'pending' }));
+              const done = state.agentTodos.filter(t => t.status === 'completed').length;
+              return { ok: true, progress: `${done}/${state.agentTodos.length}`, todos: state.agentTodos };
+          }
           case 'get_char_info': {
               const charInfoFull = getCharInfo();
               if (!charInfoFull) return { error: 'Нет активного персонажа.' };
@@ -8824,61 +9045,13 @@ ${scopeHtml}
       }
   }
 
-  function parseToolCallsFromText(text) {
-      const results = [];
-      const re = /```tool_call\n?([\s\S]*?)(?:```|$)/gi;
-      let m;
-      while ((m = re.exec(text)) !== null) {
-          const rawBlock = m[1].trim();
-          if (!rawBlock) continue;
-
-          let extracted = [];
-
-          try {
-              const parsed = JSON.parse(rawBlock);
-              if (Array.isArray(parsed)) {
-                  extracted = parsed.filter(p => p && p.name).map(p => ({ name: p.name, input: p.input || {} }));
-              } else if (parsed && parsed.name) {
-                  extracted.push({ name: parsed.name, input: parsed.input || {} });
-              }
-          } catch (_) {}
-
-          if (!extracted.length) {
-              try {
-                  const fixedRaw = '[' + rawBlock.replace(/}\s*{/g, '},{') + ']';
-                  const parsed = JSON.parse(fixedRaw);
-                  if (Array.isArray(parsed)) {
-                      extracted = parsed.filter(p => p && p.name).map(p => ({ name: p.name, input: p.input || {} }));
-                  }
-              } catch (_) {}
-          }
-
-          if (!extracted.length) {
-              const lines = rawBlock.split('\n');
-              for (const line of lines) {
-                  if (!line.trim()) continue;
-                  try {
-                      const parsed = JSON.parse(line.trim());
-                      if (parsed && parsed.name) {
-                          extracted.push({ name: parsed.name, input: parsed.input || {} });
-                      }
-                  } catch (_) {}
-              }
-          }
-
-          if (!extracted.length) {
-              const nameMatch = rawBlock.match(/"name"\s*:\s*"([^"]+)"/);
-              if (nameMatch) {
-                  extracted.push({ name: nameMatch[1], input: {} });
-              } else {
-                  extracted.push({ name: 'parsing...', input: {} });
-              }
-          }
-
-          results.push(...extracted);
-      }
-      return results;
+  function toOpenAITools() {
+      return getEnabledTools().map(t => ({
+          type: 'function',
+          function: { name: t.name, description: t.description, parameters: t.schema },
+      }));
   }
+
 
   function buildToolCallsSystemBlock() {
       const tools = getEnabledTools();
@@ -10433,6 +10606,15 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
           getSettings().toolsMaxRounds = parseInt(e.target.value) || 5; saveSettings$1();
       });
 
+      const protoSel = document.getElementById('scp-sp-tools-protocol');
+      if (protoSel) {
+          protoSel.value = s.toolsProtocol === 'native' ? 'native' : 'text';
+          protoSel.addEventListener('change', () => {
+              getSettings().toolsProtocol = protoSel.value === 'native' ? 'native' : 'text';
+              saveSettings$1();
+          });
+      }
+
       const streamingOff = s.forceStreaming === 'off';
 
       listEl.innerHTML = '';
@@ -11265,6 +11447,19 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           }));
       }
       if (liveTCs.length) {
+          // Нативные tool-раунды не оставляют фенсов в тексте — плейсхолдеров нет,
+          // синтезируем их в конец тела сообщения, иначе карточкам некуда встать.
+          if (!msgEl.querySelector('.scp-tool-call-ph')) {
+              const contentEl = msgEl.querySelector('.scp-msg-content');
+              if (contentEl) {
+                  liveTCs.forEach((_, i) => {
+                      const ph = document.createElement('div');
+                      ph.className = 'scp-tool-call-ph';
+                      ph.dataset.tcid = String(i);
+                      contentEl.appendChild(ph);
+                  });
+              }
+          }
           postProcessToolCalls(msgEl, liveTCs);
       }
   }
@@ -14614,6 +14809,20 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       return ctx.chat.slice(-depth).map((m, i) => extractData(m, total - depth + i));
   }
 
+  // Таймаут одного вызова инструмента: сетевые тулы (search_web/read_url) не должны
+  // вешать весь раунд. Константа вместо настройки — пока ни один сценарий не потребовал другого.
+  const TOOL_TIMEOUT_MS = 60000;
+
+  function withTimeout(promise, ms = TOOL_TIMEOUT_MS) {
+      return new Promise((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error(`Инструмент не ответил за ${Math.round(ms / 1000)}с`)), ms);
+          promise.then(
+              v => { clearTimeout(t); resolve(v); },
+              e => { clearTimeout(t); reject(e); },
+          );
+      });
+  }
+
   async function assembleMessages(session, settings, pendingUserText, pendingAtts = null) {
       const messages = [{ role: 'system', content: await buildSystemContent(settings) }];
       const depth = Math.max(0, parseInt(settings.contextDepth) || 0);
@@ -14685,8 +14894,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               const finalContent = _mergeContent(content, m.attachments);
               let apiRole = m.role;
               if (apiRole === 'system') apiRole = 'user';
-              
-              messages.push({ role: apiRole, content: finalContent });
+
+              const outMsg = { role: apiRole, content: finalContent };
+              // Нативные tool-раунды: assistant.tool_calls и role:'tool' идут в API как есть
+              if (m.tool_calls) outMsg.tool_calls = m.tool_calls;
+              messages.push(outMsg);
 
               if (hasAttachedHistory) {
                   let cat = 'system_action_results';
@@ -14799,7 +15011,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       }
   }
 
-  async function callGenerate(session, settings, pendingText, onChunk) {
+  async function callGenerate(session, settings, pendingText, onChunk, nativeTools = false) {
       const ctx = SillyTavern.getContext();
       const messages = await assembleMessages(session, settings, pendingText);
       const maxTokens = parseInt(settings.maxTokens) || 8200;
@@ -14820,6 +15032,12 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               ?? ctx.textCompletionSettings?.streaming
               ?? true);
       }
+
+      // Нативный function calling: ST-стрим (getStreamingReply) выбрасывает delta.tool_calls,
+      // поэтому tool-раунды идут нестримингово. tool_payload раскладывается по всем веткам ниже.
+      if (nativeTools && toOpenAITools().length === 0) nativeTools = false;
+      if (nativeTools) useStream = false;
+      const toolsPayload = nativeTools ? { tools: toOpenAITools(), tool_choice: 'auto' } : {};
 
       function deepExtract(obj) {
           if (!obj || typeof obj !== 'object') return { t: '', r: null };
@@ -14907,7 +15125,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                   model: settings.customModel || 'gpt-3.5-turbo',
                   messages: messages,
                   max_tokens: maxTokens,
-                  stream: useStream
+                  stream: useStream,
+                  ...toolsPayload,
               };
               const headers = { 'Content-Type': 'application/json' };
               if (settings.customKey) headers['Authorization'] = `Bearer ${settings.customKey}`;
@@ -14967,6 +15186,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                   const ext = deepExtract(data);
                   text = ext.t || '';
                   reasoning = ext.r;
+                  const prov = extractProviderToolCalls(data);
+                  state.abortController = null;
+                  return { text: text.trim(), reasoning, isMaxTokens: false, toolCalls: prov?.calls || null, rawToolCalls: prov?.raw || null };
               }
           } catch (e) {
               state.abortController = null;
@@ -14975,7 +15197,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           }
 
           state.abortController = null;
-          return { text: text.trim(), reasoning, isMaxTokens: false };
+          return { text: text.trim(), reasoning, isMaxTokens: false, toolCalls: null, rawToolCalls: null };
       }
 
       const service = ctx.ConnectionManagerRequestService;
@@ -15061,7 +15283,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                   signal: abort.signal,
                   extractData: false,
                   includePreset: true
-              });
+              }, toolsPayload);
           } else {
               const mainApi = window.main_api || ctx.main_api;
               if (mainApi === 'openai' && ctx.ChatCompletionService) {
@@ -15069,14 +15291,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                   asyncGeneratorFn = await ctx.ChatCompletionService.processRequest({
                       messages: messages,
                       max_tokens: maxTokens,
-                      stream: useStream
+                      stream: useStream,
+                      ...toolsPayload
                   }, { presetName: oaiSettings.preset_settings_openai }, false, abort.signal);
               } else if (mainApi === 'textgenerationwebui' && ctx.TextCompletionService) {
                   const textGenSettings = window.textgenerationwebui_settings || ctx.textgenerationwebui_settings || {};
                   asyncGeneratorFn = await ctx.TextCompletionService.processRequest({
                       prompt: messages,
                       max_tokens: maxTokens,
-                      stream: useStream
+                      stream: useStream,
+                      ...toolsPayload
                   }, { presetName: textGenSettings.preset_settings_textgenerationwebui }, false, abort.signal);
               } else {
                   throw new Error('No active API connection found. Please select a profile in Connection Manager or configure the main API.');
@@ -15142,6 +15366,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
       if (!isGen) {
           const value = asyncGeneratorFn;
+          let toolCalls = null;
+          let rawToolCalls = null;
           if (typeof value === 'string') {
               text = value.trim();
           } else {
@@ -15149,13 +15375,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               text = ext.t.trim();
               reasoning = ext.r;
               lastValue = value;
+              const prov = extractProviderToolCalls(value);
+              toolCalls = prov?.calls || null;
+              rawToolCalls = prov?.raw || null;
           }
-          
+
           const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason;
           const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
           state.abortController = null;
-          return { text, reasoning, isMaxTokens };
+          return { text, reasoning, isMaxTokens, toolCalls, rawToolCalls };
       }
 
       const gen = typeof asyncGeneratorFn === 'function' ? asyncGeneratorFn() : asyncGeneratorFn;
@@ -15200,7 +15429,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
       state.abortController = null;
-      return { text: text.trim(), reasoning, isMaxTokens };
+      return { text: text.trim(), reasoning, isMaxTokens, toolCalls: null, rawToolCalls: null };
   }
 
   async function runGenerate(session, userText, addUserMsg = true, processedAtts = null) {
@@ -15369,10 +15598,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               tokensIn
           });
 
-          let result = await callGenerate(session, settings, null, onChunk);
+          const nativeTools = settings.toolsEnabled && settings.toolsProtocol === 'native';
+          let result = await callGenerate(session, settings, null, onChunk, nativeTools);
 
           cleanupCursor();
-          
+
           if (result && !result.text.trim() && !result.reasoning?.trim()) {
               toastr.warning('⚠ Генерация не удалась: ИИ вернул пустой ответ.', EXT_DISPLAY, { timeOut: 10000 });
           }
@@ -15381,7 +15611,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               const maxRounds = settings.toolsMaxRounds ?? 5;
               let roundText = result.text || '';
               let roundReasoning = result.reasoning;
+              let roundToolCalls = result.toolCalls || null;
+              let roundRawToolCalls = result.rawToolCalls || null;
               let extraHistory = [];
+              let nativeHistory = [];
 
               let accumulatedText = roundText;
               let accumulatedReasoning = roundReasoning || null;
@@ -15420,20 +15653,26 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               };
 
               for (let round = 0; round < maxRounds; round++) {
-                  let tcs = parseToolCallsFromText(roundText);
+                  const tcs = nativeTools ? (roundToolCalls || []) : parseToolCallsFromText(roundText);
                   if (!tcs.length) break;
 
                   const roundEntries = [];
                   for (const tc of tcs) {
                       const tcId = `tc_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-                      const entry = { id: tcId, name: tc.name, input: tc.input, status: 'running', result: undefined };
+                      const entry = { id: tcId, callId: tc.callId || null, name: tc.name, input: tc.input || {}, status: 'running', result: undefined };
                       state.activeToolCalls.push(entry);
                       roundEntries.push(entry);
-                      
-                      _updateLiveUI();
+                  }
+                  _updateLiveUI();
 
+                  const execEntry = async (entry) => {
+                      if (state.abortController?.signal.aborted) {
+                          entry.result = { error: 'Генерация остановлена пользователем.' };
+                          entry.status = 'error';
+                          return;
+                      }
                       try {
-                          const res = await executeTool(tc.name, tc.input);
+                          const res = await withTimeout(executeTool(entry.name, entry.input));
                           if (res?.__ask_user) {
                               if (!streamMsgEl) {
                                   entry.result = { warning: 'ask_user requires streaming to be enabled.' };
@@ -15447,44 +15686,89 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                               entry.status = 'done';
                           }
                       } catch (e) {
-                          _dbgAdd('TOOL_EXECUTION_FAILED', { toolName: tc.name, error: e.message });
+                          _dbgAdd('TOOL_EXECUTION_FAILED', { toolName: entry.name, error: e.message });
                           entry.result = { error: e.message };
                           entry.status = 'error';
                       }
-                      
-                      _updateLiveUI();
+                  };
+
+                  // Параллельно всё, кроме ask_user — его резолвер DOM-синглтон и он
+                  // останавливает цикл до ответа человека, параллелить его нельзя.
+                  await Promise.all(roundEntries.filter(e => e.name !== 'ask_user').map(execEntry));
+                  for (const entry of roundEntries.filter(e => e.name === 'ask_user')) {
+                      await execEntry(entry);
                   }
+                  _updateLiveUI();
 
-                  extraHistory.push({ role: 'assistant', content: stripMemoryBlock(roundText) });
-                  const toolResultsText = roundEntries.map(e =>
-                      `<tool_result name="${e.name}" status="${e.status}">\n${typeof e.result === 'string' ? e.result : JSON.stringify(e.result, null, 2)}\n</tool_result>`
-                  ).join("\n");
+                  if (nativeTools) {
+                      const rawCalls = roundRawToolCalls || roundEntries.map((e, i) => ({
+                          id: e.callId || `call_${round}_${i}`,
+                          type: 'function',
+                          function: { name: e.name, arguments: JSON.stringify(e.input) },
+                      }));
+                      nativeHistory.push({ role: 'assistant', content: roundText || '', tool_calls: rawCalls, _round: round });
+                      for (const e of roundEntries) {
+                          nativeHistory.push({
+                              role: 'tool',
+                              tool_call_id: e.callId || `call_${round}_${roundEntries.indexOf(e)}`,
+                              content: JSON.stringify(e.result ?? null),
+                              _toolName: e.name,
+                              _round: round,
+                          });
+                      }
+                      // Компакция (паттерн Anthropic clear_tool_uses): результаты всех раундов,
+                      // кроме последнего исполненного, сжимаются в плейсхолдер. Свежий раунд
+                      // обязан остаться verbatim — иначе модель не увидит результаты, ради
+                      // которых вызывала инструменты. assistant.tool_calls не трогаем: API
+                      // требует пары tool_calls → tool-сообщение.
+                      for (const m of nativeHistory) {
+                          if (m.role === 'tool' && m._round < round - 1) {
+                              m.content = `[${m._toolName}: результат убран из контекста для экономии токенов]`;
+                          }
+                      }
+                      for (const eh of nativeHistory) {
+                          session.messages.push({ id: `tc_hist_${round}_${nativeHistory.indexOf(eh)}`, role: eh.role, content: eh.content, tool_calls: eh.tool_calls, tool_call_id: eh.tool_call_id, timestamp: Date.now(), _tcTemp: true });
+                      }
+                  } else {
+                      extraHistory.push({ role: 'assistant', content: stripMemoryBlock(roundText) });
+                      const toolResultsText = roundEntries.map(e =>
+                          `<tool_result name="${e.name}" status="${e.status}">\n${typeof e.result === 'string' ? e.result : JSON.stringify(e.result, null, 2)}\n</tool_result>`
+                      ).join("\n");
 
-                  extraHistory.push({ role: 'user', content: `<tool_results>\n${toolResultsText}\n</tool_results>\n\nCONTINUE your response using these results. Write exactly where you left off.` });
+                      extraHistory.push({ role: 'user', content: `<tool_results>\n${toolResultsText}\n</tool_results>\n\nCONTINUE your response using these results. Write exactly where you left off.`, _round: round });
+
+                      // Компакция как в native-ветке: свежие результаты обязательны,
+                      // более старые раунды сжимаются в плейсхолдер.
+                      for (const eh of extraHistory) {
+                          if (eh._round !== undefined && eh._round < round - 1) {
+                              eh.content = `[результаты инструментов раунда ${eh._round + 1} убраны из контекста для экономии токенов]`;
+                          }
+                      }
+
+                      for (const eh of extraHistory) {
+                          session.messages.push({ id: `tc_hist_${Date.now()}`, role: eh.role, content: eh.content, timestamp: Date.now(), _tcTemp: true });
+                      }
+                  }
 
                   const thinkingText = document.getElementById('scp-thinking-text');
                   if (thinkingText) thinkingText.textContent = `Раунд ${round + 2}/${maxRounds + 1}…`;
                   const bar = document.getElementById('scp-thinking-bar');
                   if (bar) bar.style.display = 'flex';
 
-                  for (const eh of extraHistory) {
-                      session.messages.push({ id: `tc_hist_${Date.now()}`, role: eh.role, content: eh.content, timestamp: Date.now(), _tcTemp: true });
-                  }
-
                   isStreaming = false;
                   streamAccumText = '';
                   const cursor2 = document.createElement('span');
                   cursor2.className = 'scp-stream-cursor';
-                  
-                  const tempSession = { 
-                      ...session, 
-                      messages: session.messages.filter(m => m.id !== streamMsgId) 
+
+                  const tempSession = {
+                      ...session,
+                      messages: session.messages.filter(m => m.id !== streamMsgId)
                   };
 
                   const nextResult = await callGenerate(tempSession, settings, null, (t, r) => {
                       _updateLiveUI(t, r);
                       if (streamContentEl) streamContentEl.appendChild(cursor2);
-                  });
+                  }, nativeTools);
 
                   session.messages = session.messages.filter(m => !m._tcTemp);
                   cursor2.remove();
@@ -15493,12 +15777,14 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
                   roundText = nextResult.text || '';
                   roundReasoning = nextResult.reasoning || null;
-                  
+                  roundToolCalls = nextResult.toolCalls || null;
+                  roundRawToolCalls = nextResult.rawToolCalls || null;
+
                   accumulatedText += '\n\n' + roundText;
                   if (roundReasoning) {
                       accumulatedReasoning = accumulatedReasoning ? accumulatedReasoning + '\n\n' + roundReasoning : roundReasoning;
                   }
-                  
+
                   result = { text: accumulatedText, reasoning: accumulatedReasoning };
               }
           }
@@ -17471,13 +17757,27 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       const s = getSettings();
       const windowEl = document.getElementById(WIN_ID);
 
-      if (s.windowVisible && !s.minimized && windowEl) {
-          windowEl.style.display = 'flex';
-          state.copilotActive = true;
-      } else if (windowEl) {
-          windowEl.style.display = 'none';
-          state.copilotActive = false;
-      }
+      // Расширения инициализируются внутри firstLoadInit(), когда сплеш
+      // «Инициализация…» ещё не убран: показ окна откладываем до APP_READY,
+      // иначе окно всплывает поверх загрузки таверны.
+      const runWhenAppReady = (fn) => {
+          if (!document.querySelector('#loader.splash-screen')) { fn(); return; }
+          const es0 = ctx.eventSource || window.eventSource;
+          const et0 = ctx.event_types || window.event_types || {};
+          if (es0) es0.on(et0.APP_READY || 'app_ready', fn);
+          else fn();
+      };
+
+      const applySavedVisibility = () => {
+          if (s.windowVisible && !s.minimized && windowEl) {
+              windowEl.style.display = 'flex';
+              state.copilotActive = true;
+          } else if (windowEl) {
+              windowEl.style.display = 'none';
+              state.copilotActive = false;
+          }
+      };
+      runWhenAppReady(applySavedVisibility);
 
       // v2.10.0: inline launcher button + fullscreen mobile mode + viewport sync.
       ensureLauncher({ onToggle: () => toggleVisibility() });
@@ -17537,7 +17837,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       }
       
       addWandButton();
-      checkChangelogAutoShow();
+      runWhenAppReady(checkChangelogAutoShow);
       _takeProfileSnapshot();
       updateMemoryDot();
 

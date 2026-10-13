@@ -820,6 +820,65 @@ export const TOOL_DEFINITIONS = [
                 },
             },
         },
+        {
+            id: 'read_url',
+            name: 'read_url',
+            label: 'Read Web Page',
+            icon: 'fa-globe',
+            description: 'Fetch a public web page via the SillyTavern server and return its readable text (scripts/styles/nav stripped). Use search_web first to find URLs. Cannot access localhost/private network addresses.',
+            settingKey: 'toolsEnabled_read_url',
+            schema: {
+                type: 'object',
+                properties: {
+                    url: { type: 'string', description: 'Full http(s) URL of the page to read' },
+                    max_chars: { type: 'number', description: 'Max characters of text to return (default 6000, max 20000)' },
+                },
+                required: ['url'],
+            },
+        },
+        {
+            id: 'search_web',
+            name: 'search_web',
+            label: 'Web Search',
+            icon: 'fa-magnifying-glass',
+            description: 'Web search via the SillyTavern server. Requires a search provider key configured in ST Secrets (Z.AI, Tavily, Serper, SerpApi) or a SearXNG instance URL. Returns provider results (title/link/snippet). Follow up with read_url on promising links.',
+            settingKey: 'toolsEnabled_search_web',
+            schema: {
+                type: 'object',
+                properties: {
+                    query: { type: 'string', description: 'Search query' },
+                    provider: { type: 'string', enum: ['zai', 'tavily', 'serper', 'serpapi', 'searxng'], description: 'Search provider (default: zai)' },
+                    searxng_url: { type: 'string', description: 'SearXNG instance base URL (required when provider is searxng)' },
+                },
+                required: ['query'],
+            },
+        },
+        {
+            id: 'todo_write',
+            name: 'todo_write',
+            label: 'Task Plan',
+            icon: 'fa-list-check',
+            description: 'Maintain a visible task plan for multi-step work. Rewrite the FULL list on every update; set exactly one item to in_progress before working on it and completed right after.',
+            settingKey: 'toolsEnabled_todo_write',
+            schema: {
+                type: 'object',
+                properties: {
+                    todos: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                content: { type: 'string' },
+                                status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] },
+                            },
+                            required: ['content', 'status'],
+                        },
+                        description: 'The full current task list',
+                    },
+                },
+                required: ['todos'],
+            },
+        },
     ];
 
 export const I = {

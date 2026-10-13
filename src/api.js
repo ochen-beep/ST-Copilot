@@ -17,7 +17,7 @@ import { buildLorebookContextBlock, buildLBAIInstructions, expandOutletsAsync } 
 import { buildCharacterContextBlock, buildCharEditAIInstructions } from './features/feature-character-engine.js';
 import { buildChatEditAIInstructions } from './features/feature-chatedit-engine.js';
 import { buildMemoryContextBlock, buildMemoryAIInstructions, processMemoryUpdates, stripMemoryBlock } from './features/feature-memory.js';
-import { buildToolCallsSystemBlock, parseToolCallsFromText, executeTool, getEnabledTools } from './features/feature-tools-engine.js';
+import { buildToolCallsSystemBlock, parseToolCallsFromText, executeTool, getEnabledTools, toOpenAITools, extractProviderToolCalls } from './features/feature-tools-engine.js';
 
 import { updateMsgCount, smartScrollToBottom, setGeneratingState, showGenerationError, _renderMsgBodyContent, _refreshSwipeBars, appendMsgEl } from './ui/ui-chat.js';
 import { getDisplayContent, extractToolCallPlaceholders, renderMarkdown, postProcessHTMLBlocks } from './ui/ui-chat.js';
@@ -222,6 +222,20 @@ export function getMainChatSlice(depth) {
     return ctx.chat.slice(-depth).map((m, i) => extractData(m, total - depth + i));
 }
 
+// Таймаут одного вызова инструмента: сетевые тулы (search_web/read_url) не должны
+// вешать весь раунд. Константа вместо настройки — пока ни один сценарий не потребовал другого.
+const TOOL_TIMEOUT_MS = 60000;
+
+function withTimeout(promise, ms = TOOL_TIMEOUT_MS) {
+    return new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error(`Инструмент не ответил за ${Math.round(ms / 1000)}с`)), ms);
+        promise.then(
+            v => { clearTimeout(t); resolve(v); },
+            e => { clearTimeout(t); reject(e); },
+        );
+    });
+}
+
 export async function assembleMessages(session, settings, pendingUserText, pendingAtts = null) {
     const messages = [{ role: 'system', content: await buildSystemContent(settings) }];
     const depth = Math.max(0, parseInt(settings.contextDepth) || 0);
@@ -293,8 +307,11 @@ export async function assembleMessages(session, settings, pendingUserText, pendi
             const finalContent = _mergeContent(content, m.attachments);
             let apiRole = m.role;
             if (apiRole === 'system') apiRole = 'user';
-            
-            messages.push({ role: apiRole, content: finalContent });
+
+            const outMsg = { role: apiRole, content: finalContent };
+            // Нативные tool-раунды: assistant.tool_calls и role:'tool' идут в API как есть
+            if (m.tool_calls) outMsg.tool_calls = m.tool_calls;
+            messages.push(outMsg);
 
             if (hasAttachedHistory) {
                 let cat = 'system_action_results';
@@ -407,7 +424,7 @@ export async function estimateTokens(text) {
     }
 }
 
-export async function callGenerate(session, settings, pendingText, onChunk) {
+export async function callGenerate(session, settings, pendingText, onChunk, nativeTools = false) {
     const ctx = SillyTavern.getContext();
     const messages = await assembleMessages(session, settings, pendingText);
     const maxTokens = parseInt(settings.maxTokens) || 8200;
@@ -428,6 +445,12 @@ export async function callGenerate(session, settings, pendingText, onChunk) {
             ?? ctx.textCompletionSettings?.streaming
             ?? true);
     }
+
+    // Нативный function calling: ST-стрим (getStreamingReply) выбрасывает delta.tool_calls,
+    // поэтому tool-раунды идут нестримингово. tool_payload раскладывается по всем веткам ниже.
+    if (nativeTools && toOpenAITools().length === 0) nativeTools = false;
+    if (nativeTools) useStream = false;
+    const toolsPayload = nativeTools ? { tools: toOpenAITools(), tool_choice: 'auto' } : {};
 
     function deepExtract(obj) {
         if (!obj || typeof obj !== 'object') return { t: '', r: null };
@@ -515,7 +538,8 @@ export async function callGenerate(session, settings, pendingText, onChunk) {
                 model: settings.customModel || 'gpt-3.5-turbo',
                 messages: messages,
                 max_tokens: maxTokens,
-                stream: useStream
+                stream: useStream,
+                ...toolsPayload,
             };
             const headers = { 'Content-Type': 'application/json' };
             if (settings.customKey) headers['Authorization'] = `Bearer ${settings.customKey}`;
@@ -575,6 +599,9 @@ export async function callGenerate(session, settings, pendingText, onChunk) {
                 const ext = deepExtract(data);
                 text = ext.t || '';
                 reasoning = ext.r;
+                const prov = extractProviderToolCalls(data);
+                state.abortController = null;
+                return { text: text.trim(), reasoning, isMaxTokens: false, toolCalls: prov?.calls || null, rawToolCalls: prov?.raw || null };
             }
         } catch (e) {
             state.abortController = null;
@@ -583,7 +610,7 @@ export async function callGenerate(session, settings, pendingText, onChunk) {
         }
 
         state.abortController = null;
-        return { text: text.trim(), reasoning, isMaxTokens: false };
+        return { text: text.trim(), reasoning, isMaxTokens: false, toolCalls: null, rawToolCalls: null };
     }
 
     const service = ctx.ConnectionManagerRequestService;
@@ -669,7 +696,7 @@ export async function callGenerate(session, settings, pendingText, onChunk) {
                 signal: abort.signal,
                 extractData: false,
                 includePreset: true
-            });
+            }, toolsPayload);
         } else {
             const mainApi = window.main_api || ctx.main_api;
             if (mainApi === 'openai' && ctx.ChatCompletionService) {
@@ -677,14 +704,16 @@ export async function callGenerate(session, settings, pendingText, onChunk) {
                 asyncGeneratorFn = await ctx.ChatCompletionService.processRequest({
                     messages: messages,
                     max_tokens: maxTokens,
-                    stream: useStream
+                    stream: useStream,
+                    ...toolsPayload
                 }, { presetName: oaiSettings.preset_settings_openai }, false, abort.signal);
             } else if (mainApi === 'textgenerationwebui' && ctx.TextCompletionService) {
                 const textGenSettings = window.textgenerationwebui_settings || ctx.textgenerationwebui_settings || {};
                 asyncGeneratorFn = await ctx.TextCompletionService.processRequest({
                     prompt: messages,
                     max_tokens: maxTokens,
-                    stream: useStream
+                    stream: useStream,
+                    ...toolsPayload
                 }, { presetName: textGenSettings.preset_settings_textgenerationwebui }, false, abort.signal);
             } else {
                 throw new Error('No active API connection found. Please select a profile in Connection Manager or configure the main API.');
@@ -750,6 +779,8 @@ export async function callGenerate(session, settings, pendingText, onChunk) {
 
     if (!isGen) {
         const value = asyncGeneratorFn;
+        let toolCalls = null;
+        let rawToolCalls = null;
         if (typeof value === 'string') {
             text = value.trim();
         } else {
@@ -757,13 +788,16 @@ export async function callGenerate(session, settings, pendingText, onChunk) {
             text = ext.t.trim();
             reasoning = ext.r;
             lastValue = value;
+            const prov = extractProviderToolCalls(value);
+            toolCalls = prov?.calls || null;
+            rawToolCalls = prov?.raw || null;
         }
-        
+
         const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason;
         const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
         state.abortController = null;
-        return { text, reasoning, isMaxTokens };
+        return { text, reasoning, isMaxTokens, toolCalls, rawToolCalls };
     }
 
     const gen = typeof asyncGeneratorFn === 'function' ? asyncGeneratorFn() : asyncGeneratorFn;
@@ -808,7 +842,7 @@ export async function callGenerate(session, settings, pendingText, onChunk) {
     const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
     state.abortController = null;
-    return { text: text.trim(), reasoning, isMaxTokens };
+    return { text: text.trim(), reasoning, isMaxTokens, toolCalls: null, rawToolCalls: null };
 }
 
 export async function runGenerate(session, userText, addUserMsg = true, processedAtts = null) {
@@ -977,10 +1011,11 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
             tokensIn
         });
 
-        let result = await callGenerate(session, settings, null, onChunk);
+        const nativeTools = settings.toolsEnabled && settings.toolsProtocol === 'native';
+        let result = await callGenerate(session, settings, null, onChunk, nativeTools);
 
         cleanupCursor();
-        
+
         if (result && !result.text.trim() && !result.reasoning?.trim()) {
             toastr.warning('⚠ Генерация не удалась: ИИ вернул пустой ответ.', EXT_DISPLAY, { timeOut: 10000 });
         }
@@ -989,7 +1024,10 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
             const maxRounds = settings.toolsMaxRounds ?? 5;
             let roundText = result.text || '';
             let roundReasoning = result.reasoning;
+            let roundToolCalls = result.toolCalls || null;
+            let roundRawToolCalls = result.rawToolCalls || null;
             let extraHistory = [];
+            let nativeHistory = [];
 
             let accumulatedText = roundText;
             let accumulatedReasoning = roundReasoning || null;
@@ -1028,20 +1066,26 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
             };
 
             for (let round = 0; round < maxRounds; round++) {
-                let tcs = parseToolCallsFromText(roundText);
+                const tcs = nativeTools ? (roundToolCalls || []) : parseToolCallsFromText(roundText);
                 if (!tcs.length) break;
 
                 const roundEntries = [];
                 for (const tc of tcs) {
                     const tcId = `tc_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-                    const entry = { id: tcId, name: tc.name, input: tc.input, status: 'running', result: undefined };
+                    const entry = { id: tcId, callId: tc.callId || null, name: tc.name, input: tc.input || {}, status: 'running', result: undefined };
                     state.activeToolCalls.push(entry);
                     roundEntries.push(entry);
-                    
-                    _updateLiveUI();
+                }
+                _updateLiveUI();
 
+                const execEntry = async (entry) => {
+                    if (state.abortController?.signal.aborted) {
+                        entry.result = { error: 'Генерация остановлена пользователем.' };
+                        entry.status = 'error';
+                        return;
+                    }
                     try {
-                        const res = await executeTool(tc.name, tc.input);
+                        const res = await withTimeout(executeTool(entry.name, entry.input));
                         if (res?.__ask_user) {
                             if (!streamMsgEl) {
                                 entry.result = { warning: 'ask_user requires streaming to be enabled.' };
@@ -1055,44 +1099,89 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                             entry.status = 'done';
                         }
                     } catch (e) {
-                        _dbgAdd('TOOL_EXECUTION_FAILED', { toolName: tc.name, error: e.message });
+                        _dbgAdd('TOOL_EXECUTION_FAILED', { toolName: entry.name, error: e.message });
                         entry.result = { error: e.message };
                         entry.status = 'error';
                     }
-                    
-                    _updateLiveUI();
+                };
+
+                // Параллельно всё, кроме ask_user — его резолвер DOM-синглтон и он
+                // останавливает цикл до ответа человека, параллелить его нельзя.
+                await Promise.all(roundEntries.filter(e => e.name !== 'ask_user').map(execEntry));
+                for (const entry of roundEntries.filter(e => e.name === 'ask_user')) {
+                    await execEntry(entry);
                 }
+                _updateLiveUI();
 
-                extraHistory.push({ role: 'assistant', content: stripMemoryBlock(roundText) });
-                const toolResultsText = roundEntries.map(e =>
-                    `<tool_result name="${e.name}" status="${e.status}">\n${typeof e.result === 'string' ? e.result : JSON.stringify(e.result, null, 2)}\n</tool_result>`
-                ).join("\n");
+                if (nativeTools) {
+                    const rawCalls = roundRawToolCalls || roundEntries.map((e, i) => ({
+                        id: e.callId || `call_${round}_${i}`,
+                        type: 'function',
+                        function: { name: e.name, arguments: JSON.stringify(e.input) },
+                    }));
+                    nativeHistory.push({ role: 'assistant', content: roundText || '', tool_calls: rawCalls, _round: round });
+                    for (const e of roundEntries) {
+                        nativeHistory.push({
+                            role: 'tool',
+                            tool_call_id: e.callId || `call_${round}_${roundEntries.indexOf(e)}`,
+                            content: JSON.stringify(e.result ?? null),
+                            _toolName: e.name,
+                            _round: round,
+                        });
+                    }
+                    // Компакция (паттерн Anthropic clear_tool_uses): результаты всех раундов,
+                    // кроме последнего исполненного, сжимаются в плейсхолдер. Свежий раунд
+                    // обязан остаться verbatim — иначе модель не увидит результаты, ради
+                    // которых вызывала инструменты. assistant.tool_calls не трогаем: API
+                    // требует пары tool_calls → tool-сообщение.
+                    for (const m of nativeHistory) {
+                        if (m.role === 'tool' && m._round < round - 1) {
+                            m.content = `[${m._toolName}: результат убран из контекста для экономии токенов]`;
+                        }
+                    }
+                    for (const eh of nativeHistory) {
+                        session.messages.push({ id: `tc_hist_${round}_${nativeHistory.indexOf(eh)}`, role: eh.role, content: eh.content, tool_calls: eh.tool_calls, tool_call_id: eh.tool_call_id, timestamp: Date.now(), _tcTemp: true });
+                    }
+                } else {
+                    extraHistory.push({ role: 'assistant', content: stripMemoryBlock(roundText) });
+                    const toolResultsText = roundEntries.map(e =>
+                        `<tool_result name="${e.name}" status="${e.status}">\n${typeof e.result === 'string' ? e.result : JSON.stringify(e.result, null, 2)}\n</tool_result>`
+                    ).join("\n");
 
-                extraHistory.push({ role: 'user', content: `<tool_results>\n${toolResultsText}\n</tool_results>\n\nCONTINUE your response using these results. Write exactly where you left off.` });
+                    extraHistory.push({ role: 'user', content: `<tool_results>\n${toolResultsText}\n</tool_results>\n\nCONTINUE your response using these results. Write exactly where you left off.`, _round: round });
+
+                    // Компакция как в native-ветке: свежие результаты обязательны,
+                    // более старые раунды сжимаются в плейсхолдер.
+                    for (const eh of extraHistory) {
+                        if (eh._round !== undefined && eh._round < round - 1) {
+                            eh.content = `[результаты инструментов раунда ${eh._round + 1} убраны из контекста для экономии токенов]`;
+                        }
+                    }
+
+                    for (const eh of extraHistory) {
+                        session.messages.push({ id: `tc_hist_${Date.now()}`, role: eh.role, content: eh.content, timestamp: Date.now(), _tcTemp: true });
+                    }
+                }
 
                 const thinkingText = document.getElementById('scp-thinking-text');
                 if (thinkingText) thinkingText.textContent = `Раунд ${round + 2}/${maxRounds + 1}…`;
                 const bar = document.getElementById('scp-thinking-bar');
                 if (bar) bar.style.display = 'flex';
 
-                for (const eh of extraHistory) {
-                    session.messages.push({ id: `tc_hist_${Date.now()}`, role: eh.role, content: eh.content, timestamp: Date.now(), _tcTemp: true });
-                }
-
                 isStreaming = false;
                 streamAccumText = '';
                 const cursor2 = document.createElement('span');
                 cursor2.className = 'scp-stream-cursor';
-                
-                const tempSession = { 
-                    ...session, 
-                    messages: session.messages.filter(m => m.id !== streamMsgId) 
+
+                const tempSession = {
+                    ...session,
+                    messages: session.messages.filter(m => m.id !== streamMsgId)
                 };
 
                 const nextResult = await callGenerate(tempSession, settings, null, (t, r) => {
                     _updateLiveUI(t, r);
                     if (streamContentEl) streamContentEl.appendChild(cursor2);
-                });
+                }, nativeTools);
 
                 session.messages = session.messages.filter(m => !m._tcTemp);
                 cursor2.remove();
@@ -1101,12 +1190,14 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
                 roundText = nextResult.text || '';
                 roundReasoning = nextResult.reasoning || null;
-                
+                roundToolCalls = nextResult.toolCalls || null;
+                roundRawToolCalls = nextResult.rawToolCalls || null;
+
                 accumulatedText += '\n\n' + roundText;
                 if (roundReasoning) {
                     accumulatedReasoning = accumulatedReasoning ? accumulatedReasoning + '\n\n' + roundReasoning : roundReasoning;
                 }
-                
+
                 result = { text: accumulatedText, reasoning: accumulatedReasoning };
             }
         }

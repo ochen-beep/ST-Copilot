@@ -103,6 +103,15 @@ export function setupToolsSettingsUI() {
         getSettings().toolsMaxRounds = parseInt(e.target.value) || 5; saveSettings();
     });
 
+    const protoSel = document.getElementById('scp-sp-tools-protocol');
+    if (protoSel) {
+        protoSel.value = s.toolsProtocol === 'native' ? 'native' : 'text';
+        protoSel.addEventListener('change', () => {
+            getSettings().toolsProtocol = protoSel.value === 'native' ? 'native' : 'text';
+            saveSettings();
+        });
+    }
+
     const streamingOff = s.forceStreaming === 'off';
 
     listEl.innerHTML = '';

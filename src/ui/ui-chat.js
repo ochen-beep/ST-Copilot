@@ -513,6 +513,19 @@ export function _renderMsgBodyContent(msgEl, msg) {
         }));
     }
     if (liveTCs.length) {
+        // Нативные tool-раунды не оставляют фенсов в тексте — плейсхолдеров нет,
+        // синтезируем их в конец тела сообщения, иначе карточкам некуда встать.
+        if (!msgEl.querySelector('.scp-tool-call-ph')) {
+            const contentEl = msgEl.querySelector('.scp-msg-content');
+            if (contentEl) {
+                liveTCs.forEach((_, i) => {
+                    const ph = document.createElement('div');
+                    ph.className = 'scp-tool-call-ph';
+                    ph.dataset.tcid = String(i);
+                    contentEl.appendChild(ph);
+                });
+            }
+        }
         postProcessToolCalls(msgEl, liveTCs);
     }
 }
