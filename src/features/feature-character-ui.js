@@ -2,7 +2,7 @@ import { EXT_DISPLAY, I } from '../constants.js';
 import { getSettings, saveSettings, getCurrentSession, addMessage, saveSessionsToMetadata } from '../session.js';
 import { escHtml } from '../utils/util-dom.js';
 import { bringWindowToFront } from '../ui/ui-window.js';
-import { applySearchReplaceToField } from '../utils/util-text.js';
+import { applyPatchToField } from '../utils/util-text.js';
 import { getCharFieldValue, saveCharacterField, stripCharCreationBlock, stripCharChangesBlock, createCharacterAPI, groupChangesByCharacter } from './feature-character-engine.js';
 import { openTextDiffModal } from '../utils/util-diff.js';
 
@@ -153,7 +153,7 @@ export async function applyCharChanges(changes, char, afterMsgId = null) {
                         let current = greetings[idx];
                         let allMatched = true;
                         for (const patch of (change.patches || [])) {
-                            const { result, matched } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                            const { result, matched } = applyPatchToField(current, patch);
                             if (!matched) { toastr.warning(`[Редактор персонажа] SEARCH не найдено в приветствии #${change.index}.`, EXT_DISPLAY); allMatched = false; break; }
                             current = result;
                         }
@@ -179,7 +179,7 @@ export async function applyCharChanges(changes, char, afterMsgId = null) {
                 let current = String(getCharFieldValue(char, field));
                 let allMatched = true;
                 for (const patch of (change.patches || [])) {
-                    const { result, matched } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                    const { result, matched } = applyPatchToField(current, patch);
                     if (!matched) { toastr.warning(`[Редактор персонажа] SEARCH не найдено в поле «${field}»: «${(patch.search || '').slice(0, 60)}…»`, EXT_DISPLAY, { timeOut: 8000 }); allMatched = false; break; }
                     current = result;
                 }
@@ -460,11 +460,16 @@ function _buildCharProposalCardForCharacter(changes, msgEl, char) {
         } else {
             current = String(getCharFieldValue(char, change.field));
         }
+        const ambiguous = [];
         for (const patch of (change.patches || [])) {
-            const { matched, result } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
-            if (!matched) return { valid: false, reason: `SEARCH not found: "${(patch.search || '').slice(0, 50)}"` };
-            current = result;
+            const r = applyPatchToField(current, patch);
+            if (!r.matched) {
+                if (r.occurrences >= 2) { ambiguous.push({ patch, occurrences: r.occurrences }); continue; }
+                return { valid: false, reason: `SEARCH not found: "${(patch.search || '').slice(0, 50)}"` };
+            }
+            current = r.result;
         }
+        if (ambiguous.length) return { valid: false, reason: 'Якорь встречается несколько раз', ambiguous };
         return { valid: true };
     };
 
@@ -478,7 +483,7 @@ function _buildCharProposalCardForCharacter(changes, msgEl, char) {
             current = String(getCharFieldValue(char, change.field));
         }
         for (const patch of (change.patches || [])) {
-            const { result } = applySearchReplaceToField(current, patch.search || patch.anchor || '', patch.replace || '');
+            const { result } = applyPatchToField(current, patch);
             current = result;
         }
         return current;
@@ -555,15 +560,34 @@ function _buildCharProposalCardForCharacter(changes, msgEl, char) {
         applyBtn.className = 'scp-lb-proposal-item-apply'; applyBtn.title = 'Применить'; applyBtn.textContent = '✓';
 
         if (c.action === 'replace') {
-            const { valid, reason } = validateReplaceChange(editableChanges[ci]);
+            const { valid, reason, ambiguous } = validateReplaceChange(editableChanges[ci]);
             if (!valid) {
                 applyBtn.disabled = true;
                 applyBtn.title = reason || 'Невозможно применить';
                 item.style.borderLeftColor = 'var(--scp-danger)';
                 const warn = document.createElement('div');
                 warn.style.cssText = 'font-size:10px;color:var(--scp-danger);margin-top:4px';
-                warn.textContent = `\u26A0 ${reason || 'SEARCH текст не найден — возможно, это изменение устарело.'}`;
-                meta.appendChild(warn);
+                warn.textContent = `⚠ ${reason || 'SEARCH текст не найден — возможно, это изменение устарело.'}`;
+                for (const amb of (ambiguous || [])) {
+                    const allBtn = document.createElement('button');
+                    allBtn.className = 'scp-anchor-all-btn';
+                    allBtn.textContent = `⇄ Заменить все ${amb.occurrences}`;
+                    allBtn.title = `Якорь «${(amb.patch.search || amb.patch.anchor || '').slice(0, 60)}» встречается ${amb.occurrences} раза — заменить все вхождения`;
+                    allBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        amb.patch.all = true;
+                        const re = validateReplaceChange(editableChanges[ci]);
+                        if (re.valid) {
+                            applyBtn.disabled = false; applyBtn.title = 'Применить';
+                            item.style.borderLeftColor = '';
+                            warn.style.display = 'none';
+                        } else {
+                            warn.textContent = `⚠ ${re.reason}`;
+                            allBtn.remove();
+                        }
+                    });
+                    warn.appendChild(allBtn);
+                }
             }
         }
 

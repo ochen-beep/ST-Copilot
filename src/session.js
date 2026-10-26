@@ -323,7 +323,33 @@ function _tryParseSessionPayload(text) {
     return undefined;
 }
 
-export async function loadSessionFile(file_id) {
+// Битый файл не перезаписываем молча: копируем сырой текст рядом (.corrupt-бэкап),
+// чтобы ручное восстановление оставалось возможным после того, как на его место
+// будет записан чистый bucket.
+async function _backupCorruptedFile(file_id, rawText) {
+    try {
+        const ctx = SillyTavern.getContext();
+        const backupName = `copilot_corrupt_${Date.now()}_${file_id.replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+        const b64 = btoa(unescape(encodeURIComponent(rawText)));
+        const res = await fetch('/api/files/upload', {
+            method: 'POST',
+            headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: backupName, data: b64 }),
+        });
+        _dbgAdd('STORAGE_CORRUPT_BACKUP', { file_id, backupName, ok: res.ok, size: rawText.length });
+        if (typeof toastr !== 'undefined') {
+            toastr.warning(
+                `Файл сессий «${file_id}» повреждён и не читается. Начата чистая сессия; исходное содержимое сохранено в «${backupName}».`,
+                EXT_DISPLAY, { timeOut: 15000 });
+        }
+        return res.ok;
+    } catch (e) {
+        _dbgAdd('STORAGE_CORRUPT_BACKUP_FAILED', { file_id, error: e.message });
+        return false;
+    }
+}
+
+export async function loadSessionFile(file_id, { expectBucket = false } = {}) {
     try {
         const res = await fetch(`/user/files/${file_id}`);
         if (res.status === 404) return null;
@@ -339,7 +365,17 @@ export async function loadSessionFile(file_id) {
         }
 
         const parsed = _tryParseSessionPayload(trimmed);
-        if (parsed === undefined) throw new Error('Unrecoverable payload after base64/repair fallback');
+        if (parsed === undefined) {
+            await _backupCorruptedFile(file_id, trimmed);
+            throw new Error('Unrecoverable payload after base64/repair fallback');
+        }
+        // Файл парсится, но это не bucket сессий: та же порча, просто валидный JSON.
+        // Бэкапим так же, иначе следующая запись молча затрёт данные.
+        if (expectBucket && !parsed?.bucket) {
+            _dbgAdd('STORAGE_SHAPE_INVALID', { file_id, keys: Object.keys(parsed || {}) });
+            await _backupCorruptedFile(file_id, trimmed);
+            throw new Error('Payload parsed but has no sessions bucket');
+        }
         return parsed;
     } catch (e) {
         _dbgAdd('STORAGE_LOAD_ERROR', { file_id, error: e.message });
@@ -382,7 +418,7 @@ export async function initChatBucket({ forceReset = false } = {}) {
     if (meta && meta.file_id && meta.format === 'v4') {
         if (meta.chat_id === chatId) {
             targetFileId = meta.file_id;
-            payload = await loadSessionFile(targetFileId);
+            payload = await loadSessionFile(targetFileId, { expectBucket: true });
         } else {
             _dbgAdd('STORAGE_CHAT_BRANCH_DETECTED', { oldChatId: meta.chat_id, newChatId: chatId });
             payload = await loadSessionFile(meta.file_id);

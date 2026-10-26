@@ -85,7 +85,9 @@ export function refreshSessionDropdown() {
     if (!bucket.sessions.length) {
         listEl.innerHTML = `<div class="scp-sess-empty-label">Нет сессий — создайте новую ниже</div>`;
     } else {
-        for (const sess of bucket.sessions) {
+        // Закреплённые сверху; sort в JS стабилен — внутри групп порядок исходный.
+        const ordered = bucket.sessions.slice().sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+        for (const sess of ordered) {
             const item = document.createElement('div');
             item.className = `scp-sess-item${sess.id === bucket.activeSessionId ? ' active' : ''}`;
             item.dataset.id = sess.id;
@@ -95,6 +97,19 @@ export function refreshSessionDropdown() {
             const count = document.createElement('span'); count.className = 'scp-sess-item-count'; count.textContent = sess.messages.length;
 
             item.appendChild(dot); item.appendChild(nameSpan); item.appendChild(count);
+
+            const pinBtn = document.createElement('button');
+            pinBtn.className = `scp-sess-tmp-btn scp-sess-pin-btn${sess.pinned ? ' active' : ''}`;
+            pinBtn.title = sess.pinned ? 'Открепить сессию' : 'Закрепить сессию вверху списка';
+            pinBtn.innerHTML = '📌';
+            pinBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                sess.pinned = !sess.pinned;
+                import('./session.js').then(m => m.saveSessionsToMetadata());
+                refreshSessionDropdown();
+            });
+            item.appendChild(pinBtn);
+
             if (sess.isTemporary) {
                 const badge = document.createElement('span'); badge.className = 'scp-sess-tmp-badge';
                 badge.title = 'Временная сессия — будет удалена при переключении'; badge.textContent = 'tmp';
@@ -430,15 +445,18 @@ function attachWindowListeners() {
             
             const isFormatted = tab.dataset.tab === 'formatted';
             const isJson = tab.dataset.tab === 'json';
-            
+            const isLastSent = tab.dataset.tab === 'lastsent';
+
             const fmtEl = document.getElementById('scp-ctx-formatted');
             const jsonEl = document.getElementById('scp-ctx-json');
-            
+            const lsEl = document.getElementById('scp-ctx-lastsent');
+
             if (fmtEl) fmtEl.style.display = isFormatted ? '' : 'none';
             if (jsonEl) jsonEl.style.display = isJson ? '' : 'none';
-            
+            if (lsEl) lsEl.style.display = isLastSent ? '' : 'none';
+
             setTimeout(() => {
-                const targetEl = isJson ? jsonEl : document.getElementById('scp-ctx-body');
+                const targetEl = isLastSent ? lsEl : (isJson ? jsonEl : document.getElementById('scp-ctx-body'));
                 if (targetEl) {
                     const prevBehavior = targetEl.style.scrollBehavior;
                     targetEl.style.scrollBehavior = 'auto';
@@ -453,6 +471,8 @@ function attachWindowListeners() {
         const activeTab = document.querySelector('.scp-modal-tab.active');
         if (activeTab?.dataset.tab === 'json') {
             copyText(document.getElementById('scp-ctx-json')?.textContent || '');
+        } else if (activeTab?.dataset.tab === 'lastsent') {
+            copyText(document.getElementById('scp-ctx-lastsent')?.textContent || '');
         } else {
             import('./ui/ui-widgets.js').then(m => copyText(apiMod.formatPayloadAsText(m._lastInspectorMessages || [])));
         }

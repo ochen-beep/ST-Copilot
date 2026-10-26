@@ -90,3 +90,22 @@ export function getAuthorsNote() {
     const ctx = SillyTavern.getContext();
     return ctx.chatMetadata?.note_prompt || ctx.authorsNote || ctx.authors_note || '';
 }
+// Подпись генерации для мета-строки сообщения: какой профиль/модель отвечал.
+export function getGenStamp(settings) {
+    try {
+        const ctx = SillyTavern.getContext();
+        if (settings.connectionSource === 'profile' && settings.connectionProfileId) {
+            const service = ctx.ConnectionManagerRequestService;
+            const profiles = service?.getSupportedProfiles?.() ?? ctx.extensionSettings?.connectionManager?.profiles ?? [];
+            const p = profiles.find(x => x.id === settings.connectionProfileId);
+            if (p) return p.model ? `${p.name} · ${p.model}` : p.name;
+            return null;
+        }
+        const mainApi = ctx.main_api || window.main_api;
+        if (mainApi === 'openai') {
+            return (ctx.oai_settings?.model || window.oai_settings?.model) || 'Chat Completion';
+        }
+        if (mainApi === 'textgenerationwebui') return 'Text Completion';
+        return mainApi || null;
+    } catch (_) { return null; }
+}

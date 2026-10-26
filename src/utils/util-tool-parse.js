@@ -89,6 +89,29 @@ export function stripToolCallsFromText(text) {
         .trim();
 }
 
+// Точка обрыва генерации после завершённого tool_call: без неё текстовый
+// протокол даёт модели продолжить писать, и она выдумывает результат инструмента
+// до его реального выполнения. Возвращает индекс конца последнего ЗАКРЫТОГО
+// блока или -1, если резать рано (хвост пустой, или это начало следующего вызова,
+// или недописанный маркер).
+const CLOSED_TC_RE = /```tool_call\s*[\s\S]*?```|<tool_call>\s*[\s\S]*?<\/tool_call>/gi;
+const TC_MARKERS = ['```tool_call', '<tool_call>'];
+
+export function findToolCallCut(text) {
+    if (!text) return -1;
+    CLOSED_TC_RE.lastIndex = 0;
+    let m, lastEnd = -1;
+    while ((m = CLOSED_TC_RE.exec(text)) !== null) lastEnd = m.index + m[0].length;
+    if (lastEnd === -1) return -1;
+    const tail = text.slice(lastEnd);
+    const t = tail.trimStart();
+    if (!t) return -1;
+    if (TC_MARKERS.some(mk => t.startsWith(mk))) return -1; // следующий вызов уже пишется
+    if (t.length <= Math.max(...TC_MARKERS.map(mk => mk.length))
+        && TC_MARKERS.some(mk => mk.startsWith(t))) return -1; // недописанный маркер
+    return lastEnd;
+}
+
 // Нативный function calling:choices[0].message.tool_calls из нестримингового
 // ответа → нормализованные вызовы для executeTool.
 export function extractProviderToolCalls(value) {

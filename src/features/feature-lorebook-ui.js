@@ -4,7 +4,7 @@ import { getSettings, saveSettings, getCurrentSession, addMessage, deleteMsg, sa
 import { _dbgAdd } from '../utils/util-debug.js';
 import { escHtml, showCustomDialog, copyText } from '../utils/util-dom.js';
 import { fetchWorldInfoBook, saveWorldInfoBook, wiEntriesToArray, getDisplayName, getActiveLorebookNames, getEntryOverrideKey, buildLorebookContextBlock, stripLBChangesBlock, resolveLBChangeTarget, bindNewLorebookToCharacter, wiCache, lastActiveEntries } from './feature-lorebook-engine.js';
-import { applySearchReplaceToField } from '../utils/util-text.js';
+import { applyPatchToField } from '../utils/util-text.js';
 import { openTextDiffModal } from '../utils/util-diff.js';
 
 import { applyCustomTheme, bringWindowToFront } from '../ui/ui-window.js';
@@ -23,7 +23,7 @@ export function openDiffModal(change, originalEntry) {
     if (change.action === 'patch' && originalEntry) {
         let current = originalContent;
         for (const patch of (change.patches || [])) {
-            const { result } = applySearchReplaceToField(current, patch.search || patch.anchor || '', patch.replace || '');
+            const { result } = applyPatchToField(current, patch);
             current = result;
         }
         newContent = current;
@@ -166,7 +166,8 @@ export function logLBHistoryChanges(changes, statusStr, afterMsgId = null) {
 
 export async function applyLBChanges(changes, afterMsgId = null) {
     console.log(`[${EXT_DISPLAY}] applyLBChanges: processing ${changes.length} change(s)`, JSON.parse(JSON.stringify(changes)));
-    const bookCache = {};
+    const bookCache = {};      // bookName -> рабочая копия книги (клонируется при первом касании)
+    const origBooks = {};      // bookName -> исходный объект из wiCache (для отката при сбое сейва)
     const successfulChanges =[];
 
     for (const change of changes) {
@@ -195,6 +196,19 @@ export async function applyLBChanges(changes, afterMsgId = null) {
             toastr.error(`[ЛБ] Не удалось определить имя книги для изменения: «${change.name || change.uid || '?'}»`, EXT_DISPLAY, { timeOut: 10000 });
             continue;
         }
+
+        // Работаем с клоном книги: неуспешный сейв не должен оставлять живой
+        // кэш мутированным относительно диска. wiCache подменяем на рабочую
+        // копию, чтобы последующие resolveLBChangeTarget в этом же вызове
+        // видели уже применённые изменения.
+        if (!bookCache[bookName]) {
+            bookCache[bookName] = structuredClone(data);
+            origBooks[bookName] = data;
+            wiCache[bookName] = bookCache[bookName];
+        }
+        data = bookCache[bookName];
+        if (origEntry && data.entries[origEntry.uid]) origEntry = data.entries[origEntry.uid];
+        change._resolvedBook = bookName;
 
         if (change.action === 'add' && data) {
             const exists = Object.values(data.entries).find(e => e.comment && e.comment.toLowerCase() === (change.name || '').toLowerCase());
@@ -232,8 +246,6 @@ export async function applyLBChanges(changes, afterMsgId = null) {
                     outlet_name: outletName
                 }
             };
-            bookCache[bookName] = data;
-            wiCache[bookName] = data;
             successfulChanges.push(change);
         } else if (change.action === 'edit') {
             if (!origEntry) {
@@ -265,8 +277,6 @@ export async function applyLBChanges(changes, afterMsgId = null) {
                     origEntry.extensions.outlet_name = '';
                 }
             }
-            bookCache[bookName] = data;
-            wiCache[bookName] = data;
             successfulChanges.push(change);
         } else if (change.action === 'patch') {
             if (!origEntry) {
@@ -276,7 +286,7 @@ export async function applyLBChanges(changes, afterMsgId = null) {
             let current = origEntry.content || '';
             let allMatched = true;
             for (const patch of (change.patches || [])) {
-                const { result, matched } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                const { result, matched } = applyPatchToField(current, patch);
                 if (!matched) {
                     toastr.warning(`[ЛБ] SEARCH не найдено в «${origEntry.comment}»: «${(patch.search || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 });
                     allMatched = false;
@@ -292,8 +302,6 @@ export async function applyLBChanges(changes, afterMsgId = null) {
                 if (change.triggers.length === 0 && change.constant !== false) origEntry.constant = true;
             }
             if (change.constant !== undefined) origEntry.constant = !!change.constant;
-            bookCache[bookName] = data;
-            wiCache[bookName] = data;
             successfulChanges.push(change);
         } else if (change.action === 'prepend' || change.action === 'append') {
             if (!origEntry) continue;
@@ -305,14 +313,10 @@ export async function applyLBChanges(changes, afterMsgId = null) {
                 if (change.triggers.length === 0 && change.constant !== false) origEntry.constant = true;
             }
             if (change.constant !== undefined) origEntry.constant = !!change.constant;
-            bookCache[bookName] = data;
-            wiCache[bookName] = data;
             successfulChanges.push(change);
         } else if (change.action === 'delete') {
             if (!origEntry) continue;
             delete data.entries[origEntry.uid];
-            bookCache[bookName] = data;
-            wiCache[bookName] = data;
             successfulChanges.push(change);
         }
     }
@@ -322,19 +326,30 @@ export async function applyLBChanges(changes, afterMsgId = null) {
         return [];
     }
 
+    // Сохраняем по книгам и честно считаем применённым только то, что реально
+    // ушло на диск: при сбое сейва кэш откатывается к исходному объекту,
+    // а изменения этой книги не попадают в успешные.
+    const failedBooks = new Set();
     for (const [name, data] of Object.entries(bookCache)) {
         try {
             await saveWorldInfoBook(name, data);
         } catch (e) {
+            failedBooks.add(name);
+            wiCache[name] = origBooks[name];
             toastr.error(`[ЛБ] Ошибка сохранения для «${name}»: ${e.message}`, EXT_DISPLAY, { timeOut: 12000 });
         }
     }
 
-    if (successfulChanges.length > 0) {
-        recordStat(SM.lb, successfulChanges.length);
-        logLBHistoryChanges(successfulChanges, 'Accepted', afterMsgId);
+    const applied = failedBooks.size
+        ? successfulChanges.filter(c => !failedBooks.has(c._resolvedBook))
+        : successfulChanges;
+    for (const c of successfulChanges) delete c._resolvedBook;
+
+    if (applied.length > 0) {
+        recordStat(SM.lb, applied.length);
+        logLBHistoryChanges(applied, 'Accepted', afterMsgId);
     }
-    return successfulChanges;
+    return applied;
 }
 
 export function renderProposalCard(changes, msgEl) {
@@ -520,20 +535,37 @@ export function renderProposalCard(changes, msgEl) {
 
             let isValid = found;
             let reason = found ? '' : 'Запись не найдена в выбранном лорбуке';
+            const ambiguous = [];
             if (found && editableChanges[ci].action === 'patch') {
                 const orig = resolved.origEntry;
                 let current = orig?.content || '';
                 for (const patch of (editableChanges[ci].patches || [])) {
-                    const { result, matched } = applySearchReplaceToField(current, patch.search || patch.anchor || '', patch.replace || '');
-                    if (!matched) { isValid = false; reason = `ANCHOR не найден: «${(patch.search || patch.anchor || '').slice(0, 40)}...»`; break; }
-                    current = result;
+                    const r = applyPatchToField(current, patch);
+                    if (!r.matched) {
+                        if (r.occurrences >= 2) { ambiguous.push({ patch, occurrences: r.occurrences }); continue; }
+                        isValid = false; reason = `ANCHOR не найден: «${(patch.search || patch.anchor || '').slice(0, 40)}...»`; break;
+                    }
+                    current = r.result;
                 }
             }
+            if (isValid && ambiguous.length) { isValid = false; reason = 'Якорь встречается несколько раз'; }
 
             if (!isValid) {
                 applyItemBtn.disabled = true; applyItemBtn.title = reason;
                 item.style.borderLeftColor = 'var(--scp-danger)';
                 warnEl.textContent = `⚠ ${reason}`; warnEl.style.display = 'block';
+                for (const amb of ambiguous) {
+                    const allBtn = document.createElement('button');
+                    allBtn.className = 'scp-anchor-all-btn';
+                    allBtn.textContent = `⇄ Заменить все ${amb.occurrences}`;
+                    allBtn.title = `Якорь «${(amb.patch.search || amb.patch.anchor || '').slice(0, 60)}» встречается ${amb.occurrences} раза — заменить все вхождения`;
+                    allBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        amb.patch.all = true;
+                        _validateBookEntry(_selectedBook);
+                    });
+                    warnEl.appendChild(allBtn);
+                }
             } else {
                 applyItemBtn.disabled = false; applyItemBtn.title = 'Применить это изменение';
                 item.style.borderLeftColor = ''; warnEl.style.display = 'none';

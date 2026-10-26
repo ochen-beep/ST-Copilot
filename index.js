@@ -64,6 +64,7 @@ Active outlet entries are listed in lorebook_context under "Outlet Entries" (if 
    - Boundary Syntax: "First 3 words || Last 3 words" (string-string match). 
      * BAD: "The ancient castle was built in 1240 by a grumpy dwarf."
      * GOOD: "The ancient castle || grumpy dwarf."
+   - Add \`"all":true\` to a patch to replace EVERY occurrence of the anchor text (e.g. renaming a place everywhere it is mentioned). Omit it for targeted single edits.
 </modification_protocol>
 
 <output_requirement>
@@ -133,6 +134,7 @@ If multiple characters need changes, output one tag PER character PER field — 
 - \`replace\`: Surgical patch. Use Boundary Anchor: "3-4 Start Words || 3-4 End Words". 
   * BAD: "The quick brown fox jumps over the lazy dog."
   * GOOD: "The quick brown || lazy dog."
+- Add \`"all":true\` to a patch to replace EVERY occurrence of the anchor text. Omit it for targeted single edits.
 - Every tag above requires \`char="ExactName"\` per <group_chat_protocol>.
 </edit_syntax>
 
@@ -172,7 +174,7 @@ Generated \`chat-changes\` blocks are automatically executed and purged from the
    - \`hide\` / \`unhide\`: Toggle message visibility for AI.
    - \`overwrite\`: 100% message replacement.
    - \`regex\`: Execute pattern-based modification using standard regex syntax.
-   - \`replace\`: Surgical patch (Anchor: "3-4 Start || 3-4 End").
+   - \`replace\`: Surgical patch (Anchor: "3-4 Start || 3-4 End"). Supports \`"all":true\` to replace every occurrence of the anchor.
      * GOOD: "The character looked || ever return home."
      * BAD: (Writing the entire sentence wastes tokens and breaks matching).
    - \`bulk_replace\`: Mass search-and-replace across a \`msg_range\`.
@@ -946,6 +948,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       userScrolledUp: false,
       savedScrollTop: 0,
       abortController: null,
+      // Последние реальные тела запросов (после подстановок ST), секреты вымыты.
+      // Только для инспектора «Отправленные»; кап 5, в персистентность не уходит.
+      requestLog: [],
       // Флаг остановки, живущий дольше abortController: контроллер зануляется после
       // каждого callGenerate, поэтому Stop между tool-раундами без этого флага терялся.
       generationStopped: false,
@@ -1295,27 +1300,34 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  // Уникальное вхождение: literal → whitespace-толерантный (переносы строк и
-  // кратные пробелы внутри якоря). Никакого фаззи-подбора: правка либо ложится
-  // точно и однозначно, либо не ложится вовсе.
-  // Возвращает { start, end } | { ambiguous: true } | null.
-  function _findUniqueRange(src, query) {
+  // Все вхождения якоря: literal → whitespace-толерантный (переносы строк и
+  // кратные пробелы внутри якоря). Никакого фаззи-подбора.
+  function _findAllRanges(src, query) {
       const q = query.trim();
-      if (!q) return null;
+      if (!q) return [];
 
-      let first = src.indexOf(q);
-      if (first !== -1) {
-          if (src.indexOf(q, first + 1) !== -1) return { ambiguous: true };
-          return { start: first, end: first + q.length };
+      const out = [];
+      let idx = src.indexOf(q);
+      while (idx !== -1) {
+          out.push({ start: idx, end: idx + q.length });
+          idx = src.indexOf(q, idx + 1);
       }
+      if (out.length) return out;
 
       const parts = q.split(/\s+/).map(_escapeRe);
-      if (parts.length < 2) return null;
+      if (parts.length < 2) return [];
       const wsRe = new RegExp(parts.join('\\s+'), 'g');
-      const m1 = wsRe.exec(src);
-      if (!m1) return null;
-      if (wsRe.exec(src)) return { ambiguous: true };
-      return { start: m1.index, end: m1.index + m1[0].length };
+      let m;
+      while ((m = wsRe.exec(src)) !== null) out.push({ start: m.index, end: m.index + m[0].length });
+      return out;
+  }
+
+  // Уникальное вхождение. Возвращает { start, end } | { ambiguous: true, count } | null.
+  function _findUniqueRange(src, query) {
+      const all = _findAllRanges(src, query);
+      if (all.length === 1) return all[0];
+      if (all.length > 1) return { ambiguous: true, count: all.length };
+      return null;
   }
 
   function applySearchReplaceToField(fieldContent, searchText, replaceText) {
@@ -1357,10 +1369,44 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       }
 
       const m = _findUniqueRange(src, srch);
-      if (m?.ambiguous) return fail(`якорь «${srch.trim().slice(0, 60)}» встречается несколько раз — включи в якорь больше контекста`);
+      if (m?.ambiguous) {
+          const f = fail(`якорь «${srch.trim().slice(0, 60)}» встречается ${m.count} раза — включи в якорь больше контекста или замени все вхождения`);
+          f.occurrences = m.count;
+          return f;
+      }
       if (m) return { result: src.slice(0, m.start) + repl + src.slice(m.end), matched: true };
 
       return fail('якорь не найден — запроси точный текст поля инструментом чтения и процитируй его дословно');
+  }
+
+  // Замена ВСЕХ вхождений якоря (режим patch.all): для «переименуй таверну везде».
+  // Диапазонные якоря «a || b» не поддерживаются — у них нет однозначного «всех».
+  function applyReplaceAllToField(fieldContent, searchText, replaceText) {
+      const src = fieldContent || '';
+      const srch = (searchText || '').trim();
+      const repl = replaceText || '';
+      if (!srch) return { result: src, matched: false, count: 0, reason: 'пустой якорь' };
+      if (srch.includes('||') || srch.includes('...')) {
+          return { result: src, matched: false, count: 0, reason: 'диапазонный якорь не поддерживает замену всех вхождений' };
+      }
+      const all = _findAllRanges(src, srch);
+      if (!all.length) return { result: src, matched: false, count: 0, reason: 'якорь не найден' };
+      // Собираем с конца, чтобы индексы не съезжали.
+      let result = src;
+      for (let i = all.length - 1; i >= 0; i--) {
+          result = result.slice(0, all[i].start) + repl + result.slice(all[i].end);
+      }
+      return { result, matched: true, count: all.length };
+  }
+
+  // Единая точка применения одного патча: нормализует ключи (search/anchor)
+  // и режим all. Использовать везде вместо прямых вызовов applySearchReplaceToField.
+  function applyPatchToField(content, patch) {
+      const search = patch?.search || patch?.anchor || '';
+      const replace = patch?.replace || '';
+      return patch?.all === true
+          ? applyReplaceAllToField(content, search, replace)
+          : applySearchReplaceToField(content, search, replace);
   }
 
   function _ensureWrapped(text, tag) {
@@ -1807,7 +1853,33 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       return undefined;
   }
 
-  async function loadSessionFile(file_id) {
+  // Битый файл не перезаписываем молча: копируем сырой текст рядом (.corrupt-бэкап),
+  // чтобы ручное восстановление оставалось возможным после того, как на его место
+  // будет записан чистый bucket.
+  async function _backupCorruptedFile(file_id, rawText) {
+      try {
+          const ctx = SillyTavern.getContext();
+          const backupName = `copilot_corrupt_${Date.now()}_${file_id.replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+          const b64 = btoa(unescape(encodeURIComponent(rawText)));
+          const res = await fetch('/api/files/upload', {
+              method: 'POST',
+              headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: backupName, data: b64 }),
+          });
+          _dbgAdd('STORAGE_CORRUPT_BACKUP', { file_id, backupName, ok: res.ok, size: rawText.length });
+          if (typeof toastr !== 'undefined') {
+              toastr.warning(
+                  `Файл сессий «${file_id}» повреждён и не читается. Начата чистая сессия; исходное содержимое сохранено в «${backupName}».`,
+                  EXT_DISPLAY, { timeOut: 15000 });
+          }
+          return res.ok;
+      } catch (e) {
+          _dbgAdd('STORAGE_CORRUPT_BACKUP_FAILED', { file_id, error: e.message });
+          return false;
+      }
+  }
+
+  async function loadSessionFile(file_id, { expectBucket = false } = {}) {
       try {
           const res = await fetch(`/user/files/${file_id}`);
           if (res.status === 404) return null;
@@ -1823,7 +1895,17 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           }
 
           const parsed = _tryParseSessionPayload(trimmed);
-          if (parsed === undefined) throw new Error('Unrecoverable payload after base64/repair fallback');
+          if (parsed === undefined) {
+              await _backupCorruptedFile(file_id, trimmed);
+              throw new Error('Unrecoverable payload after base64/repair fallback');
+          }
+          // Файл парсится, но это не bucket сессий: та же порча, просто валидный JSON.
+          // Бэкапим так же, иначе следующая запись молча затрёт данные.
+          if (expectBucket && !parsed?.bucket) {
+              _dbgAdd('STORAGE_SHAPE_INVALID', { file_id, keys: Object.keys(parsed || {}) });
+              await _backupCorruptedFile(file_id, trimmed);
+              throw new Error('Payload parsed but has no sessions bucket');
+          }
           return parsed;
       } catch (e) {
           _dbgAdd('STORAGE_LOAD_ERROR', { file_id, error: e.message });
@@ -1866,7 +1948,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       if (meta && meta.file_id && meta.format === 'v4') {
           if (meta.chat_id === chatId) {
               targetFileId = meta.file_id;
-              payload = await loadSessionFile(targetFileId);
+              payload = await loadSessionFile(targetFileId, { expectBucket: true });
           } else {
               _dbgAdd('STORAGE_CHAT_BRANCH_DETECTED', { oldChatId: meta.chat_id, newChatId: chatId });
               payload = await loadSessionFile(meta.file_id);
@@ -2425,11 +2507,14 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
   async function saveWorldInfoBook(name, data) {
       if (data._embedded) { toastr.warning('Нельзя напрямую сохранять встроенные лорбуки персонажа.', EXT_DISPLAY); return; }
       const ctx = SillyTavern.getContext();
-      const payload = { ...data };
+      // Глубокая копия: в payload не должно быть живых ссылок на кэш — иначе
+      // неудачный сейв оставляет кэш мутированным относительно диска.
+      const payload = structuredClone(data);
       delete payload._ts;
       try {
           if (typeof ctx.saveWorldInfo === 'function') {
-              await ctx.saveWorldInfo(name, payload);
+              // overwrite=true: без флага часть сборок ST мержит, а не перезаписывает.
+              await ctx.saveWorldInfo(name, payload, true);
           } else {
               const res = await fetch('/api/worldinfo/edit', {
                   method: 'POST',
@@ -3093,6 +3178,25 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
   function getAuthorsNote() {
       const ctx = SillyTavern.getContext();
       return ctx.chatMetadata?.note_prompt || ctx.authorsNote || ctx.authors_note || '';
+  }
+  // Подпись генерации для мета-строки сообщения: какой профиль/модель отвечал.
+  function getGenStamp(settings) {
+      try {
+          const ctx = SillyTavern.getContext();
+          if (settings.connectionSource === 'profile' && settings.connectionProfileId) {
+              const service = ctx.ConnectionManagerRequestService;
+              const profiles = service?.getSupportedProfiles?.() ?? ctx.extensionSettings?.connectionManager?.profiles ?? [];
+              const p = profiles.find(x => x.id === settings.connectionProfileId);
+              if (p) return p.model ? `${p.name} · ${p.model}` : p.name;
+              return null;
+          }
+          const mainApi = ctx.main_api || window.main_api;
+          if (mainApi === 'openai') {
+              return (ctx.oai_settings?.model || window.oai_settings?.model) || 'Chat Completion';
+          }
+          if (mainApi === 'textgenerationwebui') return 'Text Completion';
+          return mainApi || null;
+      } catch (_) { return null; }
   }
 
   function computeLCS(a, b) {
@@ -3770,7 +3874,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       if (change.action === 'patch' && originalEntry) {
           let current = originalContent;
           for (const patch of (change.patches || [])) {
-              const { result } = applySearchReplaceToField(current, patch.search || patch.anchor || '', patch.replace || '');
+              const { result } = applyPatchToField(current, patch);
               current = result;
           }
           newContent = current;
@@ -3913,7 +4017,8 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
   async function applyLBChanges(changes, afterMsgId = null) {
       console.log(`[${EXT_DISPLAY}] applyLBChanges: processing ${changes.length} change(s)`, JSON.parse(JSON.stringify(changes)));
-      const bookCache = {};
+      const bookCache = {};      // bookName -> рабочая копия книги (клонируется при первом касании)
+      const origBooks = {};      // bookName -> исходный объект из wiCache (для отката при сбое сейва)
       const successfulChanges =[];
 
       for (const change of changes) {
@@ -3942,6 +4047,19 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               toastr.error(`[ЛБ] Не удалось определить имя книги для изменения: «${change.name || change.uid || '?'}»`, EXT_DISPLAY, { timeOut: 10000 });
               continue;
           }
+
+          // Работаем с клоном книги: неуспешный сейв не должен оставлять живой
+          // кэш мутированным относительно диска. wiCache подменяем на рабочую
+          // копию, чтобы последующие resolveLBChangeTarget в этом же вызове
+          // видели уже применённые изменения.
+          if (!bookCache[bookName]) {
+              bookCache[bookName] = structuredClone(data);
+              origBooks[bookName] = data;
+              wiCache[bookName] = bookCache[bookName];
+          }
+          data = bookCache[bookName];
+          if (origEntry && data.entries[origEntry.uid]) origEntry = data.entries[origEntry.uid];
+          change._resolvedBook = bookName;
 
           if (change.action === 'add' && data) {
               const exists = Object.values(data.entries).find(e => e.comment && e.comment.toLowerCase() === (change.name || '').toLowerCase());
@@ -3979,8 +4097,6 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                       outlet_name: outletName
                   }
               };
-              bookCache[bookName] = data;
-              wiCache[bookName] = data;
               successfulChanges.push(change);
           } else if (change.action === 'edit') {
               if (!origEntry) {
@@ -4012,8 +4128,6 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                       origEntry.extensions.outlet_name = '';
                   }
               }
-              bookCache[bookName] = data;
-              wiCache[bookName] = data;
               successfulChanges.push(change);
           } else if (change.action === 'patch') {
               if (!origEntry) {
@@ -4023,7 +4137,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               let current = origEntry.content || '';
               let allMatched = true;
               for (const patch of (change.patches || [])) {
-                  const { result, matched } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                  const { result, matched } = applyPatchToField(current, patch);
                   if (!matched) {
                       toastr.warning(`[ЛБ] SEARCH не найдено в «${origEntry.comment}»: «${(patch.search || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 });
                       allMatched = false;
@@ -4039,8 +4153,6 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                   if (change.triggers.length === 0 && change.constant !== false) origEntry.constant = true;
               }
               if (change.constant !== undefined) origEntry.constant = !!change.constant;
-              bookCache[bookName] = data;
-              wiCache[bookName] = data;
               successfulChanges.push(change);
           } else if (change.action === 'prepend' || change.action === 'append') {
               if (!origEntry) continue;
@@ -4052,14 +4164,10 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                   if (change.triggers.length === 0 && change.constant !== false) origEntry.constant = true;
               }
               if (change.constant !== undefined) origEntry.constant = !!change.constant;
-              bookCache[bookName] = data;
-              wiCache[bookName] = data;
               successfulChanges.push(change);
           } else if (change.action === 'delete') {
               if (!origEntry) continue;
               delete data.entries[origEntry.uid];
-              bookCache[bookName] = data;
-              wiCache[bookName] = data;
               successfulChanges.push(change);
           }
       }
@@ -4069,19 +4177,30 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           return [];
       }
 
+      // Сохраняем по книгам и честно считаем применённым только то, что реально
+      // ушло на диск: при сбое сейва кэш откатывается к исходному объекту,
+      // а изменения этой книги не попадают в успешные.
+      const failedBooks = new Set();
       for (const [name, data] of Object.entries(bookCache)) {
           try {
               await saveWorldInfoBook(name, data);
           } catch (e) {
+              failedBooks.add(name);
+              wiCache[name] = origBooks[name];
               toastr.error(`[ЛБ] Ошибка сохранения для «${name}»: ${e.message}`, EXT_DISPLAY, { timeOut: 12000 });
           }
       }
 
-      if (successfulChanges.length > 0) {
-          recordStat(SM.lb, successfulChanges.length);
-          logLBHistoryChanges(successfulChanges, 'Accepted', afterMsgId);
+      const applied = failedBooks.size
+          ? successfulChanges.filter(c => !failedBooks.has(c._resolvedBook))
+          : successfulChanges;
+      for (const c of successfulChanges) delete c._resolvedBook;
+
+      if (applied.length > 0) {
+          recordStat(SM.lb, applied.length);
+          logLBHistoryChanges(applied, 'Accepted', afterMsgId);
       }
-      return successfulChanges;
+      return applied;
   }
 
   function renderProposalCard(changes, msgEl) {
@@ -4267,20 +4386,37 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
               let isValid = found;
               let reason = found ? '' : 'Запись не найдена в выбранном лорбуке';
+              const ambiguous = [];
               if (found && editableChanges[ci].action === 'patch') {
                   const orig = resolved.origEntry;
                   let current = orig?.content || '';
                   for (const patch of (editableChanges[ci].patches || [])) {
-                      const { result, matched } = applySearchReplaceToField(current, patch.search || patch.anchor || '', patch.replace || '');
-                      if (!matched) { isValid = false; reason = `ANCHOR не найден: «${(patch.search || patch.anchor || '').slice(0, 40)}...»`; break; }
-                      current = result;
+                      const r = applyPatchToField(current, patch);
+                      if (!r.matched) {
+                          if (r.occurrences >= 2) { ambiguous.push({ patch, occurrences: r.occurrences }); continue; }
+                          isValid = false; reason = `ANCHOR не найден: «${(patch.search || patch.anchor || '').slice(0, 40)}...»`; break;
+                      }
+                      current = r.result;
                   }
               }
+              if (isValid && ambiguous.length) { isValid = false; reason = 'Якорь встречается несколько раз'; }
 
               if (!isValid) {
                   applyItemBtn.disabled = true; applyItemBtn.title = reason;
                   item.style.borderLeftColor = 'var(--scp-danger)';
                   warnEl.textContent = `⚠ ${reason}`; warnEl.style.display = 'block';
+                  for (const amb of ambiguous) {
+                      const allBtn = document.createElement('button');
+                      allBtn.className = 'scp-anchor-all-btn';
+                      allBtn.textContent = `⇄ Заменить все ${amb.occurrences}`;
+                      allBtn.title = `Якорь «${(amb.patch.search || amb.patch.anchor || '').slice(0, 60)}» встречается ${amb.occurrences} раза — заменить все вхождения`;
+                      allBtn.addEventListener('click', (e) => {
+                          e.stopPropagation();
+                          amb.patch.all = true;
+                          _validateBookEntry(_selectedBook);
+                      });
+                      warnEl.appendChild(allBtn);
+                  }
               } else {
                   applyItemBtn.disabled = false; applyItemBtn.title = 'Применить это изменение';
                   item.style.borderLeftColor = ''; warnEl.style.display = 'none';
@@ -6112,7 +6248,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                           let current = greetings[idx];
                           let allMatched = true;
                           for (const patch of (change.patches || [])) {
-                              const { result, matched } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                              const { result, matched } = applyPatchToField(current, patch);
                               if (!matched) { toastr.warning(`[Редактор персонажа] SEARCH не найдено в приветствии #${change.index}.`, EXT_DISPLAY); allMatched = false; break; }
                               current = result;
                           }
@@ -6138,7 +6274,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                   let current = String(getCharFieldValue(char, field));
                   let allMatched = true;
                   for (const patch of (change.patches || [])) {
-                      const { result, matched } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
+                      const { result, matched } = applyPatchToField(current, patch);
                       if (!matched) { toastr.warning(`[Редактор персонажа] SEARCH не найдено в поле «${field}»: «${(patch.search || '').slice(0, 60)}…»`, EXT_DISPLAY, { timeOut: 8000 }); allMatched = false; break; }
                       current = result;
                   }
@@ -6419,11 +6555,16 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           } else {
               current = String(getCharFieldValue(char, change.field));
           }
+          const ambiguous = [];
           for (const patch of (change.patches || [])) {
-              const { matched, result } = applySearchReplaceToField(current, patch.search || '', patch.replace || '');
-              if (!matched) return { valid: false, reason: `SEARCH not found: "${(patch.search || '').slice(0, 50)}"` };
-              current = result;
+              const r = applyPatchToField(current, patch);
+              if (!r.matched) {
+                  if (r.occurrences >= 2) { ambiguous.push({ patch, occurrences: r.occurrences }); continue; }
+                  return { valid: false, reason: `SEARCH not found: "${(patch.search || '').slice(0, 50)}"` };
+              }
+              current = r.result;
           }
+          if (ambiguous.length) return { valid: false, reason: 'Якорь встречается несколько раз', ambiguous };
           return { valid: true };
       };
 
@@ -6437,7 +6578,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               current = String(getCharFieldValue(char, change.field));
           }
           for (const patch of (change.patches || [])) {
-              const { result } = applySearchReplaceToField(current, patch.search || patch.anchor || '', patch.replace || '');
+              const { result } = applyPatchToField(current, patch);
               current = result;
           }
           return current;
@@ -6514,15 +6655,34 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           applyBtn.className = 'scp-lb-proposal-item-apply'; applyBtn.title = 'Применить'; applyBtn.textContent = '✓';
 
           if (c.action === 'replace') {
-              const { valid, reason } = validateReplaceChange(editableChanges[ci]);
+              const { valid, reason, ambiguous } = validateReplaceChange(editableChanges[ci]);
               if (!valid) {
                   applyBtn.disabled = true;
                   applyBtn.title = reason || 'Невозможно применить';
                   item.style.borderLeftColor = 'var(--scp-danger)';
                   const warn = document.createElement('div');
                   warn.style.cssText = 'font-size:10px;color:var(--scp-danger);margin-top:4px';
-                  warn.textContent = `\u26A0 ${reason || 'SEARCH текст не найден — возможно, это изменение устарело.'}`;
-                  meta.appendChild(warn);
+                  warn.textContent = `⚠ ${reason || 'SEARCH текст не найден — возможно, это изменение устарело.'}`;
+                  for (const amb of (ambiguous || [])) {
+                      const allBtn = document.createElement('button');
+                      allBtn.className = 'scp-anchor-all-btn';
+                      allBtn.textContent = `⇄ Заменить все ${amb.occurrences}`;
+                      allBtn.title = `Якорь «${(amb.patch.search || amb.patch.anchor || '').slice(0, 60)}» встречается ${amb.occurrences} раза — заменить все вхождения`;
+                      allBtn.addEventListener('click', (e) => {
+                          e.stopPropagation();
+                          amb.patch.all = true;
+                          const re = validateReplaceChange(editableChanges[ci]);
+                          if (re.valid) {
+                              applyBtn.disabled = false; applyBtn.title = 'Применить';
+                              item.style.borderLeftColor = '';
+                              warn.style.display = 'none';
+                          } else {
+                              warn.textContent = `⚠ ${re.reason}`;
+                              allBtn.remove();
+                          }
+                      });
+                      warn.appendChild(allBtn);
+                  }
               }
           }
 
@@ -7650,6 +7810,18 @@ ${scopeHtml}
       };
   }
 
+  // Чистая функция окна ленивого рендера сессии: какой индекс сообщения
+  // отрисовывать первым. Расширенное пользователем окно (prevFrom) сохраняется,
+  // новые сообщения его не сдвигают; выход за границы (сессия изменилась
+  // снаружи) сбрасывает окно к хвосту.
+  function computeRenderFrom(total, prevFrom, windowSize) {
+      if (total <= 0) return 0;
+      const tail = Math.max(0, total - windowSize);
+      if (prevFrom === undefined || prevFrom === null) return tail;
+      if (prevFrom >= total || prevFrom < 0) return tail;
+      return prevFrom;
+  }
+
   function buildChatEditAIInstructions(settings) {
       if (!settings.chatEditAIEnabled) return '';
       const ctx = SillyTavern.getContext();
@@ -7928,7 +8100,7 @@ ${scopeHtml}
                       if (change.action === 'bulk_replace') {
                           for (const rp of (change.replacements || [])) {
                               if (!rp.search && !rp.anchor) continue;
-                              const { result, matched } = applySearchReplaceToField(content, rp.search || rp.anchor, rp.replace || '');
+                              const { result, matched } = applyPatchToField(content, rp);
                               if (matched) { content = result; changed = true; }
                           }
                       } else if (change.action === 'regex') {
@@ -7978,7 +8150,7 @@ ${scopeHtml}
                       } else if (change.action === 'replace') {
                           let matched = true;
                           for (const patch of (change.patches || [])) {
-                              const { result, matched: m } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
+                              const { result, matched: m } = applyPatchToField(content, patch);
                               if (!m) { toastr.warning(`[Редактор чата] ANCHOR не найден в #${idx}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 }); matched = false; break; }
                               content = result;
                           }
@@ -8016,7 +8188,7 @@ ${scopeHtml}
               } else if (change.action === 'replace') {
                   let allMatched = true;
                   for (const patch of (change.patches || [])) {
-                      const { result, matched } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
+                      const { result, matched } = applyPatchToField(content, patch);
                       if (!matched) {
                           toastr.warning(`[Редактор чата] ANCHOR не найден в сообщении ${change.msg_index ?? change.msg_id}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 });
                           allMatched = false; break;
@@ -8133,6 +8305,9 @@ ${scopeHtml}
 
       const validateChatChange = (change) => {
           const stMsgs = SillyTavern.getContext().chat || [];
+          // Якоря, встретившиеся несколько раз: валидны при явном all=true,
+          // иначе предлагаем пользователю кнопку «заменить все N».
+          const ambiguous = [];
           if (change.action === 'rename_chat') {
               return { valid: !!(change.name && change.name.trim()), reason: 'Имя чата не может быть пустым' };
           }
@@ -8153,12 +8328,16 @@ ${scopeHtml}
                               let content = stMsgs[i].mes || '', thisMsgMatch = true;
                               for (const rp of (change.replacements || [])) {
                                   if (!rp.search && !rp.anchor) continue;
-                                  const { matched } = applySearchReplaceToField(content, rp.search || rp.anchor, rp.replace || '');
-                                  if (!matched) { thisMsgMatch = false; break; }
+                                  const r = applyPatchToField(content, rp);
+                                  if (!r.matched) {
+                                      if (r.occurrences >= 2) { ambiguous.push({ patch: rp, occurrences: r.occurrences }); continue; }
+                                      thisMsgMatch = false; break;
+                                  }
                               }
                               if (thisMsgMatch && change.replacements?.length > 0) anyMatch = true;
                           }
-                          if (!anyMatch) return { valid: false, reason: 'Якоря не найдены в указанных сообщениях' };
+                          if (!anyMatch && !ambiguous.length) return { valid: false, reason: 'Якоря не найдены в указанных сообщениях' };
+                          if (ambiguous.length) return { valid: false, reason: 'Якорь встречается несколько раз', ambiguous };
                       } else if (change.action === 'regex') {
                           try {
                               const m = (change.regex || '').match(/^\/([\s\S]+)\/([a-z]*)$/i);
@@ -8186,12 +8365,16 @@ ${scopeHtml}
                       let thisMsgMatch = true;
                       for (const rp of (change.replacements || [])) {
                           if (!rp.search && !rp.anchor) continue;
-                          const { matched } = applySearchReplaceToField(content, rp.search || rp.anchor, rp.replace || '');
-                          if (!matched) { thisMsgMatch = false; break; }
+                          const r = applyPatchToField(content, rp);
+                          if (!r.matched) {
+                              if (r.occurrences >= 2) { ambiguous.push({ patch: rp, occurrences: r.occurrences }); continue; }
+                              thisMsgMatch = false; break;
+                          }
                       }
                       if (thisMsgMatch && change.replacements?.length > 0) anyMatch = true;
                   }
-                      if (!anyMatch) return { valid: false, reason: 'Якоря не найдены в указанном диапазоне' };
+                      if (!anyMatch && !ambiguous.length) return { valid: false, reason: 'Якоря не найдены в указанном диапазоне' };
+                      if (ambiguous.length) return { valid: false, reason: 'Якорь встречается несколько раз', ambiguous };
               } else if (change.action === 'regex') {
                   try {
                       const m = (change.regex || '').match(/^\/([\s\S]+)\/([a-z]*)$/i);
@@ -8211,11 +8394,15 @@ ${scopeHtml}
                       for (const idx of change.msg_indices) {
                           let content = stMsgs[idx].mes || '';
                           for (const patch of (change.patches || [])) {
-                              const { matched } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
-                              if (!matched) return { valid: false, reason: `ANCHOR не найден в #${idx}: «${(patch.search || patch.anchor || '').slice(0, 40)}...»` };
+                              const r = applyPatchToField(content, patch);
+                              if (!r.matched) {
+                                  if (r.occurrences >= 2) { ambiguous.push({ patch, occurrences: r.occurrences }); continue; }
+                                  return { valid: false, reason: `ANCHOR не найден в #${idx}: «${(patch.search || patch.anchor || '').slice(0, 40)}...»` };
+                              }
                           }
                       }
                   }
+                  if (ambiguous.length) return { valid: false, reason: 'Якорь встречается несколько раз', ambiguous };
                   return { valid: true };
               }
               const resolved = _resolveStMsgByIndexOrId(change);
@@ -8224,10 +8411,14 @@ ${scopeHtml}
               if (change.action === 'replace') {
                   let content = resolved.msg.mes || '';
                   for (const patch of (change.patches || [])) {
-                      const { matched } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
-                      if (!matched) return { valid: false, reason: `ANCHOR не найден: «${(patch.search || patch.anchor || '').slice(0, 40)}...»` };
+                      const r = applyPatchToField(content, patch);
+                      if (!r.matched) {
+                          if (r.occurrences >= 2) { ambiguous.push({ patch, occurrences: r.occurrences }); continue; }
+                          return { valid: false, reason: `ANCHOR не найден: «${(patch.search || patch.anchor || '').slice(0, 40)}...»` };
+                      }
                   }
               }
+              if (ambiguous.length) return { valid: false, reason: 'Якорь встречается несколько раз', ambiguous };
               return { valid: true };
           }
       };
@@ -8237,7 +8428,7 @@ ${scopeHtml}
           if (change.action === 'replace') {
               let c = content;
               for (const p of (change.patches || [])) {
-                  const { result } = applySearchReplaceToField(c, p.search || p.anchor || '', p.replace || '');
+                  const { result } = applyPatchToField(c, p);
                   c = result;
               }
               return c;
@@ -8245,7 +8436,7 @@ ${scopeHtml}
           if (change.action === 'bulk_replace') {
               let c = content;
               for (const p of (change.replacements || [])) {
-                  const { result } = applySearchReplaceToField(c, p.search || p.anchor || '', p.replace || '');
+                  const { result } = applyPatchToField(c, p);
                   c = result;
               }
               return c;
@@ -8397,11 +8588,24 @@ ${scopeHtml}
           applyBtn.className = 'scp-lb-proposal-item-apply'; applyBtn.title = 'Применить'; applyBtn.textContent = '✓';
           
           const refreshValidation = () => {
-              const { valid, reason } = validateChatChange(editableChanges[ci]);
+              const { valid, reason, ambiguous } = validateChatChange(editableChanges[ci]);
               if (!valid) {
                   applyBtn.disabled = true; applyBtn.title = reason;
                   item.style.borderLeftColor = 'var(--scp-danger)';
                   warnEl.textContent = `⚠ ${reason}`; warnEl.style.display = 'block';
+                  // Неоднозначный якорь — предлагаем «заменить все N» вместо ручной правки.
+                  for (const amb of (ambiguous || [])) {
+                      const allBtn = document.createElement('button');
+                      allBtn.className = 'scp-anchor-all-btn';
+                      allBtn.textContent = `⇄ Заменить все ${amb.occurrences}`;
+                      allBtn.title = `Якорь «${(amb.patch.search || amb.patch.anchor || '').slice(0, 60)}» встречается ${amb.occurrences} раза — заменить все вхождения`;
+                      allBtn.addEventListener('click', (e) => {
+                          e.stopPropagation();
+                          amb.patch.all = true;
+                          refreshValidation();
+                      });
+                      warnEl.appendChild(allBtn);
+                  }
               } else {
                   applyBtn.disabled = false; applyBtn.title = 'Применить';
                   item.style.borderLeftColor = ''; 
@@ -8825,6 +9029,29 @@ ${scopeHtml}
           .replace(/```tool_call[\s\S]*?```/gi, '')
           .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
           .trim();
+  }
+
+  // Точка обрыва генерации после завершённого tool_call: без неё текстовый
+  // протокол даёт модели продолжить писать, и она выдумывает результат инструмента
+  // до его реального выполнения. Возвращает индекс конца последнего ЗАКРЫТОГО
+  // блока или -1, если резать рано (хвост пустой, или это начало следующего вызова,
+  // или недописанный маркер).
+  const CLOSED_TC_RE = /```tool_call\s*[\s\S]*?```|<tool_call>\s*[\s\S]*?<\/tool_call>/gi;
+  const TC_MARKERS = ['```tool_call', '<tool_call>'];
+
+  function findToolCallCut(text) {
+      if (!text) return -1;
+      CLOSED_TC_RE.lastIndex = 0;
+      let m, lastEnd = -1;
+      while ((m = CLOSED_TC_RE.exec(text)) !== null) lastEnd = m.index + m[0].length;
+      if (lastEnd === -1) return -1;
+      const tail = text.slice(lastEnd);
+      const t = tail.trimStart();
+      if (!t) return -1;
+      if (TC_MARKERS.some(mk => t.startsWith(mk))) return -1; // следующий вызов уже пишется
+      if (t.length <= Math.max(...TC_MARKERS.map(mk => mk.length))
+          && TC_MARKERS.some(mk => mk.startsWith(t))) return -1; // недописанный маркер
+      return lastEnd;
   }
 
   // Нативный function calling:choices[0].message.tool_calls из нестримингового
@@ -11605,7 +11832,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
       const meta = document.createElement('div');
       meta.className = 'scp-msg-meta';
-      meta.textContent = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      meta.textContent = msg.genStamp ? `${timeStr} · ${msg.genStamp}` : timeStr;
+      if (msg.genStamp) meta.title = msg.genStamp;
 
       const tokenCountEl = document.createElement('div');
       tokenCountEl.className = 'scp-msg-token-count';
@@ -11740,6 +11969,32 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           swipeBar.appendChild(prevBtn);
           swipeBar.appendChild(counter);
           swipeBar.appendChild(nextBtn);
+
+          const delSwipeBtn = document.createElement('button');
+          delSwipeBtn.className = 'scp-swipe-btn scp-swipe-del';
+          delSwipeBtn.innerHTML = I.x;
+          delSwipeBtn.title = 'Удалить текущий вариант ответа';
+          delSwipeBtn.addEventListener('click', async () => {
+              if (state.generating) return;
+              const session = getCurrentSession();
+              const msgData = session.messages.find(m => m.id === msg.id);
+              if (!msgData || (msgData.swipes?.length || 1) < 2) return;
+              const ok = await showCustomDialog({
+                  type: 'confirm',
+                  title: 'Удалить вариант',
+                  message: 'Удалить текущий вариант ответа? Остальные варианты сохранятся.'
+              });
+              if (!ok) return;
+              msgData.swipes.splice(msgData.swipeIndex ?? 0, 1);
+              msgData.swipeIndex = Math.min(msgData.swipeIndex ?? 0, msgData.swipes.length - 1);
+              msgData.content = msgData.swipes[msgData.swipeIndex].content;
+              msgData.reasoning = msgData.swipes[msgData.swipeIndex].reasoning || null;
+              saveSessionsToMetadata();
+              updateMsgCount(session);
+              _renderMsgBodyContent(wrap, msgData);
+              updateSwipeBar(wrap, session, msg.id);
+          });
+          swipeBar.appendChild(delSwipeBtn);
           body.appendChild(swipeBar);
       }
 
@@ -11800,8 +12055,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       const prevBtn = bar.querySelector('.scp-swipe-prev');
       const nextBtn = bar.querySelector('.scp-swipe-next');
       const counter = bar.querySelector('.scp-swipe-counter');
+      const delBtn = bar.querySelector('.scp-swipe-del');
       if (prevBtn) prevBtn.disabled = cur <= 1 || state.generating;
       if (nextBtn) nextBtn.disabled = state.generating;
+      if (delBtn) delBtn.disabled = total < 2 || state.generating;
       if (counter) counter.innerHTML = `<span>${cur}</span>/${total}`;
       bar.style.display = '';
   }
@@ -12188,6 +12445,38 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
       autoResize(ta); ta.addEventListener('input', () => autoResize(ta));
 
+      // Правка reasoning у ответов reasoning-моделей — отдельным полем под ответом.
+      let reasonTa = null;
+      if (msg.role !== 'user' && msg.reasoning) {
+          const rl = document.createElement('div');
+          rl.className = 'scp-edit-reason-label';
+          rl.textContent = 'Размышления (reasoning):';
+          reasonTa = document.createElement('textarea');
+          reasonTa.className = 'scp-edit-ta scp-edit-reason-ta';
+          reasonTa.value = msg.reasoning;
+          ta.after(rl); rl.after(reasonTa);
+          autoResize(reasonTa); reasonTa.addEventListener('input', () => autoResize(reasonTa));
+      }
+
+      const applyReasoningEdit = () => {
+          if (!reasonTa) return;
+          msg.reasoning = reasonTa.value.trim() || null;
+          if (msg.swipes && msg.swipeIndex !== undefined) msg.swipes[msg.swipeIndex].reasoning = msg.reasoning;
+          const rBlock = wrapEl.querySelector('.scp-reasoning-block');
+          if (!msg.reasoning) { rBlock?.remove(); return; }
+          if (rBlock) {
+              rBlock.querySelector('.scp-reasoning-content').innerHTML = renderMarkdown(msg.reasoning);
+          } else {
+              const nb = document.createElement('details');
+              nb.className = 'scp-reasoning-block';
+              nb.innerHTML = `<summary class="scp-reasoning-summary">Размышления</summary><div class="scp-reasoning-content"></div>`;
+              nb.querySelector('.scp-reasoning-content').innerHTML = renderMarkdown(msg.reasoning);
+              const body = wrapEl.querySelector('.scp-msg-body');
+              const contentNow = wrapEl.querySelector('.scp-msg-content');
+              if (body && contentNow) body.insertBefore(nb, contentNow);
+          }
+      };
+
       const restoreMessageDOM = (textToRender) => {
           const nc = document.createElement('div');
           nc.className = 'scp-msg-content';
@@ -12255,6 +12544,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               }
               recordStat(SM.edit);
               restoreMessageDOM(newText);
+              applyReasoningEdit();
               _updateMsgTokenCount(wrapEl, newText, true);
           });
       }
@@ -12274,8 +12564,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           }
           recordStat(SM.edit);
           restoreMessageDOM(newText);
+          applyReasoningEdit();
           _updateMsgTokenCount(wrapEl, newText, true);
-          
+
           truncateAfter(session, msg.id);
           removeMsgElAfter(msg.id);
           if (msg.role === 'user' && apiMod) await apiMod.runGenerate(session, newText, false);
@@ -12351,6 +12642,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       if (!session.messages.length) renderSession(session);
   }
 
+  // Окно ленивого рендера: длинные сессии рендерятся последними N сообщениями,
+  // старые подгружаются кнопкой. На payload это не влияет — только DOM.
+  const MSG_RENDER_WINDOW = 80;
+  const _renderFromBySession = new Map(); // sessionId -> первый отрисованный индекс
+
   function renderSession(session) {
       clearSearchHighlights();
       state.searchMatches = [];
@@ -12371,7 +12667,27 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           updateMsgCount(session);
           return;
       }
-      for (const msg of session.messages) {
+
+      const total = session.messages.length;
+      const from = computeRenderFrom(total, _renderFromBySession.get(session.id), MSG_RENDER_WINDOW);
+      _renderFromBySession.set(session.id, from);
+
+      if (from > 0) {
+          const loadOlder = document.createElement('button');
+          loadOlder.className = 'scp-load-older-btn';
+          const hiddenCount = from;
+          loadOlder.textContent = `⬆ Показать ещё ${Math.min(MSG_RENDER_WINDOW, hiddenCount)} из ${hiddenCount} скрытых`;
+          loadOlder.title = 'Старые сообщения не отрисованы для производительности (на контекст ИИ это не влияет)';
+          loadOlder.addEventListener('click', () => {
+              const prev = _renderFromBySession.get(session.id) ?? 0;
+              _renderFromBySession.set(session.id, Math.max(0, prev - MSG_RENDER_WINDOW));
+              renderSession(session);
+          });
+          c.appendChild(loadOlder);
+      }
+
+      for (let i = from; i < total; i++) {
+          const msg = session.messages[i];
           if (msg.isLBHistory || msg.isCharEditHistory || msg.isChatEditHistory) {
               appendLBHistoryEl(msg);
           } else {
@@ -14922,6 +15238,35 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
   // вешать весь раунд. Константа вместо настройки — пока ни один сценарий не потребовал другого.
   const TOOL_TIMEOUT_MS = 60000;
 
+  // ─── Журнал «последних отправленных» запросов (инспектор) ───
+  // Ключи с секретами вымываются по имени поля; длинные строки (base64-вложения)
+  // схлопываются в размер. Ключи API ST живут в заголовках — сюда они не попадают,
+  // регулярка подстраховывает custom-эндпоинты.
+  const _SECRET_KEY_RE = /pass(word)?$|password|secret|(^|_)token$|api[_-]?key|authorization/i;
+
+  function redactRequestBody(v, depth = 0) {
+      if (v == null || depth > 8) return v;
+      if (typeof v === 'string') {
+          return v.length > 4000 ? `… (${Math.round(v.length / 1024)} KB)` : v;
+      }
+      if (Array.isArray(v)) return v.map(x => redactRequestBody(x, depth + 1));
+      if (typeof v === 'object') {
+          const out = {};
+          for (const [k, val] of Object.entries(v)) {
+              out[k] = _SECRET_KEY_RE.test(k) ? '***REDACTED***' : redactRequestBody(val, depth + 1);
+          }
+          return out;
+      }
+      return v;
+  }
+
+  function logOutgoingRequest(url, body) {
+      try {
+          state.requestLog.push({ ts: Date.now(), url: String(url).split('?')[0].slice(0, 200), body: redactRequestBody(body) });
+          if (state.requestLog.length > 5) state.requestLog.shift();
+      } catch (_) {}
+  }
+
   function withTimeout(promise, ms = TOOL_TIMEOUT_MS) {
       return new Promise((resolve, reject) => {
           const t = setTimeout(() => reject(new Error(`Tool did not respond within ${Math.round(ms / 1000)}s`)), ms);
@@ -15220,6 +15565,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               if (textParts.length > 0) t = textParts.join('\n');
           }
 
+          // Прокси (Elysium и подобные) в tool_call-раунде возвращают content,
+          // сериализованный как JSON-строку пустоты: '""'. Это не текст ответа.
+          if (t === '""' || t === "''") t = '';
+
           return { t, r };
       }
 
@@ -15350,14 +15699,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
       let asyncGeneratorFn;
       const origFetch = window.fetch;
-      
+
       window.fetch = async function(...args) {
           let requestUrl = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
           if ((requestUrl.includes('/generate') || requestUrl.includes('/caption-image')) && args[1] && typeof args[1].body === 'string') {
               try {
                   let reqBody = JSON.parse(args[1].body);
+                  logOutgoingRequest(requestUrl, reqBody);
                   let changed = false;
-                  
+
                   if (reqBody.reasoning_effort === 'auto') { delete reqBody.reasoning_effort; changed = true; }
                   else if (reqBody.reasoning_effort === 'min') { reqBody.reasoning_effort = 'low'; changed = true; }
                   else if (reqBody.reasoning_effort === 'max') { reqBody.reasoning_effort = 'high'; changed = true; }
@@ -15495,15 +15845,33 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason || lastValue?.choices?.[0]?.finish_reason;
           const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
+          // Текстовый протокол: хвост после закрытого tool_call — выдуманный
+          // моделью «результат»; отсекаем его и тут.
+          if (settings.toolsEnabled && !nativeTools) {
+              const cut = findToolCallCut(text);
+              if (cut !== -1) {
+                  _dbgAdd('GEN_TOOL_CALL_CUT', { cutAt: cut, droppedTail: text.length - cut });
+                  text = text.slice(0, cut).trim();
+              }
+          }
+
           state.abortController = null;
           return { text, reasoning, isMaxTokens, toolCalls, rawToolCalls };
       }
 
       const gen = typeof asyncGeneratorFn === 'function' ? asyncGeneratorFn() : asyncGeneratorFn;
 
+      // Стриминг + текстовый протокол: как только закрылся tool_call-блок и модель
+      // начала писать дальше — обрываем генерацию (abort), иначе она додумает
+      // «результат» инструмента. Ответ возвращается усечённым по точке обрыва.
+      const tcCutEnabled = !!settings.toolsEnabled && !nativeTools;
+      let tcCutAt = null;
+      const cutResult = () => tcCutAt === null ? undefined
+          : { text: text.slice(0, tcCutAt).trim(), reasoning, isMaxTokens: false, toolCalls: null, rawToolCalls: null };
+
       try {
           while (true) {
-              if (abort.signal.aborted) { state.abortController = null; return null; }
+              if (abort.signal.aborted) { state.abortController = null; const c = cutResult(); if (c) return c; return null; }
               const { value, done } = await gen.next();
               if (done) {
                   if (value) lastValue = value;
@@ -15530,9 +15898,19 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                       : (reasoningStartMs !== null ? performance.now() - reasoningStartMs : null);
                   onChunk(text, reasoning, reasoningMs, reasoningDone);
               }
+
+              if (tcCutEnabled && tcCutAt === null) {
+                  const cutIdx = findToolCallCut(text);
+                  if (cutIdx !== -1) {
+                      tcCutAt = cutIdx;
+                      _dbgAdd('GEN_TOOL_CALL_CUT', { cutAt: cutIdx, droppedTail: text.length - cutIdx });
+                      abort.abort();
+                  }
+              }
           }
       } catch (e) {
           state.abortController = null;
+          if (tcCutAt !== null) { const c = cutResult(); if (c) return c; }
           if (abort.signal.aborted || e?.name === 'AbortError' || e?.message === 'userStopped') return null;
           throw e;
       }
@@ -15981,10 +16359,13 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
           if (streamMsgId) {
               const msg = session.messages.find(m => m.id === streamMsgId);
-              if (msg) { 
-                  msg.content = fullText; 
-                  msg.reasoning = fullReasoning || null; 
-                  msg.toolCalls = state.activeToolCalls.length ? JSON.parse(JSON.stringify(state.activeToolCalls)) : undefined; 
+              if (msg) {
+                  msg.content = fullText;
+                  msg.reasoning = fullReasoning || null;
+                  msg.toolCalls = state.activeToolCalls.length ? JSON.parse(JSON.stringify(state.activeToolCalls)) : undefined;
+                  msg.genStamp = getGenStamp(settings) || undefined;
+                  const metaEl = streamMsgEl?.querySelector('.scp-msg-meta');
+                  if (metaEl && msg.genStamp) metaEl.textContent = `${metaEl.textContent.split(' · ')[0]} · ${msg.genStamp}`;
               }
               saveSessionsToMetadata();
 
@@ -15999,6 +16380,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               }
           } else {
               const newMsg = addMessage(session, 'assistant', fullText, { reasoning: fullReasoning || null, toolCalls: state.activeToolCalls.length ? JSON.parse(JSON.stringify(state.activeToolCalls)) : undefined });
+              newMsg.genStamp = getGenStamp(settings) || undefined;
               newMsg.swipes = [{ content: fullText, reasoning: fullReasoning || null }];
               newMsg.swipeIndex = 0;
               saveSessionsToMetadata();
@@ -16237,6 +16619,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     estimateTokens: estimateTokens,
     formatPayloadAsText: formatPayloadAsText,
     getMainChatSlice: getMainChatSlice,
+    logOutgoingRequest: logOutgoingRequest,
+    redactRequestBody: redactRequestBody,
     runContinue: runContinue,
     runGenerate: runGenerate
   });
@@ -16935,6 +17319,59 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
   // ─── Context Inspector ──────────────────────────────────────────────────────
 
+  // Поиск по блокам инспектора: без текстовой хирургии по подсвеченному HTML —
+  // матчим textContent блоков, подсвечиваем блок целиком, Enter/Shift+Enter листают.
+  let _ctxSearchBound = false;
+  let _ctxSearchMatches = [];
+  let _ctxSearchIdx = -1;
+
+  function _ctxSearchApply(query) {
+      const body = document.getElementById('scp-ctx-body');
+      const countEl = document.getElementById('scp-ctx-search-count');
+      if (!body) return;
+      body.querySelectorAll('.scp-ctx-hit').forEach(el => el.classList.remove('scp-ctx-hit', 'scp-ctx-hit-current'));
+      _ctxSearchMatches = [];
+      _ctxSearchIdx = -1;
+
+      const q = (query || '').toLowerCase().trim();
+      if (q) {
+          body.querySelectorAll('.scp-ctx-block').forEach(block => {
+              if ((block.textContent || '').toLowerCase().includes(q)) {
+                  block.classList.add('scp-ctx-hit');
+                  _ctxSearchMatches.push(block);
+              }
+          });
+      }
+      if (countEl) countEl.textContent = q ? `${_ctxSearchMatches.length ? '0' : '0'}/${_ctxSearchMatches.length}` : '';
+  }
+
+  function _ctxSearchGo(dir) {
+      if (!_ctxSearchMatches.length) return;
+      _ctxSearchIdx = (_ctxSearchIdx + dir + _ctxSearchMatches.length) % _ctxSearchMatches.length;
+      _ctxSearchMatches.forEach(el => el.classList.remove('scp-ctx-hit-current'));
+      const cur = _ctxSearchMatches[_ctxSearchIdx];
+      cur.classList.add('scp-ctx-hit-current');
+      const body = document.getElementById('scp-ctx-body');
+      if (body) body.scrollTo({ top: cur.offsetTop - 8, behavior: 'smooth' });
+      const countEl = document.getElementById('scp-ctx-search-count');
+      if (countEl) countEl.textContent = `${_ctxSearchIdx + 1}/${_ctxSearchMatches.length}`;
+  }
+
+  function setupContextSearch() {
+      const input = document.getElementById('scp-ctx-search');
+      if (!input) return;
+      input.value = '';
+      _ctxSearchApply('');
+      if (_ctxSearchBound) return;
+      _ctxSearchBound = true;
+      input.addEventListener('input', () => _ctxSearchApply(input.value));
+      input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); _ctxSearchGo(e.shiftKey ? -1 : 1); }
+      });
+      document.getElementById('scp-ctx-search-prev')?.addEventListener('click', () => _ctxSearchGo(-1));
+      document.getElementById('scp-ctx-search-next')?.addEventListener('click', () => _ctxSearchGo(1));
+  }
+
   function _highlightContextText(raw) {
       const masterRe = /(```[\s\S]*?(?:```|$))|(`[^`\n]*`)|(<\/?([\w:{}_-]+)[^>]*>|<!--[\s\S]*?-->)|(\{\{[^}\n]+\}\})/gi;
       
@@ -17189,6 +17626,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           fmtEl.style.padding = '0';
           fmtEl.innerHTML = _buildContextInspectorHTML(messages);
           
+          setupContextSearch();
+
           fmtEl.querySelectorAll('.scp-ctx-nav-btn[data-t]').forEach(btn => {
               btn.addEventListener('click', () => {
                   const t = document.getElementById(btn.dataset.t);
@@ -17201,6 +17640,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           });
       }
       if (jsonEl) jsonEl.textContent = JSON.stringify(messages, null, 2);
+      const lsEl = document.getElementById('scp-ctx-lastsent');
+      if (lsEl) {
+          const log = state.requestLog || [];
+          lsEl.textContent = log.length
+              ? log.slice().reverse().map(e =>
+                  `═══ ${new Date(e.ts).toLocaleTimeString()} — ${e.url} ═══\n${JSON.stringify(e.body, null, 2)}`
+              ).join('\n\n')
+              : 'Запросов ещё не было. Журнал хранит последние 5 тел запросов (секреты вымыты) и очищается при перезагрузке страницы.';
+      }
       modalEl.style.display = 'flex';
       Promise.resolve().then(function () { return uiWindow; }).then(m => m.bringWindowToFront());
       
@@ -17435,6 +17883,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     renderFavoritesPanel: renderFavoritesPanel,
     renderQuickPromptsBar: renderQuickPromptsBar,
     setupChangelogListeners: setupChangelogListeners,
+    setupContextSearch: setupContextSearch,
     showQPIconPicker: showQPIconPicker
   });
 
@@ -17506,7 +17955,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       if (!bucket.sessions.length) {
           listEl.innerHTML = `<div class="scp-sess-empty-label">Нет сессий — создайте новую ниже</div>`;
       } else {
-          for (const sess of bucket.sessions) {
+          // Закреплённые сверху; sort в JS стабилен — внутри групп порядок исходный.
+          const ordered = bucket.sessions.slice().sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+          for (const sess of ordered) {
               const item = document.createElement('div');
               item.className = `scp-sess-item${sess.id === bucket.activeSessionId ? ' active' : ''}`;
               item.dataset.id = sess.id;
@@ -17516,6 +17967,19 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               const count = document.createElement('span'); count.className = 'scp-sess-item-count'; count.textContent = sess.messages.length;
 
               item.appendChild(dot); item.appendChild(nameSpan); item.appendChild(count);
+
+              const pinBtn = document.createElement('button');
+              pinBtn.className = `scp-sess-tmp-btn scp-sess-pin-btn${sess.pinned ? ' active' : ''}`;
+              pinBtn.title = sess.pinned ? 'Открепить сессию' : 'Закрепить сессию вверху списка';
+              pinBtn.innerHTML = '📌';
+              pinBtn.addEventListener('click', e => {
+                  e.stopPropagation();
+                  sess.pinned = !sess.pinned;
+                  Promise.resolve().then(function () { return session; }).then(m => m.saveSessionsToMetadata());
+                  refreshSessionDropdown();
+              });
+              item.appendChild(pinBtn);
+
               if (sess.isTemporary) {
                   const badge = document.createElement('span'); badge.className = 'scp-sess-tmp-badge';
                   badge.title = 'Временная сессия — будет удалена при переключении'; badge.textContent = 'tmp';
@@ -17851,15 +18315,18 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               
               const isFormatted = tab.dataset.tab === 'formatted';
               const isJson = tab.dataset.tab === 'json';
-              
+              const isLastSent = tab.dataset.tab === 'lastsent';
+
               const fmtEl = document.getElementById('scp-ctx-formatted');
               const jsonEl = document.getElementById('scp-ctx-json');
-              
+              const lsEl = document.getElementById('scp-ctx-lastsent');
+
               if (fmtEl) fmtEl.style.display = isFormatted ? '' : 'none';
               if (jsonEl) jsonEl.style.display = isJson ? '' : 'none';
-              
+              if (lsEl) lsEl.style.display = isLastSent ? '' : 'none';
+
               setTimeout(() => {
-                  const targetEl = isJson ? jsonEl : document.getElementById('scp-ctx-body');
+                  const targetEl = isLastSent ? lsEl : (isJson ? jsonEl : document.getElementById('scp-ctx-body'));
                   if (targetEl) {
                       const prevBehavior = targetEl.style.scrollBehavior;
                       targetEl.style.scrollBehavior = 'auto';
@@ -17874,6 +18341,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           const activeTab = document.querySelector('.scp-modal-tab.active');
           if (activeTab?.dataset.tab === 'json') {
               copyText(document.getElementById('scp-ctx-json')?.textContent || '');
+          } else if (activeTab?.dataset.tab === 'lastsent') {
+              copyText(document.getElementById('scp-ctx-lastsent')?.textContent || '');
           } else {
               Promise.resolve().then(function () { return uiWidgets; }).then(m => copyText(formatPayloadAsText(m._lastInspectorMessages || [])));
           }

@@ -5,7 +5,7 @@ import { _dbgAdd } from './utils/util-debug.js';
 import { escHtml } from './utils/util-dom.js';
 import { _ensureWrapped, normalizeCharNamesInBlock } from './utils/util-text.js';
 import { cacheKey, fnv1a32 } from './utils/util-hash.js';
-import { getCharInfo, getUserPersona } from './utils/util-st.js';
+import { getCharInfo, getUserPersona, getGenStamp } from './utils/util-st.js';
 import { recordStat, SM } from './features/feature-stats.js';
 import { _mergeContent } from './features/feature-attachments.js';
 
@@ -17,7 +17,7 @@ import { buildLorebookContextBlock, buildLBAIInstructions, expandOutletsAsync } 
 import { buildCharacterContextBlock, buildCharEditAIInstructions } from './features/feature-character-engine.js';
 import { buildChatEditAIInstructions } from './features/feature-chatedit-engine.js';
 import { buildMemoryContextBlock, buildMemoryAIInstructions, processMemoryUpdates, stripMemoryBlock } from './features/feature-memory.js';
-import { buildToolCallsSystemBlock, parseToolCallsFromText, stripToolCallsFromText, executeTool, getEnabledTools, toOpenAITools, extractProviderToolCalls } from './features/feature-tools-engine.js';
+import { buildToolCallsSystemBlock, parseToolCallsFromText, stripToolCallsFromText, executeTool, getEnabledTools, toOpenAITools, extractProviderToolCalls, findToolCallCut } from './features/feature-tools-engine.js';
 
 import { updateMsgCount, smartScrollToBottom, setGeneratingState, showGenerationError, _renderMsgBodyContent, _refreshSwipeBars, appendMsgEl } from './ui/ui-chat.js';
 import { getDisplayContent, extractToolCallPlaceholders, renderMarkdown, postProcessHTMLBlocks } from './ui/ui-chat.js';
@@ -225,6 +225,35 @@ export function getMainChatSlice(depth) {
 // Таймаут одного вызова инструмента: сетевые тулы (search_web/read_url) не должны
 // вешать весь раунд. Константа вместо настройки — пока ни один сценарий не потребовал другого.
 const TOOL_TIMEOUT_MS = 60000;
+
+// ─── Журнал «последних отправленных» запросов (инспектор) ───
+// Ключи с секретами вымываются по имени поля; длинные строки (base64-вложения)
+// схлопываются в размер. Ключи API ST живут в заголовках — сюда они не попадают,
+// регулярка подстраховывает custom-эндпоинты.
+const _SECRET_KEY_RE = /pass(word)?$|password|secret|(^|_)token$|api[_-]?key|authorization/i;
+
+export function redactRequestBody(v, depth = 0) {
+    if (v == null || depth > 8) return v;
+    if (typeof v === 'string') {
+        return v.length > 4000 ? `… (${Math.round(v.length / 1024)} KB)` : v;
+    }
+    if (Array.isArray(v)) return v.map(x => redactRequestBody(x, depth + 1));
+    if (typeof v === 'object') {
+        const out = {};
+        for (const [k, val] of Object.entries(v)) {
+            out[k] = _SECRET_KEY_RE.test(k) ? '***REDACTED***' : redactRequestBody(val, depth + 1);
+        }
+        return out;
+    }
+    return v;
+}
+
+export function logOutgoingRequest(url, body) {
+    try {
+        state.requestLog.push({ ts: Date.now(), url: String(url).split('?')[0].slice(0, 200), body: redactRequestBody(body) });
+        if (state.requestLog.length > 5) state.requestLog.shift();
+    } catch (_) {}
+}
 
 function withTimeout(promise, ms = TOOL_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
@@ -524,6 +553,10 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
             if (textParts.length > 0) t = textParts.join('\n');
         }
 
+        // Прокси (Elysium и подобные) в tool_call-раунде возвращают content,
+        // сериализованный как JSON-строку пустоты: '""'. Это не текст ответа.
+        if (t === '""' || t === "''") t = '';
+
         return { t, r };
     }
 
@@ -654,14 +687,15 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
 
     let asyncGeneratorFn;
     const origFetch = window.fetch;
-    
+
     window.fetch = async function(...args) {
         let requestUrl = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
         if ((requestUrl.includes('/generate') || requestUrl.includes('/caption-image')) && args[1] && typeof args[1].body === 'string') {
             try {
                 let reqBody = JSON.parse(args[1].body);
+                logOutgoingRequest(requestUrl, reqBody);
                 let changed = false;
-                
+
                 if (reqBody.reasoning_effort === 'auto') { delete reqBody.reasoning_effort; changed = true; }
                 else if (reqBody.reasoning_effort === 'min') { reqBody.reasoning_effort = 'low'; changed = true; }
                 else if (reqBody.reasoning_effort === 'max') { reqBody.reasoning_effort = 'high'; changed = true; }
@@ -799,15 +833,33 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
         const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason || lastValue?.choices?.[0]?.finish_reason;
         const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
+        // Текстовый протокол: хвост после закрытого tool_call — выдуманный
+        // моделью «результат»; отсекаем его и тут.
+        if (settings.toolsEnabled && !nativeTools) {
+            const cut = findToolCallCut(text);
+            if (cut !== -1) {
+                _dbgAdd('GEN_TOOL_CALL_CUT', { cutAt: cut, droppedTail: text.length - cut });
+                text = text.slice(0, cut).trim();
+            }
+        }
+
         state.abortController = null;
         return { text, reasoning, isMaxTokens, toolCalls, rawToolCalls };
     }
 
     const gen = typeof asyncGeneratorFn === 'function' ? asyncGeneratorFn() : asyncGeneratorFn;
 
+    // Стриминг + текстовый протокол: как только закрылся tool_call-блок и модель
+    // начала писать дальше — обрываем генерацию (abort), иначе она додумает
+    // «результат» инструмента. Ответ возвращается усечённым по точке обрыва.
+    const tcCutEnabled = !!settings.toolsEnabled && !nativeTools;
+    let tcCutAt = null;
+    const cutResult = () => tcCutAt === null ? undefined
+        : { text: text.slice(0, tcCutAt).trim(), reasoning, isMaxTokens: false, toolCalls: null, rawToolCalls: null };
+
     try {
         while (true) {
-            if (abort.signal.aborted) { state.abortController = null; return null; }
+            if (abort.signal.aborted) { state.abortController = null; const c = cutResult(); if (c) return c; return null; }
             const { value, done } = await gen.next();
             if (done) {
                 if (value) lastValue = value;
@@ -834,9 +886,19 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
                     : (reasoningStartMs !== null ? performance.now() - reasoningStartMs : null);
                 onChunk(text, reasoning, reasoningMs, reasoningDone);
             }
+
+            if (tcCutEnabled && tcCutAt === null) {
+                const cutIdx = findToolCallCut(text);
+                if (cutIdx !== -1) {
+                    tcCutAt = cutIdx;
+                    _dbgAdd('GEN_TOOL_CALL_CUT', { cutAt: cutIdx, droppedTail: text.length - cutIdx });
+                    abort.abort();
+                }
+            }
         }
     } catch (e) {
         state.abortController = null;
+        if (tcCutAt !== null) { const c = cutResult(); if (c) return c; }
         if (abort.signal.aborted || e?.name === 'AbortError' || e?.message === 'userStopped') return null;
         throw e;
     }
@@ -1285,10 +1347,13 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
         if (streamMsgId) {
             const msg = session.messages.find(m => m.id === streamMsgId);
-            if (msg) { 
-                msg.content = fullText; 
-                msg.reasoning = fullReasoning || null; 
-                msg.toolCalls = state.activeToolCalls.length ? JSON.parse(JSON.stringify(state.activeToolCalls)) : undefined; 
+            if (msg) {
+                msg.content = fullText;
+                msg.reasoning = fullReasoning || null;
+                msg.toolCalls = state.activeToolCalls.length ? JSON.parse(JSON.stringify(state.activeToolCalls)) : undefined;
+                msg.genStamp = getGenStamp(settings) || undefined;
+                const metaEl = streamMsgEl?.querySelector('.scp-msg-meta');
+                if (metaEl && msg.genStamp) metaEl.textContent = `${metaEl.textContent.split(' · ')[0]} · ${msg.genStamp}`;
             }
             saveSessionsToMetadata();
 
@@ -1303,6 +1368,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
             }
         } else {
             const newMsg = addMessage(session, 'assistant', fullText, { reasoning: fullReasoning || null, toolCalls: state.activeToolCalls.length ? JSON.parse(JSON.stringify(state.activeToolCalls)) : undefined });
+            newMsg.genStamp = getGenStamp(settings) || undefined;
             newMsg.swipes = [{ content: fullText, reasoning: fullReasoning || null }];
             newMsg.swipeIndex = 0;
             saveSessionsToMetadata();

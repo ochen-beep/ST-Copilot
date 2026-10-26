@@ -18,6 +18,9 @@ export const state = {
     userScrolledUp: false,
     savedScrollTop: 0,
     abortController: null,
+    // Последние реальные тела запросов (после подстановок ST), секреты вымыты.
+    // Только для инспектора «Отправленные»; кап 5, в персистентность не уходит.
+    requestLog: [],
     // Флаг остановки, живущий дольше abortController: контроллер зануляется после
     // каждого callGenerate, поэтому Stop между tool-раундами без этого флага терялся.
     generationStopped: false,

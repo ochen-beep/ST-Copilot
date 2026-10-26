@@ -134,11 +134,14 @@ export function getEmbeddedCharBook() {
 export async function saveWorldInfoBook(name, data) {
     if (data._embedded) { toastr.warning('Нельзя напрямую сохранять встроенные лорбуки персонажа.', EXT_DISPLAY); return; }
     const ctx = SillyTavern.getContext();
-    const payload = { ...data };
+    // Глубокая копия: в payload не должно быть живых ссылок на кэш — иначе
+    // неудачный сейв оставляет кэш мутированным относительно диска.
+    const payload = structuredClone(data);
     delete payload._ts;
     try {
         if (typeof ctx.saveWorldInfo === 'function') {
-            await ctx.saveWorldInfo(name, payload);
+            // overwrite=true: без флага часть сборок ST мержит, а не перезаписывает.
+            await ctx.saveWorldInfo(name, payload, true);
         } else {
             const res = await fetch('/api/worldinfo/edit', {
                 method: 'POST',

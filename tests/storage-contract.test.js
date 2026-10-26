@@ -127,6 +127,34 @@ describe('контракт «нет контента — нет файла»', (
     });
 });
 
+describe('восстановление после порчи файла', () => {
+    it('битый файл бэкапится (.corrupt), чат стартует с чистого бакета', async () => {
+        const fileId = 'copilot_sess_broken.json';
+        // Сырой мусор вместо base64/JSON — не чинится _repairJSON.
+        files.set(`user/files/${fileId}`, '{"bucket": garbage {{{');
+        SillyTavern.getContext().chatMetadata.st_copilot = { format: 'v4', file_id: fileId, chat_id: window.chat_file_name };
+
+        await initChatBucket();
+        const sess = getCurrentSession();
+
+        const backup = uploads.find(n => n.startsWith('copilot_corrupt_'));
+        expect(backup).toBeTruthy();
+        expect(sess.messages).toEqual([]);
+        // Оригинал не удалён и не перезаписан — просто больше не читается.
+        expect(deletes).toEqual([]);
+    });
+
+    it('валидный JSON без bucket — тоже порча: бэкап + чистый бакет', async () => {
+        const fileId = 'copilot_sess_shapeless.json';
+        files.set(`user/files/${fileId}`, b64({ totally: 'wrong shape' }));
+        SillyTavern.getContext().chatMetadata.st_copilot = { format: 'v4', file_id: fileId, chat_id: window.chat_file_name };
+
+        await initChatBucket();
+        expect(uploads.find(n => n.startsWith('copilot_corrupt_'))).toBeTruthy();
+        expect(getCurrentSession().messages).toEqual([]);
+    });
+});
+
 describe('deleteSessionFile (контракт Clear)', () => {
     it('удаляет файл с диска и отменяет отложенную запись (сироты не воскресают)', async () => {
         await initChatBucket();

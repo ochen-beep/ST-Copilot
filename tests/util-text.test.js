@@ -10,6 +10,8 @@ import {
   _repairJSON,
   _sanitizeProposedTags,
   applySearchReplaceToField,
+  applyReplaceAllToField,
+  applyPatchToField,
   _ensureWrapped,
   normalizeCharNamesInBlock,
   levenshtein,
@@ -141,7 +143,8 @@ describe('applySearchReplaceToField', () => {
     );
     expect(r.matched).toBe(false);
     expect(r.result).toBe('The castle gate. The castle tower.');
-    expect(r.reason).toContain('несколько раз');
+    expect(r.reason).toContain('2 раза');
+    expect(r.occurrences).toBe(2);
   });
 
   it('уникальный якорь в тексте с повторами других слов — замена', () => {
@@ -314,5 +317,49 @@ describe('levenshtein', () => {
     // Голозёмный «почти совпадающий» якорь должен быть отклонён, а не угадан.
     const r = applySearchReplaceToField('old dark castle', 'old dark castel', '[NEW]');
     expect(r.matched).toBe(false);
+  });
+});
+describe('applyReplaceAllToField / applyPatchToField', () => {
+  it('заменяет все вхождения и возвращает count', () => {
+    const r = applyReplaceAllToField('The castle gate. The castle tower.', 'The castle', '[X]');
+    expect(r.matched).toBe(true);
+    expect(r.count).toBe(2);
+    expect(r.result).toBe('[X] gate. [X] tower.');
+  });
+
+  it('whitespace-толерантность в режиме all (literal-вхождений нет → ws-поиск)', () => {
+    const r = applyReplaceAllToField('red  door\nred   door', 'red door', 'blue door');
+    expect(r.matched).toBe(true);
+    expect(r.count).toBe(2);
+    expect(r.result).not.toContain('red');
+  });
+
+  it('literal-вхождения приоритетны: ws-варианты рядом не подмешиваются (как в unique-режиме)', () => {
+    const r = applyReplaceAllToField('red  door\nred door', 'red door', 'blue door');
+    expect(r.matched).toBe(true);
+    expect(r.count).toBe(1);
+    expect(r.result).toBe('red  door\nblue door');
+  });
+
+  it('диапазонный якорь в режиме all — отказ', () => {
+    const r = applyReplaceAllToField('a || b и a || b', 'a || b', 'X');
+    expect(r.matched).toBe(false);
+  });
+
+  it('нет вхождений — matched=false, count=0', () => {
+    const r = applyReplaceAllToField('nothing here', 'castle', 'X');
+    expect(r.matched).toBe(false);
+    expect(r.count).toBe(0);
+  });
+
+  it('applyPatchToField: all=true → replace-all, иначе уникальный', () => {
+    const all = applyPatchToField('cat and cat', { search: 'cat', replace: 'dog', all: true });
+    expect(all.result).toBe('dog and dog');
+    expect(all.count).toBe(2);
+    const single = applyPatchToField('cat and cat', { search: 'cat', replace: 'dog' });
+    expect(single.matched).toBe(false);
+    expect(single.occurrences).toBe(2);
+    const anchor = applyPatchToField('one cat', { anchor: 'cat', replace: 'dog' });
+    expect(anchor.result).toBe('one dog');
   });
 });

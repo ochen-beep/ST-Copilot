@@ -1,6 +1,6 @@
 import { EXT_DISPLAY, CHAT_EDIT_FORMAT_BLOCK, DEFAULT_CHAT_EDIT_DIRECTIVE } from '../constants.js';
 import { getCurrentSession, addMessage } from '../session.js';
-import { applySearchReplaceToField, _repairJSON } from '../utils/util-text.js';
+import { applyPatchToField, _repairJSON } from '../utils/util-text.js';
 import { escHtml } from '../utils/util-dom.js';
 
 export function buildChatEditAIInstructions(settings) {
@@ -281,7 +281,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                     if (change.action === 'bulk_replace') {
                         for (const rp of (change.replacements || [])) {
                             if (!rp.search && !rp.anchor) continue;
-                            const { result, matched } = applySearchReplaceToField(content, rp.search || rp.anchor, rp.replace || '');
+                            const { result, matched } = applyPatchToField(content, rp);
                             if (matched) { content = result; changed = true; }
                         }
                     } else if (change.action === 'regex') {
@@ -331,7 +331,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                     } else if (change.action === 'replace') {
                         let matched = true;
                         for (const patch of (change.patches || [])) {
-                            const { result, matched: m } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
+                            const { result, matched: m } = applyPatchToField(content, patch);
                             if (!m) { toastr.warning(`[Редактор чата] ANCHOR не найден в #${idx}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 }); matched = false; break; }
                             content = result;
                         }
@@ -369,7 +369,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
             } else if (change.action === 'replace') {
                 let allMatched = true;
                 for (const patch of (change.patches || [])) {
-                    const { result, matched } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
+                    const { result, matched } = applyPatchToField(content, patch);
                     if (!matched) {
                         toastr.warning(`[Редактор чата] ANCHOR не найден в сообщении ${change.msg_index ?? change.msg_id}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 });
                         allMatched = false; break;

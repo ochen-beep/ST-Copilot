@@ -5171,3 +5171,31 @@ details.scp-cl-entry[open] .scp-cl-entry-summary::before { transform: rotate(90d
     color: rgba(255, 255, 255, 0.4) !important;
     box-shadow: none;
 }
+/* Кнопка «заменить все N» для неоднозначных якорей в карточках правок */
+.scp-anchor-all-btn {
+    display: inline-block; margin: 3px 6px 0 0; padding: 2px 8px;
+    font-size: 10px; font-family: var(--scp-font); cursor: pointer;
+    border-radius: 4px; border: 1px solid var(--scp-accent-dim);
+    background: var(--scp-accent-bg); color: var(--scp-accent);
+    transition-property: var(--scp-tr-props); transition-duration: 0.15s;
+}
+.scp-anchor-all-btn:hover { background: var(--scp-accent); color: #fff; }
+
+/* Закреплённая сессия: активная кнопка-pin подсвечена */
+.scp-sess-pin-btn { opacity: 0.45; }
+.scp-sess-item:hover .scp-sess-pin-btn, .scp-sess-pin-btn.active { opacity: 1; }
+.scp-sess-pin-btn.active { color: var(--scp-accent); }
+
+/* Кнопка подгрузки старых сообщений (ленивый рендер) */
+.scp-load-older-btn {
+    display: block; width: 100%; margin: 2px 0 8px; padding: 6px 10px;
+    font-size: 11px; font-family: var(--scp-font); cursor: pointer;
+    border-radius: 6px; border: 1px dashed var(--scp-accent-dim);
+    background: rgba(255,255,255,0.03); color: var(--scp-text-muted);
+    transition-property: var(--scp-tr-props); transition-duration: 0.15s;
+}
+.scp-load-older-btn:hover { color: var(--scp-accent); background: var(--scp-accent-bg); }
+
+/* Поле правки reasoning в режиме редактирования */
+.scp-edit-reason-label { font-size: 10px; color: var(--scp-text-muted); margin: 6px 0 2px; }
+.scp-edit-reason-ta { opacity: 0.85; font-size: 11px; }

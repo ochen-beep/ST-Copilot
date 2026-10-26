@@ -114,10 +114,18 @@
         <div class="scp-modal-tabs">
             <button class="scp-modal-tab active" data-tab="formatted">Форматированный</button>
             <button class="scp-modal-tab" data-tab="json">JSON</button>
+            <button class="scp-modal-tab" data-tab="lastsent">Отправленные</button>
+        </div>
+        <div class="scp-ctx-search-row">
+            <input id="scp-ctx-search" type="text" placeholder="Поиск по контексту…" autocomplete="off" />
+            <span id="scp-ctx-search-count"></span>
+            <button id="scp-ctx-search-prev" class="scp-ctx-search-btn" title="Предыдущее (Shift+Enter)">↑</button>
+            <button id="scp-ctx-search-next" class="scp-ctx-search-btn" title="Следующее (Enter)">↓</button>
         </div>
         <div class="scp-modal-body">
             <pre id="scp-ctx-formatted" class="scp-ctx-pre"></pre>
             <pre id="scp-ctx-json" class="scp-ctx-pre" style="display:none"></pre>
+            <pre id="scp-ctx-lastsent" class="scp-ctx-pre" style="display:none"></pre>
         </div>
         <div class="scp-modal-footer">
             <button class="scp-action-btn" id="scp-ctx-copy-btn">${I.copy}<span>Копировать</span></button>

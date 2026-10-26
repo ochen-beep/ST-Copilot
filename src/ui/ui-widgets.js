@@ -700,6 +700,59 @@ export function closeFavoritesPanel() {
 
 // ─── Context Inspector ──────────────────────────────────────────────────────
 
+// Поиск по блокам инспектора: без текстовой хирургии по подсвеченному HTML —
+// матчим textContent блоков, подсвечиваем блок целиком, Enter/Shift+Enter листают.
+let _ctxSearchBound = false;
+let _ctxSearchMatches = [];
+let _ctxSearchIdx = -1;
+
+function _ctxSearchApply(query) {
+    const body = document.getElementById('scp-ctx-body');
+    const countEl = document.getElementById('scp-ctx-search-count');
+    if (!body) return;
+    body.querySelectorAll('.scp-ctx-hit').forEach(el => el.classList.remove('scp-ctx-hit', 'scp-ctx-hit-current'));
+    _ctxSearchMatches = [];
+    _ctxSearchIdx = -1;
+
+    const q = (query || '').toLowerCase().trim();
+    if (q) {
+        body.querySelectorAll('.scp-ctx-block').forEach(block => {
+            if ((block.textContent || '').toLowerCase().includes(q)) {
+                block.classList.add('scp-ctx-hit');
+                _ctxSearchMatches.push(block);
+            }
+        });
+    }
+    if (countEl) countEl.textContent = q ? `${_ctxSearchMatches.length ? '0' : '0'}/${_ctxSearchMatches.length}` : '';
+}
+
+function _ctxSearchGo(dir) {
+    if (!_ctxSearchMatches.length) return;
+    _ctxSearchIdx = (_ctxSearchIdx + dir + _ctxSearchMatches.length) % _ctxSearchMatches.length;
+    _ctxSearchMatches.forEach(el => el.classList.remove('scp-ctx-hit-current'));
+    const cur = _ctxSearchMatches[_ctxSearchIdx];
+    cur.classList.add('scp-ctx-hit-current');
+    const body = document.getElementById('scp-ctx-body');
+    if (body) body.scrollTo({ top: cur.offsetTop - 8, behavior: 'smooth' });
+    const countEl = document.getElementById('scp-ctx-search-count');
+    if (countEl) countEl.textContent = `${_ctxSearchIdx + 1}/${_ctxSearchMatches.length}`;
+}
+
+export function setupContextSearch() {
+    const input = document.getElementById('scp-ctx-search');
+    if (!input) return;
+    input.value = '';
+    _ctxSearchApply('');
+    if (_ctxSearchBound) return;
+    _ctxSearchBound = true;
+    input.addEventListener('input', () => _ctxSearchApply(input.value));
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); _ctxSearchGo(e.shiftKey ? -1 : 1); }
+    });
+    document.getElementById('scp-ctx-search-prev')?.addEventListener('click', () => _ctxSearchGo(-1));
+    document.getElementById('scp-ctx-search-next')?.addEventListener('click', () => _ctxSearchGo(1));
+}
+
 export function _highlightContextText(raw) {
     const masterRe = /(```[\s\S]*?(?:```|$))|(`[^`\n]*`)|(<\/?([\w:{}_-]+)[^>]*>|<!--[\s\S]*?-->)|(\{\{[^}\n]+\}\})/gi;
     
@@ -954,6 +1007,8 @@ export async function openInspector() {
         fmtEl.style.padding = '0';
         fmtEl.innerHTML = _buildContextInspectorHTML(messages);
         
+        setupContextSearch();
+
         fmtEl.querySelectorAll('.scp-ctx-nav-btn[data-t]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const t = document.getElementById(btn.dataset.t);
@@ -966,6 +1021,15 @@ export async function openInspector() {
         });
     }
     if (jsonEl) jsonEl.textContent = JSON.stringify(messages, null, 2);
+    const lsEl = document.getElementById('scp-ctx-lastsent');
+    if (lsEl) {
+        const log = state.requestLog || [];
+        lsEl.textContent = log.length
+            ? log.slice().reverse().map(e =>
+                `═══ ${new Date(e.ts).toLocaleTimeString()} — ${e.url} ═══\n${JSON.stringify(e.body, null, 2)}`
+            ).join('\n\n')
+            : 'Запросов ещё не было. Журнал хранит последние 5 тел запросов (секреты вымыты) и очищается при перезагрузке страницы.';
+    }
     modalEl.style.display = 'flex';
     import('./ui-window.js').then(m => m.bringWindowToFront());
     

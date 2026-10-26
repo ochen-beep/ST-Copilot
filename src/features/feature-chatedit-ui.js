@@ -1,7 +1,7 @@
 import { EXT_DISPLAY, I } from '../constants.js';
 import { getCurrentSession, addMessage, saveSessionsToMetadata } from '../session.js';
 import { escHtml } from '../utils/util-dom.js';
-import { applySearchReplaceToField } from '../utils/util-text.js';
+import { applyPatchToField } from '../utils/util-text.js';
 import { openTextDiffModal } from '../utils/util-diff.js';
 import { stripChatChangesBlock, reconstructChatChangesBlock, _resolveStMsgByIndexOrId } from './feature-chatedit-engine.js';
 import { bringWindowToFront } from '../ui/ui-window.js';
@@ -83,6 +83,9 @@ export function renderChatProposalCard(changes, msgEl) {
 
     const validateChatChange = (change) => {
         const stMsgs = SillyTavern.getContext().chat || [];
+        // Якоря, встретившиеся несколько раз: валидны при явном all=true,
+        // иначе предлагаем пользователю кнопку «заменить все N».
+        const ambiguous = [];
         if (change.action === 'rename_chat') {
             return { valid: !!(change.name && change.name.trim()), reason: 'Имя чата не может быть пустым' };
         }
@@ -103,12 +106,16 @@ export function renderChatProposalCard(changes, msgEl) {
                             let content = stMsgs[i].mes || '', thisMsgMatch = true;
                             for (const rp of (change.replacements || [])) {
                                 if (!rp.search && !rp.anchor) continue;
-                                const { matched } = applySearchReplaceToField(content, rp.search || rp.anchor, rp.replace || '');
-                                if (!matched) { thisMsgMatch = false; break; }
+                                const r = applyPatchToField(content, rp);
+                                if (!r.matched) {
+                                    if (r.occurrences >= 2) { ambiguous.push({ patch: rp, occurrences: r.occurrences }); continue; }
+                                    thisMsgMatch = false; break;
+                                }
                             }
                             if (thisMsgMatch && change.replacements?.length > 0) anyMatch = true;
                         }
-                        if (!anyMatch) return { valid: false, reason: 'Якоря не найдены в указанных сообщениях' };
+                        if (!anyMatch && !ambiguous.length) return { valid: false, reason: 'Якоря не найдены в указанных сообщениях' };
+                        if (ambiguous.length) return { valid: false, reason: 'Якорь встречается несколько раз', ambiguous };
                     } else if (change.action === 'regex') {
                         try {
                             const m = (change.regex || '').match(/^\/([\s\S]+)\/([a-z]*)$/i);
@@ -136,12 +143,16 @@ export function renderChatProposalCard(changes, msgEl) {
                     let thisMsgMatch = true;
                     for (const rp of (change.replacements || [])) {
                         if (!rp.search && !rp.anchor) continue;
-                        const { matched } = applySearchReplaceToField(content, rp.search || rp.anchor, rp.replace || '');
-                        if (!matched) { thisMsgMatch = false; break; }
+                        const r = applyPatchToField(content, rp);
+                        if (!r.matched) {
+                            if (r.occurrences >= 2) { ambiguous.push({ patch: rp, occurrences: r.occurrences }); continue; }
+                            thisMsgMatch = false; break;
+                        }
                     }
                     if (thisMsgMatch && change.replacements?.length > 0) anyMatch = true;
                 }
-                    if (!anyMatch) return { valid: false, reason: 'Якоря не найдены в указанном диапазоне' };
+                    if (!anyMatch && !ambiguous.length) return { valid: false, reason: 'Якоря не найдены в указанном диапазоне' };
+                    if (ambiguous.length) return { valid: false, reason: 'Якорь встречается несколько раз', ambiguous };
             } else if (change.action === 'regex') {
                 try {
                     const m = (change.regex || '').match(/^\/([\s\S]+)\/([a-z]*)$/i);
@@ -161,11 +172,15 @@ export function renderChatProposalCard(changes, msgEl) {
                     for (const idx of change.msg_indices) {
                         let content = stMsgs[idx].mes || '';
                         for (const patch of (change.patches || [])) {
-                            const { matched } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
-                            if (!matched) return { valid: false, reason: `ANCHOR не найден в #${idx}: «${(patch.search || patch.anchor || '').slice(0, 40)}...»` };
+                            const r = applyPatchToField(content, patch);
+                            if (!r.matched) {
+                                if (r.occurrences >= 2) { ambiguous.push({ patch, occurrences: r.occurrences }); continue; }
+                                return { valid: false, reason: `ANCHOR не найден в #${idx}: «${(patch.search || patch.anchor || '').slice(0, 40)}...»` };
+                            }
                         }
                     }
                 }
+                if (ambiguous.length) return { valid: false, reason: 'Якорь встречается несколько раз', ambiguous };
                 return { valid: true };
             }
             const resolved = _resolveStMsgByIndexOrId(change);
@@ -174,10 +189,14 @@ export function renderChatProposalCard(changes, msgEl) {
             if (change.action === 'replace') {
                 let content = resolved.msg.mes || '';
                 for (const patch of (change.patches || [])) {
-                    const { matched } = applySearchReplaceToField(content, patch.search || patch.anchor || '', patch.replace || '');
-                    if (!matched) return { valid: false, reason: `ANCHOR не найден: «${(patch.search || patch.anchor || '').slice(0, 40)}...»` };
+                    const r = applyPatchToField(content, patch);
+                    if (!r.matched) {
+                        if (r.occurrences >= 2) { ambiguous.push({ patch, occurrences: r.occurrences }); continue; }
+                        return { valid: false, reason: `ANCHOR не найден: «${(patch.search || patch.anchor || '').slice(0, 40)}...»` };
+                    }
                 }
             }
+            if (ambiguous.length) return { valid: false, reason: 'Якорь встречается несколько раз', ambiguous };
             return { valid: true };
         }
     };
@@ -187,7 +206,7 @@ export function renderChatProposalCard(changes, msgEl) {
         if (change.action === 'replace') {
             let c = content;
             for (const p of (change.patches || [])) {
-                const { result } = applySearchReplaceToField(c, p.search || p.anchor || '', p.replace || '');
+                const { result } = applyPatchToField(c, p);
                 c = result;
             }
             return c;
@@ -195,7 +214,7 @@ export function renderChatProposalCard(changes, msgEl) {
         if (change.action === 'bulk_replace') {
             let c = content;
             for (const p of (change.replacements || [])) {
-                const { result } = applySearchReplaceToField(c, p.search || p.anchor || '', p.replace || '');
+                const { result } = applyPatchToField(c, p);
                 c = result;
             }
             return c;
@@ -347,11 +366,24 @@ export function renderChatProposalCard(changes, msgEl) {
         applyBtn.className = 'scp-lb-proposal-item-apply'; applyBtn.title = 'Применить'; applyBtn.textContent = '✓';
         
         const refreshValidation = () => {
-            const { valid, reason } = validateChatChange(editableChanges[ci]);
+            const { valid, reason, ambiguous } = validateChatChange(editableChanges[ci]);
             if (!valid) {
                 applyBtn.disabled = true; applyBtn.title = reason;
                 item.style.borderLeftColor = 'var(--scp-danger)';
                 warnEl.textContent = `⚠ ${reason}`; warnEl.style.display = 'block';
+                // Неоднозначный якорь — предлагаем «заменить все N» вместо ручной правки.
+                for (const amb of (ambiguous || [])) {
+                    const allBtn = document.createElement('button');
+                    allBtn.className = 'scp-anchor-all-btn';
+                    allBtn.textContent = `⇄ Заменить все ${amb.occurrences}`;
+                    allBtn.title = `Якорь «${(amb.patch.search || amb.patch.anchor || '').slice(0, 60)}» встречается ${amb.occurrences} раза — заменить все вхождения`;
+                    allBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        amb.patch.all = true;
+                        refreshValidation();
+                    });
+                    warnEl.appendChild(allBtn);
+                }
             } else {
                 applyBtn.disabled = false; applyBtn.title = 'Применить';
                 item.style.borderLeftColor = ''; 

@@ -13,6 +13,7 @@ import { normalizeCharNamesInBlock } from '../utils/util-text.js';
 import { cacheKey } from '../utils/util-hash.js';
 import { discoverProposalBlocks } from '../utils/util-block-discovery.js';
 import { createStreamRenderer } from './render/stream-renderer.js';
+import { computeRenderFrom } from './render/render-window.js';
 import { parseChatChangesFromText, stripChatChangesBlock } from '../features/feature-chatedit-engine.js';
 import { renderChatProposalCard } from '../features/feature-chatedit-ui.js';
 import { stripMemoryBlock } from '../features/feature-memory.js';
@@ -565,7 +566,9 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
 
     const meta = document.createElement('div');
     meta.className = 'scp-msg-meta';
-    meta.textContent = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    meta.textContent = msg.genStamp ? `${timeStr} · ${msg.genStamp}` : timeStr;
+    if (msg.genStamp) meta.title = msg.genStamp;
 
     const tokenCountEl = document.createElement('div');
     tokenCountEl.className = 'scp-msg-token-count';
@@ -700,6 +703,32 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
         swipeBar.appendChild(prevBtn);
         swipeBar.appendChild(counter);
         swipeBar.appendChild(nextBtn);
+
+        const delSwipeBtn = document.createElement('button');
+        delSwipeBtn.className = 'scp-swipe-btn scp-swipe-del';
+        delSwipeBtn.innerHTML = I.x;
+        delSwipeBtn.title = 'Удалить текущий вариант ответа';
+        delSwipeBtn.addEventListener('click', async () => {
+            if (state.generating) return;
+            const session = getCurrentSession();
+            const msgData = session.messages.find(m => m.id === msg.id);
+            if (!msgData || (msgData.swipes?.length || 1) < 2) return;
+            const ok = await showCustomDialog({
+                type: 'confirm',
+                title: 'Удалить вариант',
+                message: 'Удалить текущий вариант ответа? Остальные варианты сохранятся.'
+            });
+            if (!ok) return;
+            msgData.swipes.splice(msgData.swipeIndex ?? 0, 1);
+            msgData.swipeIndex = Math.min(msgData.swipeIndex ?? 0, msgData.swipes.length - 1);
+            msgData.content = msgData.swipes[msgData.swipeIndex].content;
+            msgData.reasoning = msgData.swipes[msgData.swipeIndex].reasoning || null;
+            saveSessionsToMetadata();
+            updateMsgCount(session);
+            _renderMsgBodyContent(wrap, msgData);
+            updateSwipeBar(wrap, session, msg.id);
+        });
+        swipeBar.appendChild(delSwipeBtn);
         body.appendChild(swipeBar);
     }
 
@@ -760,8 +789,10 @@ export function updateSwipeBar(msgEl, session, msgId) {
     const prevBtn = bar.querySelector('.scp-swipe-prev');
     const nextBtn = bar.querySelector('.scp-swipe-next');
     const counter = bar.querySelector('.scp-swipe-counter');
+    const delBtn = bar.querySelector('.scp-swipe-del');
     if (prevBtn) prevBtn.disabled = cur <= 1 || state.generating;
     if (nextBtn) nextBtn.disabled = state.generating;
+    if (delBtn) delBtn.disabled = total < 2 || state.generating;
     if (counter) counter.innerHTML = `<span>${cur}</span>/${total}`;
     bar.style.display = '';
 }
@@ -1148,6 +1179,38 @@ export function handleEdit(wrapEl, msg) {
     ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
     autoResize(ta); ta.addEventListener('input', () => autoResize(ta));
 
+    // Правка reasoning у ответов reasoning-моделей — отдельным полем под ответом.
+    let reasonTa = null;
+    if (msg.role !== 'user' && msg.reasoning) {
+        const rl = document.createElement('div');
+        rl.className = 'scp-edit-reason-label';
+        rl.textContent = 'Размышления (reasoning):';
+        reasonTa = document.createElement('textarea');
+        reasonTa.className = 'scp-edit-ta scp-edit-reason-ta';
+        reasonTa.value = msg.reasoning;
+        ta.after(rl); rl.after(reasonTa);
+        autoResize(reasonTa); reasonTa.addEventListener('input', () => autoResize(reasonTa));
+    }
+
+    const applyReasoningEdit = () => {
+        if (!reasonTa) return;
+        msg.reasoning = reasonTa.value.trim() || null;
+        if (msg.swipes && msg.swipeIndex !== undefined) msg.swipes[msg.swipeIndex].reasoning = msg.reasoning;
+        const rBlock = wrapEl.querySelector('.scp-reasoning-block');
+        if (!msg.reasoning) { rBlock?.remove(); return; }
+        if (rBlock) {
+            rBlock.querySelector('.scp-reasoning-content').innerHTML = renderMarkdown(msg.reasoning);
+        } else {
+            const nb = document.createElement('details');
+            nb.className = 'scp-reasoning-block';
+            nb.innerHTML = `<summary class="scp-reasoning-summary">Размышления</summary><div class="scp-reasoning-content"></div>`;
+            nb.querySelector('.scp-reasoning-content').innerHTML = renderMarkdown(msg.reasoning);
+            const body = wrapEl.querySelector('.scp-msg-body');
+            const contentNow = wrapEl.querySelector('.scp-msg-content');
+            if (body && contentNow) body.insertBefore(nb, contentNow);
+        }
+    };
+
     const restoreMessageDOM = (textToRender) => {
         const nc = document.createElement('div');
         nc.className = 'scp-msg-content';
@@ -1215,6 +1278,7 @@ export function handleEdit(wrapEl, msg) {
             }
             recordStat(SM.edit);
             restoreMessageDOM(newText);
+            applyReasoningEdit();
             _updateMsgTokenCount(wrapEl, newText, true);
         });
     }
@@ -1234,8 +1298,9 @@ export function handleEdit(wrapEl, msg) {
         }
         recordStat(SM.edit);
         restoreMessageDOM(newText);
+        applyReasoningEdit();
         _updateMsgTokenCount(wrapEl, newText, true);
-        
+
         truncateAfter(session, msg.id);
         removeMsgElAfter(msg.id);
         if (msg.role === 'user' && apiMod) await apiMod.runGenerate(session, newText, false);
@@ -1311,6 +1376,11 @@ export async function handleDelete(wrapEl, msg) {
     if (!session.messages.length) renderSession(session);
 }
 
+// Окно ленивого рендера: длинные сессии рендерятся последними N сообщениями,
+// старые подгружаются кнопкой. На payload это не влияет — только DOM.
+const MSG_RENDER_WINDOW = 80;
+const _renderFromBySession = new Map(); // sessionId -> первый отрисованный индекс
+
 export function renderSession(session) {
     clearSearchHighlights();
     state.searchMatches = [];
@@ -1331,7 +1401,27 @@ export function renderSession(session) {
         updateMsgCount(session);
         return;
     }
-    for (const msg of session.messages) {
+
+    const total = session.messages.length;
+    const from = computeRenderFrom(total, _renderFromBySession.get(session.id), MSG_RENDER_WINDOW);
+    _renderFromBySession.set(session.id, from);
+
+    if (from > 0) {
+        const loadOlder = document.createElement('button');
+        loadOlder.className = 'scp-load-older-btn';
+        const hiddenCount = from;
+        loadOlder.textContent = `⬆ Показать ещё ${Math.min(MSG_RENDER_WINDOW, hiddenCount)} из ${hiddenCount} скрытых`;
+        loadOlder.title = 'Старые сообщения не отрисованы для производительности (на контекст ИИ это не влияет)';
+        loadOlder.addEventListener('click', () => {
+            const prev = _renderFromBySession.get(session.id) ?? 0;
+            _renderFromBySession.set(session.id, Math.max(0, prev - MSG_RENDER_WINDOW));
+            renderSession(session);
+        });
+        c.appendChild(loadOlder);
+    }
+
+    for (let i = from; i < total; i++) {
+        const msg = session.messages[i];
         if (msg.isLBHistory || msg.isCharEditHistory || msg.isChatEditHistory) {
             appendLBHistoryEl(msg);
         } else {

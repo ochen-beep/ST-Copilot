@@ -99,27 +99,34 @@ function _escapeRe(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Уникальное вхождение: literal → whitespace-толерантный (переносы строк и
-// кратные пробелы внутри якоря). Никакого фаззи-подбора: правка либо ложится
-// точно и однозначно, либо не ложится вовсе.
-// Возвращает { start, end } | { ambiguous: true } | null.
-function _findUniqueRange(src, query) {
+// Все вхождения якоря: literal → whitespace-толерантный (переносы строк и
+// кратные пробелы внутри якоря). Никакого фаззи-подбора.
+function _findAllRanges(src, query) {
     const q = query.trim();
-    if (!q) return null;
+    if (!q) return [];
 
-    let first = src.indexOf(q);
-    if (first !== -1) {
-        if (src.indexOf(q, first + 1) !== -1) return { ambiguous: true };
-        return { start: first, end: first + q.length };
+    const out = [];
+    let idx = src.indexOf(q);
+    while (idx !== -1) {
+        out.push({ start: idx, end: idx + q.length });
+        idx = src.indexOf(q, idx + 1);
     }
+    if (out.length) return out;
 
     const parts = q.split(/\s+/).map(_escapeRe);
-    if (parts.length < 2) return null;
+    if (parts.length < 2) return [];
     const wsRe = new RegExp(parts.join('\\s+'), 'g');
-    const m1 = wsRe.exec(src);
-    if (!m1) return null;
-    if (wsRe.exec(src)) return { ambiguous: true };
-    return { start: m1.index, end: m1.index + m1[0].length };
+    let m;
+    while ((m = wsRe.exec(src)) !== null) out.push({ start: m.index, end: m.index + m[0].length });
+    return out;
+}
+
+// Уникальное вхождение. Возвращает { start, end } | { ambiguous: true, count } | null.
+function _findUniqueRange(src, query) {
+    const all = _findAllRanges(src, query);
+    if (all.length === 1) return all[0];
+    if (all.length > 1) return { ambiguous: true, count: all.length };
+    return null;
 }
 
 export function applySearchReplaceToField(fieldContent, searchText, replaceText) {
@@ -161,10 +168,44 @@ export function applySearchReplaceToField(fieldContent, searchText, replaceText)
     }
 
     const m = _findUniqueRange(src, srch);
-    if (m?.ambiguous) return fail(`якорь «${srch.trim().slice(0, 60)}» встречается несколько раз — включи в якорь больше контекста`);
+    if (m?.ambiguous) {
+        const f = fail(`якорь «${srch.trim().slice(0, 60)}» встречается ${m.count} раза — включи в якорь больше контекста или замени все вхождения`);
+        f.occurrences = m.count;
+        return f;
+    }
     if (m) return { result: src.slice(0, m.start) + repl + src.slice(m.end), matched: true };
 
     return fail('якорь не найден — запроси точный текст поля инструментом чтения и процитируй его дословно');
+}
+
+// Замена ВСЕХ вхождений якоря (режим patch.all): для «переименуй таверну везде».
+// Диапазонные якоря «a || b» не поддерживаются — у них нет однозначного «всех».
+export function applyReplaceAllToField(fieldContent, searchText, replaceText) {
+    const src = fieldContent || '';
+    const srch = (searchText || '').trim();
+    const repl = replaceText || '';
+    if (!srch) return { result: src, matched: false, count: 0, reason: 'пустой якорь' };
+    if (srch.includes('||') || srch.includes('...')) {
+        return { result: src, matched: false, count: 0, reason: 'диапазонный якорь не поддерживает замену всех вхождений' };
+    }
+    const all = _findAllRanges(src, srch);
+    if (!all.length) return { result: src, matched: false, count: 0, reason: 'якорь не найден' };
+    // Собираем с конца, чтобы индексы не съезжали.
+    let result = src;
+    for (let i = all.length - 1; i >= 0; i--) {
+        result = result.slice(0, all[i].start) + repl + result.slice(all[i].end);
+    }
+    return { result, matched: true, count: all.length };
+}
+
+// Единая точка применения одного патча: нормализует ключи (search/anchor)
+// и режим all. Использовать везде вместо прямых вызовов applySearchReplaceToField.
+export function applyPatchToField(content, patch) {
+    const search = patch?.search || patch?.anchor || '';
+    const replace = patch?.replace || '';
+    return patch?.all === true
+        ? applyReplaceAllToField(content, search, replace)
+        : applySearchReplaceToField(content, search, replace);
 }
 
 export function _ensureWrapped(text, tag) {

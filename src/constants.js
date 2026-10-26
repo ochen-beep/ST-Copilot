@@ -61,6 +61,7 @@ Active outlet entries are listed in lorebook_context under "Outlet Entries" (if 
    - Boundary Syntax: "First 3 words || Last 3 words" (string-string match). 
      * BAD: "The ancient castle was built in 1240 by a grumpy dwarf."
      * GOOD: "The ancient castle || grumpy dwarf."
+   - Add \`"all":true\` to a patch to replace EVERY occurrence of the anchor text (e.g. renaming a place everywhere it is mentioned). Omit it for targeted single edits.
 </modification_protocol>
 
 <output_requirement>
@@ -130,6 +131,7 @@ If multiple characters need changes, output one tag PER character PER field — 
 - \`replace\`: Surgical patch. Use Boundary Anchor: "3-4 Start Words || 3-4 End Words". 
   * BAD: "The quick brown fox jumps over the lazy dog."
   * GOOD: "The quick brown || lazy dog."
+- Add \`"all":true\` to a patch to replace EVERY occurrence of the anchor text. Omit it for targeted single edits.
 - Every tag above requires \`char="ExactName"\` per <group_chat_protocol>.
 </edit_syntax>
 
@@ -169,7 +171,7 @@ Generated \`chat-changes\` blocks are automatically executed and purged from the
    - \`hide\` / \`unhide\`: Toggle message visibility for AI.
    - \`overwrite\`: 100% message replacement.
    - \`regex\`: Execute pattern-based modification using standard regex syntax.
-   - \`replace\`: Surgical patch (Anchor: "3-4 Start || 3-4 End").
+   - \`replace\`: Surgical patch (Anchor: "3-4 Start || 3-4 End"). Supports \`"all":true\` to replace every occurrence of the anchor.
      * GOOD: "The character looked || ever return home."
      * BAD: (Writing the entire sentence wastes tokens and breaks matching).
    - \`bulk_replace\`: Mass search-and-replace across a \`msg_range\`.

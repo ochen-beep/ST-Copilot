@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls } from '../src/utils/util-tool-parse.js';
+import { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut } from '../src/utils/util-tool-parse.js';
 
 describe('parseToolCallsFromText — протокол ```tool_call', () => {
     it('парсит одиночный вызов', () => {
@@ -89,5 +89,47 @@ describe('extractProviderToolCalls — native function calling', () => {
     it('null без tool_calls', () => {
         expect(extractProviderToolCalls({ choices: [{ message: { content: 'hi' } }] })).toBeNull();
         expect(extractProviderToolCalls(null)).toBeNull();
+    });
+});
+
+describe('findToolCallCut — точка обрыва после tool_call', () => {
+    it('нет tool_call — нет обрыва', () => {
+        expect(findToolCallCut('Просто текст без вызовов.')).toBe(-1);
+        expect(findToolCallCut('')).toBe(-1);
+    });
+
+    it('незакрытый фенс — ждём', () => {
+        expect(findToolCallCut('Смотрю:\n```tool_call\n{"name": "a"')).toBe(-1);
+    });
+
+    it('закрытый фенс с пустым хвостом — ждём (модель может писать следующий вызов)', () => {
+        expect(findToolCallCut('```tool_call\n{"name":"a"}\n```')).toBe(-1);
+        expect(findToolCallCut('```tool_call\n{"name":"a"}\n```\n  ')).toBe(-1);
+    });
+
+    it('хвост = начало следующего tool_call — ждём', () => {
+        expect(findToolCallCut('```tool_call\n{"name":"a"}\n```\n```tool_call\n{"name":"b"')).toBe(-1);
+        expect(findToolCallCut('```tool_call\n{"name":"a"}\n```\n```to')).toBe(-1);
+        expect(findToolCallCut('```tool_call\n{"name":"a"}\n```\n<tool_call>')).toBe(-1);
+    });
+
+    it('проза после закрытого блока — обрыв в конце блока', () => {
+        const text = 'Посмотрю.\n```tool_call\n{"name":"a"}\n```\nРезультат поиска: эльф найден...';
+        const cut = findToolCallCut(text);
+        expect(cut).toBe(text.indexOf('```', '```tool_call\n{"name":"a"}\n'.length - 3) + 3);
+        expect(text.slice(0, cut).endsWith('```')).toBe(true);
+    });
+
+    it('проза ДО блока сохраняется, выдуманный результат после — отрезается', () => {
+        const text = 'Сейчас проверю лорбук. <tool_call>{"name":"x"}</tool_call> Запись существует, значит...';
+        const cut = findToolCallCut(text);
+        expect(text.slice(0, cut)).toBe('Сейчас проверю лорбук. <tool_call>{"name":"x"}</tool_call>');
+    });
+
+    it('несколько закрытых блоков подряд — обрыв после последнего', () => {
+        const text = '```tool_call\n{"name":"a"}\n```\n```tool_call\n{"name":"b"}\n```\nТеперь отвечу.';
+        const cut = findToolCallCut(text);
+        expect(text.slice(0, cut).endsWith('```')).toBe(true);
+        expect(text.slice(cut)).toBe('\nТеперь отвечу.');
     });
 });
