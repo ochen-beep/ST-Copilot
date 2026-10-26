@@ -124,7 +124,12 @@ export function buildMemoryAIInstructions(settings) {
 
 export function parseMemoryBlockFromText(text) {
     const re = new RegExp('```memory-update\\s*([\\s\\S]*?)```', 'i');
-    const m = text.match(re);
+    let m = text.match(re);
+    if (!m) {
+        // Незакрытый блок (ответ модели оборвался) — как в остальных движках.
+        const open = text.match(/```memory-update\s*([\s\S]*?)(?=```|$)/i);
+        if (open) m = open;
+    }
     if (!m) return null;
     try { return JSON.parse(m[1].trim()); } catch(_) {}
     try { const fixed = m[1].trim().replace(/,\s*]/g, ']').replace(/,\s*}/g, '}'); return JSON.parse(fixed); } 
@@ -135,7 +140,10 @@ export function parseMemoryBlockFromText(text) {
 }
 
 export function stripMemoryBlock(text) {
-    return text.replace(/```memory-update[\s\S]*?```/gi, '').trim();
+    return text
+        .replace(/```memory-update[\s\S]*?```/gi, '')
+        .replace(/```memory-update[\s\S]*/gi, '')
+        .trim();
 }
 
 export function processMemoryUpdates(text, msgId) {
@@ -447,18 +455,13 @@ ${scopeHtml}
     _dbgAdd(isNew ? 'MEM_CREATE_MANUAL' : 'MEM_EDIT_MANUAL', { key: result.key, scope: result.scope });
     
     if (isNew) { addMemory(result.key, result.value, result.scope); }
-    else { 
+    else {
+        // При редактировании сохраняем исходные привязки (charId/chatId/sessionId):
+        // список показывает память всех персонажей/чатов, и правка чужой записи
+        // не должна молча перетаскивать её в текущий контекст.
         const m = getMemories()[id];
         updateMemory(id, result.key, result.value);
-        m.scope = result.scope; 
-        const { charId, chatId } = getBindingKey();
-        const ctx = SillyTavern.getContext();
-        m.charId = charId;
-        m.charName = ctx.characters?.[charId]?.name || charId;
-        m.chatId = chatId;
-        m.chatName = chatId;
-        m.sessionId = getCurrentSession()?.id;
-        m.sessionName = getCurrentSession()?.name;
+        m.scope = result.scope;
         saveSettings();
     }
     renderMemoryList();

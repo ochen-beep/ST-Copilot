@@ -1,5 +1,5 @@
 import { EXT_DISPLAY, CHANGELOG, I, WIN_ID, ICON_ID, MODAL_ID } from './constants.js';
-import { state } from './state.js';
+import { state, invalidateSystemPromptCache } from './state.js';
 import { getSettings, saveSettings, getChatBucket, setActiveSession, deleteCurrentSession, getCurrentSession, exportCurrentSession, importSession, showSessionDialog } from './session.js';
 import { _dbgSetupGlobalErrorHandlers, _dbgAdd, _dbgSnapshotSettings } from './utils/util-debug.js';
 import { showCustomDialog, autoResize, copyText } from './utils/util-dom.js';
@@ -371,6 +371,7 @@ function attachWindowListeners() {
     }
 
     document.getElementById('scp-stop-btn')?.addEventListener('click', () => {
+        state.generationStopped = true;
         state.abortController?.abort();
         const { stopGeneration } = SillyTavern.getContext();
         if (typeof stopGeneration === 'function') stopGeneration();
@@ -566,6 +567,11 @@ async function init() {
             await onChatChanged();
             refreshSessionDropdown();
             renderSession(getCurrentSession());
+        });
+        // Правка карточки персонажа в самом ST не меняет сигнатуру кэша —
+        // без этого системный промпт держал бы старые description/personality.
+        es.on(et.CHARACTER_EDITED || 'character_edited', () => {
+            invalidateSystemPromptCache('character_edited');
         });
         es.on(et.APP_READY || 'app_ready', () => {
             updateProfilesList();

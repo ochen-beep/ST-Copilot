@@ -25,7 +25,7 @@ export function buildChatEditAIInstructions(settings) {
     const base = (settings.chatEditPrompt || DEFAULT_CHAT_EDIT_DIRECTIVE.trim())
         .replace('{{chat_edit_format}}', CHAT_EDIT_FORMAT_BLOCK)
         .replace('{{active_chat_ids}}', activeChatIds);
-    const chatNameNote = `\nНазвание текущего чата: "${chatDisplayName}"`;
+    const chatNameNote = `\nCurrent chat name: "${chatDisplayName}"`;
     return `<chat_messages_editing>\n${base}${chatNameNote}\n</chat_messages_editing>`;
 }
 
@@ -161,14 +161,14 @@ export async function logChatEditHistory(changes, statusStr, afterMsgId = null) 
             let target = `\`#${escHtml(c.msg_index ?? c.msg_id ?? '?')}\``;
             if (c.msg_range && Array.isArray(c.msg_range)) target = `[${c.msg_range[0]}–${c.msg_range[1]}]`;
             if (Array.isArray(c.msg_indices) && c.msg_indices.length) target = `[${c.msg_indices.join(', ')}]`;
-            let extras = c.affectedCount !== undefined ? ` (${c.affectedCount} затронуто)` : '';
-            return `${icon} **${actionText}**: \`${escHtml(c.action)}\` над сообщением ${target}${extras}`;
+            let extras = c.affectedCount !== undefined ? ` (${c.affectedCount} affected)` : '';
+            return `${icon} **${actionText}**: \`${escHtml(c.action)}\` on message ${target}${extras}`;
         });
         
         const uiChatMod = await import('../ui/ui-chat.js');
         if (afterMsgId && uiChatMod.addHistoryToSwipe(afterMsgId, newLines)) return;
 
-        const histText = `**Системное уведомление** — Редактирование сообщений чата:\n${newLines.join('\n')}`;
+        const histText = `**System Notification** — Chat message edits:\n${newLines.join('\n')}`;
         const msg = addMessage(session, 'system', histText, { isChatEditHistory: true, isLBHistory: true, appliedLines: [...newLines] });
         
         const lbUiMod = await import('./feature-lorebook-ui.js');
@@ -241,7 +241,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                 const isSys = change.role === 'system';
                 const isUser = change.role === 'user';
                 const newMsg = {
-                    name: isSys ? 'Система' : (isUser ? (ctx.name1 || 'Пользователь') : (ctx.name2 || 'Персонаж')),
+                    name: isSys ? 'System' : (isUser ? (ctx.name1 || 'User') : (ctx.name2 || 'Character')),
                     is_user: isUser,
                     is_system: isSys,
                     send_date: Date.now(),

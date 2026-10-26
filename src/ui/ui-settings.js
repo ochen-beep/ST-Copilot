@@ -1,6 +1,6 @@
 import { THEME_PRESETS, THEME_VAR_DEFS, THEME_CSS_MAP, EXT_DISPLAY, DEFAULT_SYSTEM_PROMPT, DEFAULT_CHAR_EDIT_DIRECTIVE, DEFAULT_LB_MANAGE_PROMPT, DEFAULT_CHAT_EDIT_DIRECTIVE, DEFAULT_TOOLS_PROMPT, DEFAULT_MEMORY_PROMPT, I } from '../constants.js';
 import { state } from '../state.js';
-import { getSettings, saveSettings, getEffectiveSettings, setSessionOverride, clearAllSessionOverrides, getBindingKey, hasSessionOverrides, saveSessionsToMetadata, getCurrentSession, getSessionOverrides, getChatBucket, initChatBucket } from '../session.js';
+import { getSettings, saveSettings, getEffectiveSettings, setSessionOverride, clearAllSessionOverrides, getBindingKey, hasSessionOverrides, saveSessionsToMetadata, getCurrentSession, getSessionOverrides, getChatBucket, initChatBucket, deleteSessionFile } from '../session.js';
 import { showCustomDialog, escHtml } from '../utils/util-dom.js';
 import { applyCustomTheme, bringWindowToFront } from './ui-window.js';
 import { showColorPicker } from '../utils/util-colorpicker.js';
@@ -990,8 +990,10 @@ export function setupSettingsHandlers() {
         const { charId, chatId } = getBindingKey();
         _dbgAdd('SESSION_CLEAR_REQUESTED', { source: 'st-drawer', charId, chatId });
         getSettings().sessions = {}; saveSettings();
+        const oldFileId = SillyTavern.getContext().chatMetadata?.st_copilot?.file_id || null;
         try {
             await initChatBucket({ forceReset: true });
+            if (oldFileId) await deleteSessionFile(oldFileId);
             _dbgAdd('SESSION_CLEAR_DONE', { source: 'st-drawer', charId, chatId });
         } catch (e) {
             _dbgAdd('SESSION_CLEAR_FAILED', { source: 'st-drawer', charId, chatId, error: e?.message || String(e), stack: e?.stack });
@@ -1145,8 +1147,10 @@ export function setupSettingsPanelListeners() {
         const { charId, chatId } = getBindingKey();
         _dbgAdd('SESSION_CLEAR_REQUESTED', { source: 'settings-overlay', charId, chatId });
         getSettings().sessions = {}; saveSettings();
+        const oldFileId = SillyTavern.getContext().chatMetadata?.st_copilot?.file_id || null;
         try {
             await initChatBucket({ forceReset: true });
+            if (oldFileId) await deleteSessionFile(oldFileId);
             _dbgAdd('SESSION_CLEAR_DONE', { source: 'settings-overlay', charId, chatId });
             import('./ui-chat.js').then(m => m.onChatChanged());
             toastr.success('Сессии очищены.', EXT_DISPLAY);

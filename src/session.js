@@ -226,10 +226,40 @@ let _inMemoryBucket = { activeSessionId: null, sessions: [] };
 let _currentSessionFileId = null;
 const _saveQueue = new Map();
 
+// Контракт хранилища: файл на диске существует ⟺ в нём есть контент.
+// Автосозданная «Сессия 1» без сообщений файл не заслуживает — иначе каждое
+// открытие чата плодит пустые copilot_sess_*.json, которые никто не чистит.
+function bucketHasContent(bucket) {
+    const s = bucket?.sessions || [];
+    return s.length > 1 || s.some(x => x.messages?.length > 0 || (x.overrides && Object.keys(x.overrides).length > 0));
+}
+const _filesWithContent = new Set(); // file_id, записанные/прочитанные с контентом на этой странице
+
+// tool-раунды пушат временные сообщения (_tcTemp) в живой bucket; они чистятся
+// между раундами, но таймер сохранения может выстрелить посреди раунда.
+// Не даём им попасть на диск: клонируем только затронутые сессии.
+function _stripTempMessages(bucket) {
+    if (!bucket?.sessions) return bucket;
+    let dirty = false;
+    for (const s of bucket.sessions) {
+        if (s.messages?.some(m => m._tcTemp)) { dirty = true; break; }
+    }
+    if (!dirty) return bucket;
+    return {
+        ...bucket,
+        sessions: bucket.sessions.map(s =>
+            s.messages?.some(m => m._tcTemp)
+                ? { ...s, messages: s.messages.filter(m => !m._tcTemp) }
+                : s
+        )
+    };
+}
+
 export async function saveSessionFile(file_id, payload, useKeepalive = false) {
+    if (payload && !_filesWithContent.has(file_id) && !bucketHasContent(payload.bucket)) return true;
     const ctx = SillyTavern.getContext();
     try {
-        const jsonStr = JSON.stringify(payload);
+        const jsonStr = JSON.stringify({ ...payload, bucket: _stripTempMessages(payload.bucket) });
         const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
         const res = await fetch('/api/files/upload', {
             method: 'POST',
@@ -237,10 +267,32 @@ export async function saveSessionFile(file_id, payload, useKeepalive = false) {
             body: JSON.stringify({ name: file_id, data: b64 }),
             keepalive: useKeepalive
         });
+        if (res.ok) _filesWithContent.add(file_id);
         return res.ok;
     } catch (e) {
         _dbgAdd('STORAGE_WRITE_FAILED', { file_id, error: e.message });
         console.error(`[${EXT_DISPLAY}] saveSessionFile error:`, e);
+        return false;
+    }
+}
+
+export async function deleteSessionFile(file_id) {
+    if (!file_id) return true;
+    const pending = _saveQueue.get(file_id);
+    if (pending) { clearTimeout(pending.timer); _saveQueue.delete(file_id); }
+    _filesWithContent.delete(file_id);
+    const ctx = SillyTavern.getContext();
+    try {
+        const res = await fetch('/api/files/delete', {
+            method: 'POST',
+            headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: `user/files/${file_id}` }),
+        });
+        if (res.ok || res.status === 404) return true;
+        _dbgAdd('STORAGE_DELETE_FAILED', { file_id, status: res.status });
+        return false;
+    } catch (e) {
+        _dbgAdd('STORAGE_DELETE_FAILED', { file_id, error: e.message });
         return false;
     }
 }
@@ -250,6 +302,13 @@ window.addEventListener('beforeunload', () => {
         clearTimeout(item.timer);
         saveSessionFile(fileId, item.payload, true);
     }
+    // saveSettings() идёт через 1-сек дебаунс ST — без явного flush последнее
+    // изменение настроек за секунду до закрытия вкладки теряется.
+    try {
+        const ctx = SillyTavern.getContext();
+        if (typeof ctx?.saveSettings === 'function') ctx.saveSettings();
+        else if (typeof window.saveSettings === 'function') window.saveSettings();
+    } catch (_) {}
 });
 
 function _decodeBase64Utf8(b64) {
@@ -383,6 +442,7 @@ export async function initChatBucket({ forceReset = false } = {}) {
 
     if (payload && payload.bucket) {
         _inMemoryBucket = payload.bucket;
+        if (bucketHasContent(_inMemoryBucket)) _filesWithContent.add(targetFileId);
         _dbgAdd('STORAGE_BUCKET_LOADED', { charId, chatId, fileId: targetFileId, sessionCount: _inMemoryBucket.sessions?.length || 0 });
     } else {
         _inMemoryBucket = { activeSessionId: null, sessions: [] };

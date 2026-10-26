@@ -74,43 +74,53 @@ export function postProcessToolCalls(containerEl, toolCalls) {
     }
 }
 
+let _toolsUIBound = false;
+let _toolsOpenBound = false;
+
 export function setupToolsSettingsUI() {
     const s = getSettings();
     const listEl = document.getElementById('scp-sp-tools-list');
     if (!listEl) return;
     
     const ta = document.getElementById('scp-sp-tools-prompt');
-    if (ta) {
-        ta.value = s.toolsSystemPrompt || ''; 
-        ta.addEventListener('input', () => { getSettings().toolsSystemPrompt = ta.value; saveSettings(); });
-    }
-    
-    document.getElementById('scp-sp-tools-reset')?.addEventListener('click', () => {
-        getSettings().toolsSystemPrompt = DEFAULT_TOOLS_PROMPT; saveSettings();
-        if (ta) ta.value = DEFAULT_TOOLS_PROMPT;
-    });
+    if (ta) ta.value = s.toolsSystemPrompt || '';
 
+    // Функция вызывается при каждом открытии вкладки, а узлы оверлея постоянные —
+    // обработчики на статичные контролы вешаем один раз, иначе они накапливаются.
+    if (!_toolsUIBound) {
+        _toolsUIBound = true;
+        if (ta) ta.addEventListener('input', () => { getSettings().toolsSystemPrompt = ta.value; saveSettings(); });
+
+        document.getElementById('scp-sp-tools-reset')?.addEventListener('click', () => {
+            getSettings().toolsSystemPrompt = DEFAULT_TOOLS_PROMPT; saveSettings();
+            if (ta) ta.value = DEFAULT_TOOLS_PROMPT;
+        });
+
+    document.getElementById('scp-sp-tools-enabled')?.addEventListener('change', e => {
+            getSettings().toolsEnabled = e.target.checked; saveSettings();
+            const stEl = document.getElementById('scp-tools-enabled'); if (stEl) stEl.checked = e.target.checked;
+        });
+        document.getElementById('scp-sp-tools-max-rounds')?.addEventListener('input', e => {
+            getSettings().toolsMaxRounds = parseInt(e.target.value) || 5; saveSettings();
+        });
+
+        const protoSel = document.getElementById('scp-sp-tools-protocol');
+        if (protoSel) {
+            protoSel.addEventListener('change', () => {
+                getSettings().toolsProtocol = protoSel.value === 'native' ? 'native' : 'text';
+                saveSettings();
+            });
+        }
+    }
+
+    // Синк значений — при каждом открытии вкладки (снаружи bind-once guard).
     const setC = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
     const setV = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
     setC('scp-sp-tools-enabled', s.toolsEnabled);
     setV('scp-sp-tools-max-rounds', s.toolsMaxRounds ?? 5);
 
-    document.getElementById('scp-sp-tools-enabled')?.addEventListener('change', e => {
-        getSettings().toolsEnabled = e.target.checked; saveSettings();
-        const stEl = document.getElementById('scp-tools-enabled'); if (stEl) stEl.checked = e.target.checked;
-    });
-    document.getElementById('scp-sp-tools-max-rounds')?.addEventListener('input', e => {
-        getSettings().toolsMaxRounds = parseInt(e.target.value) || 5; saveSettings();
-    });
-
-    const protoSel = document.getElementById('scp-sp-tools-protocol');
-    if (protoSel) {
-        protoSel.value = s.toolsProtocol === 'native' ? 'native' : 'text';
-        protoSel.addEventListener('change', () => {
-            getSettings().toolsProtocol = protoSel.value === 'native' ? 'native' : 'text';
-            saveSettings();
-        });
-    }
+    const protoSel2 = document.getElementById('scp-sp-tools-protocol');
+    if (protoSel2) protoSel2.value = s.toolsProtocol === 'native' ? 'native' : 'text';
 
     const streamingOff = s.forceStreaming === 'off';
 
@@ -137,13 +147,16 @@ export function setupToolsSettingsUI() {
         listEl.appendChild(row);
     }
 
-    document.getElementById('scp-open-tools-settings')?.addEventListener('click', () => {
+    if (!_toolsOpenBound) {
+        _toolsOpenBound = true;
+        document.getElementById('scp-open-tools-settings')?.addEventListener('click', () => {
         openSettingsPanel();
-        setTimeout(() => {
-            const tab = document.querySelector('[data-sptab="tools"]');
-            if (tab) tab.click();
-        }, 80);
-    });
+            setTimeout(() => {
+                const tab = document.querySelector('[data-sptab="tools"]');
+                if (tab) tab.click();
+            }, 80);
+        });
+    }
 }
 
 let askUserResolve = null;

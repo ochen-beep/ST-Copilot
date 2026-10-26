@@ -18,7 +18,7 @@ export async function _processAttachmentsBeforeSend(atts, isPreview = false) {
     for (const a of atts) {
         if (a.isImage && mode === 'caption') {
             if (isPreview) {
-                processed.push({ ...a, sendAsText: true, textContent: `[Изображение "${a.name}" (подпись будет сгенерирована при отправке)]` });
+                processed.push({ ...a, sendAsText: true, textContent: `[Image "${a.name}" (caption will be generated on send)]` });
             } else {
                 let cap = await _getCaptionViaExtension(a.file).catch((e)=>{
                     console.warn("[ST-Copilot] Captioning error:", e);
@@ -29,13 +29,13 @@ export async function _processAttachmentsBeforeSend(atts, isPreview = false) {
                 processed.push({
                     ...a,
                     sendAsText: true,
-                    textContent: cap ? `[Изображение "${a.name}" подпись: ${cap}]` : `[Изображение "${a.name}" (ошибка подписи)]`
+                    textContent: cap ? `[Image "${a.name}" caption: ${cap}]` : `[Image "${a.name}" (captioning failed)]`
                 });
             }
         } else if (!a.isImage) {
             let text = a.textContent;
             if (!text && a.file) {
-                try { text = await a.file.text(); } catch(e) { text = '(бинарные данные или ошибка чтения)'; }
+                try { text = await a.file.text(); } catch(e) { text = '(binary data or read error)'; }
             }
             processed.push({ ...a, sendAsText: true, textContent: text });
         } else {
@@ -214,11 +214,20 @@ export function _setupAttachButton() {
         inp.type = 'file';
         inp.multiple = true;
         inp.accept = 'image/*,text/*,.pdf,.json,.txt,.md,.csv,.log,.js,.py,.html,.css';
-        inp.onchange = () => { 
+        inp.onchange = () => {
             if (inp.files?.length) {
-                const file = inp.files[0];
-                if (file.size > 25 * 1024 * 1024) _dbgAdd('ATTACHMENT_SIZE_EXCEEDED', { name: file.name, size: file.size });
-                _addAttachments(Array.from(inp.files)); 
+                const MAX = 25 * 1024 * 1024;
+                const files = Array.from(inp.files);
+                const accepted = [];
+                for (const file of files) {
+                    if (file.size > MAX) {
+                        _dbgAdd('ATTACHMENT_SIZE_EXCEEDED', { name: file.name, size: file.size });
+                        toastr.warning(`Файл «${file.name}» больше 25 МБ и не был прикреплён.`, EXT_DISPLAY);
+                    } else {
+                        accepted.push(file);
+                    }
+                }
+                if (accepted.length) _addAttachments(accepted);
             }
         };
         inp.click();

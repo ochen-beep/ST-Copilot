@@ -388,52 +388,62 @@ export function renderSVGChart(container, buckets, metricIdx, meta) {
         svgEl2.appendChild(hlDot);
     }
 
-    let _lastI = -1;
-    let _rafTt = null;
-    
-    svgEl2.addEventListener('pointermove', e => {
-        if (_rafTt) return;
-        _rafTt = requestAnimationFrame(() => {
-            _rafTt = null;
-            const r = svgEl2.getBoundingClientRect();
-            const svgX = (e.clientX - r.left) / r.width * W;
-            
-            let closestIdx = 0;
-            let minDist = Infinity;
-            for (let i = 0; i < buckets.length; i++) {
-                const dist = Math.abs(px(i) - svgX);
-                if (dist < minDist) { minDist = dist; closestIdx = i; }
-            }
-            const idx = closestIdx;
+    // Данные текущего рендера — на элементе: SVG переиспользуется между вызовами,
+    // а слушатели вешаем один раз, иначе они накапливаются со старыми замыканиями.
+    svgEl2._chartData = { buckets, vals, px, py, meta, tt, hlDot };
 
-            if (idx === _lastI) return;
-            _lastI = idx;
-            
-            const val = vals[idx];
-            tt.style.display = '';
-            tt.innerHTML = `<span class="scp-stats-tt-label">${escHtml(buckets[idx].label)}</span><span class="scp-stats-tt-val" style="color:${meta.color}">${_fmtNum(val)}</span>`;
-            
-            const dotPxX = px(idx) / W * r.width;
-            const dotPxY = py(val) / H * r.height;
-            const ttW = 90;
-            let left = dotPxX - ttW / 2;
-            left = Math.max(0, Math.min(left, r.width - ttW));
-            
-            tt.style.left = `${left}px`;
-            tt.style.top = `${Math.max(0, dotPxY - 42)}px`;
+    if (!svgEl2._scpChartBound) {
+        svgEl2._scpChartBound = true;
+        let _lastI = -1;
+        let _rafTt = null;
 
-            hlDot.setAttribute('cx', px(idx).toFixed(2));
-            hlDot.setAttribute('cy', py(val).toFixed(2));
-            hlDot.setAttribute('fill', meta.color);
-            hlDot.style.display = '';
+        svgEl2.addEventListener('pointermove', e => {
+            if (_rafTt) return;
+            _rafTt = requestAnimationFrame(() => {
+                _rafTt = null;
+                const d = svgEl2._chartData;
+                if (!d) return;
+                const { buckets, vals, px, py, meta, tt, hlDot } = d;
+                const r = svgEl2.getBoundingClientRect();
+                const svgX = (e.clientX - r.left) / r.width * W;
+
+                let closestIdx = 0;
+                let minDist = Infinity;
+                for (let i = 0; i < buckets.length; i++) {
+                    const dist = Math.abs(px(i) - svgX);
+                    if (dist < minDist) { minDist = dist; closestIdx = i; }
+                }
+                const idx = closestIdx;
+
+                if (idx === _lastI) return;
+                _lastI = idx;
+
+                const val = vals[idx];
+                tt.style.display = '';
+                tt.innerHTML = `<span class="scp-stats-tt-label">${escHtml(buckets[idx].label)}</span><span class="scp-stats-tt-val" style="color:${meta.color}">${_fmtNum(val)}</span>`;
+
+                const dotPxX = px(idx) / W * r.width;
+                const dotPxY = py(val) / H * r.height;
+                const ttW = 90;
+                let left = dotPxX - ttW / 2;
+                left = Math.max(0, Math.min(left, r.width - ttW));
+
+                tt.style.left = `${left}px`;
+                tt.style.top = `${Math.max(0, dotPxY - 42)}px`;
+
+                hlDot.setAttribute('cx', px(idx).toFixed(2));
+                hlDot.setAttribute('cy', py(val).toFixed(2));
+                hlDot.setAttribute('fill', meta.color);
+                hlDot.style.display = '';
+            });
         });
-    });
-    
-    svgEl2.addEventListener('pointerleave', () => {
-        tt.style.display = 'none';
-        if (hlDot) hlDot.style.display = 'none';
-        _lastI = -1;
-    });
+
+        svgEl2.addEventListener('pointerleave', () => {
+            const d = svgEl2._chartData;
+            if (d) { d.tt.style.display = 'none'; if (d.hlDot) d.hlDot.style.display = 'none'; }
+            _lastI = -1;
+        });
+    }
 
     if ('ontouchstart' in window || window.innerWidth <= 900) {
         requestAnimationFrame(() => {

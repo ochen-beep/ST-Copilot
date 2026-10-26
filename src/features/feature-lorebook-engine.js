@@ -168,7 +168,7 @@ export function getDisplayName(name) {
     if (name === EMBEDDED_BOOK_KEY) {
         const ctx = SillyTavern.getContext();
         const char = ctx.characters?.[ctx.characterId];
-        return `[${char?.name || 'Персонаж'} книга]`;
+        return `[${char?.name || 'Character'} Book]`;
     }
     return name;
 }
@@ -563,59 +563,55 @@ export async function bindNewLorebookToCharacter(bookName) {
 export async function resolveLBChangeTarget(change, strictBook = false) {
     let bookName = change.worldName || '';
     let targetUid = change.uid;
-
-    const fuzzyWorld = bookName.toLowerCase();
-    const fuzzyName = (change.originalName || change.name || '').toLowerCase();
-    
-    if (fuzzyName && !strictBook) {
-        const activeMatch = lastActiveEntries.find(le => {
-            const wMatch = !fuzzyWorld || le.displayName.toLowerCase() === fuzzyWorld || le.bookName.toLowerCase() === fuzzyWorld;
-            const nMatch = le.entryName.toLowerCase() === fuzzyName || le.entryName.toLowerCase().includes(fuzzyName) || fuzzyName.includes(le.entryName.toLowerCase());
-            return wMatch && nMatch;
-        });
-        if (activeMatch) {
-            if (targetUid == null) targetUid = activeMatch.uid;
-            bookName = activeMatch.bookName;
-        }
-    }
+    const targetName = (change.originalName || change.name || '').trim().toLowerCase();
+    const hasUid = targetUid !== undefined && targetUid !== null;
 
     if (bookName === getDisplayName(EMBEDDED_BOOK_KEY)) bookName = EMBEDDED_BOOK_KEY;
 
     let data = await fetchWorldInfoBook(bookName);
     if (!data && bookName && !strictBook) {
-        const allActive = getActiveLorebookNames();
-        const match = allActive.find(n => n.toLowerCase() === fuzzyWorld || n.toLowerCase().includes(fuzzyWorld) || fuzzyWorld.includes(n.toLowerCase()));
+        // Имя книги — только точное: «Aria» не должно ловить «Aria's World».
+        const match = getActiveLorebookNames().find(n => n.toLowerCase() === bookName.toLowerCase());
         if (match) {
             bookName = match;
             data = await fetchWorldInfoBook(bookName);
         }
     }
 
+    // uid авторитетен и локален для книги. Без uid — только точное имя записи.
+    // Подстрочные совпадения убраны: «Aria» не должно править «Aria's sword».
+    const pickEntry = (entries) => {
+        if (hasUid) {
+            const byUid = entries.filter(en => String(en.uid) === String(targetUid));
+            return byUid.length === 1 ? byUid[0] : null;
+        }
+        if (!targetName) return null;
+        const byName = entries.filter(en => (en.comment || `Entry #${en.uid}`).trim().toLowerCase() === targetName);
+        return byName.length === 1 ? byName[0] : null;
+    };
+
     let origEntry = null;
     if (data && data.entries) {
-        origEntry = Object.values(data.entries).find(en => {
-            if (targetUid != null && String(en.uid) === String(targetUid)) return true;
-            if (!fuzzyName) return false;
-            const cStr = (en.comment || `Entry #${en.uid}`).trim().toLowerCase();
-            if (cStr === fuzzyName) return true;
-            return cStr.includes(fuzzyName) || fuzzyName.includes(cStr);
-        });
+        origEntry = pickEntry(Object.values(data.entries));
     }
 
-    if (!origEntry && /^\d+$/.test(fuzzyName) && data && data.entries[fuzzyName]) {
-        origEntry = data.entries[fuzzyName];
+    // Голое число в имени = uid записи (модели иногда ссылаются номером).
+    if (!origEntry && /^\d+$/.test(targetName) && data && data.entries[targetName]) {
+        origEntry = data.entries[targetName];
     }
 
-    if (!origEntry && fuzzyName && !strictBook) {
+    if (!origEntry && targetName && !strictBook) {
         for (const name of getActiveLorebookNames()) {
             if (name === bookName) continue;
             const bd = await fetchWorldInfoBook(name);
             if (!bd) continue;
-            origEntry = Object.values(bd.entries).find(en => {
-                const c = (en.comment || `Entry #${en.uid}`).trim().toLowerCase();
-                return c === fuzzyName || c.includes(fuzzyName) || fuzzyName.includes(c);
-            });
-            if (origEntry) { bookName = name; data = bd; break; }
+            const m = pickEntry(Object.values(bd.entries));
+            if (m) {
+                origEntry = m;
+                bookName = name;
+                data = bd;
+                break;
+            }
         }
     }
 
@@ -624,8 +620,8 @@ export async function resolveLBChangeTarget(change, strictBook = false) {
             change, resolvedBookName: bookName, activeBooks: getActiveLorebookNames(), cacheKeys: Object.keys(wiCache)
         });
     } else if (!origEntry && change.action !== 'add') {
-        console.warn(`[${EXT_DISPLAY}] resolveLBChangeTarget: entry not found`, {
-            fuzzyName, fuzzyWorld, targetUid,
+        console.warn(`[${EXT_DISPLAY}] resolveLBChangeTarget: entry not found (uid/name must be exact and unambiguous)`, {
+            targetName, targetUid, bookName,
             entries: Object.values(data.entries || {}).map(e => ({ uid: e.uid, comment: e.comment, key: e.key?.slice(0, 3) }))
         });
     }
@@ -675,7 +671,8 @@ export async function expandOutletsAsync(text, depth = 0) {
         const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(`\\{\\{outlet::${escapedName}\\}\\}`, 'g');
         
-        result = result.replace(regex, replacementText);
+        // функция-заменитель: $-последовательности в контенте записи не интерпретируются
+        result = result.replace(regex, () => replacementText);
     }
 
     if (result.includes('{{outlet::')) {

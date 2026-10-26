@@ -17,16 +17,16 @@ export function logChatEditHistory(changes, statusStr, afterMsgId = null) {
         const actionText = statusStr === 'Applied' ? 'ACCEPTED' : (statusStr === 'Rejected' ? 'REJECTED' : 'DISMISSED');
         
         const newLines = changes.map(c => {
-            let target = `\`#${escHtml(c.msg_index ?? c.msg_id ?? '?')}\``;
+            let target = `\`#${c.msg_index ?? c.msg_id ?? '?'}\``;
             if (c.msg_range && Array.isArray(c.msg_range)) target = `[${c.msg_range[0]}–${c.msg_range[1]}]`;
             if (Array.isArray(c.msg_indices) && c.msg_indices.length) target = `[${c.msg_indices.join(', ')}]`;
-            let extras = c.affectedCount !== undefined ? ` (${c.affectedCount} затронуто)` : '';
-            return `${icon} **${actionText}**: \`${escHtml(c.action)}\` над сообщением ${target}${extras}`;
+            let extras = c.affectedCount !== undefined ? ` (${c.affectedCount} affected)` : '';
+            return `${icon} **${actionText}**: \`${c.action}\` on message ${target}${extras}`;
         });
         
         if (afterMsgId && addHistoryToSwipe(afterMsgId, newLines)) return;
 
-        const histText = `**Системное уведомление** — Редактирование сообщений чата:\n${newLines.join('\n')}`;
+        const histText = `**System Notification** — Chat message edits:\n${newLines.join('\n')}`;
         const msg = addMessage(session, 'system', histText, { isChatEditHistory: true, isLBHistory: true, appliedLines: [...newLines] });
         appendLBHistoryEl(msg);
     } catch(_) {}
@@ -640,7 +640,7 @@ export function renderChatProposalCard(changes, msgEl) {
             const pending = pendingIndices.map(i => editableChanges[i]);
             if (!pending.length) return;
             applyAllBtn.disabled = true; applyAllBtn.textContent = 'Применение…';
-            
+
             pendingIndices.forEach(i => {
                 itemStates[i] = 'applied';
                 itemEls[i]?.classList.add('scp-lb-item-applied');

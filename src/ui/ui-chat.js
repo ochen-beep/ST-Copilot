@@ -435,6 +435,7 @@ export function _renderMsgBodyContent(msgEl, msg) {
 
     const contentEl = msgEl.querySelector('.scp-msg-content');
     
+    msgEl.querySelectorAll('.scp-msg-attachments').forEach(c => c.remove());
     if (msg.attachments && msg.attachments.length > 0) {
         const attWrap = document.createElement('div');
         attWrap.className = 'scp-msg-attachments';
@@ -1209,7 +1210,7 @@ export function handleEdit(wrapEl, msg) {
             
             msg.content = newText;
             if (msg.swipes && msg.swipeIndex !== undefined) {
-                msg.swipes[msg.swipeIndex] = { content: newText, reasoning: msg.reasoning || null };
+                msg.swipes[msg.swipeIndex] = { ...msg.swipes[msg.swipeIndex], content: newText, reasoning: msg.reasoning || null };
                 saveSessionsToMetadata();
             }
             recordStat(SM.edit);
@@ -1228,7 +1229,7 @@ export function handleEdit(wrapEl, msg) {
 
         msg.content = newText;
         if (msg.swipes && msg.swipeIndex !== undefined) {
-            msg.swipes[msg.swipeIndex] = { content: newText, reasoning: msg.reasoning || null };
+            msg.swipes[msg.swipeIndex] = { ...msg.swipes[msg.swipeIndex], content: newText, reasoning: msg.reasoning || null };
             saveSessionsToMetadata();
         }
         recordStat(SM.edit);
@@ -1602,7 +1603,8 @@ export function _applyHighlightsInRoot(root) {
     const lq = state.searchQuery.toLowerCase();
     let regex = null;
     if (state.searchWholeWord) {
-        try { regex = new RegExp(`\\b${lq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'); } catch(_) {}
+        // \b не матчит кириллицу — границы слова через Unicode-классы.
+        try { regex = new RegExp(`(?<![\\p{L}\\p{N}_])${lq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`, 'giu'); } catch(_) {}
     }
 
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {

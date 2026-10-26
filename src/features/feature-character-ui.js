@@ -203,10 +203,10 @@ export function logCharEditHistory(changes, statusStr, afterMsgId = null, charNa
     if (!changes?.length) return;
     try {
         const getFieldLabel = (f) => {
-            const LBLS = { name:'Имя', tags:'Теги', description:'Описание', personality:'Характер', scenario:'Сценарий', first_mes:'Первое сообщение', mes_example:'Пример диалога', authors_note:'Заметка автора', user_persona:'Персона пользователя', alternate_greetings:'Альтернативные приветствия', system_prompt:'Переопределение основного промпта', post_history_instructions:'Инструкции после истории' };
+            const LBLS = { name:'Name', tags:'Tags', description:'Description', personality:'Personality', scenario:'Scenario', first_mes:'First Message', mes_example:'Example Dialogue', authors_note:"Author's Note", user_persona:"User Persona", alternate_greetings:'Alternate Greetings', system_prompt:'Main Prompt Override', post_history_instructions:'Post-History Instructions' };
             if (LBLS[f]) return LBLS[f];
-            if (f && f.startsWith('evolutia_char:')) return `Аспект (Персонаж): ${f.split('evolutia_char:')[1]}`;
-            if (f && f.startsWith('evolutia_user:')) return `Аспект (Пользователь): ${f.split('evolutia_user:')[1]}`;
+            if (f && f.startsWith('evolutia_char:')) return `Aspect (Char): ${f.split('evolutia_char:')[1]}`;
+            if (f && f.startsWith('evolutia_user:')) return `Aspect (User): ${f.split('evolutia_user:')[1]}`;
             return f || '?';
         };
         const session = getCurrentSession();
@@ -215,12 +215,12 @@ export function logCharEditHistory(changes, statusStr, afterMsgId = null, charNa
 
         const newLines = changes.map(c => {
             const patches = c.patches ? ` (${c.patches.length} patch${c.patches.length !== 1 ? 'es' : ''})` : '';
-            return `${icon} **${actionText}**: \`${escHtml(getFieldLabel(c.field))}\` — ${escHtml(c.action || '?')}${c.index ? ` #${c.index}` : ''}${patches}`;
+            return `${icon} **${actionText}**: \`${getFieldLabel(c.field)}\` — ${c.action || '?'}${c.index ? ` #${c.index}` : ''}${patches}`;
         });
 
         if (afterMsgId && addHistoryToSwipe(afterMsgId, newLines, charName)) return;
 
-        const histText = `**Системное уведомление** — Редактирование карточки персонажа${charName ? ` для **${escHtml(charName)}**` : ''}:\n${newLines.join('\n')}`;
+        const histText = `**System Notification** — Character card edits${charName ? ` for **${charName}**` : ''}:\n${newLines.join('\n')}`;
         const msg = addMessage(session, 'system', histText, { isCharEditHistory: true, isLBHistory: true, appliedLines: [...newLines], _charName: charName || null });
         appendLBHistoryEl(msg);
     } catch (_) {}
@@ -231,11 +231,11 @@ export function logCharCreationHistory(creationData, statusStr, afterMsgId = nul
         const session = getCurrentSession();
         const icon = statusStr === 'Applied' ? '✓' : (statusStr === 'Rejected' ? '✕' : '·');
         const actionText = statusStr === 'Applied' ? 'ACCEPTED' : (statusStr === 'Rejected' ? 'REJECTED' : 'DISMISSED (ignored)');
-        const newLines = [`${icon} **${actionText}**: Предложение создания персонажа «${escHtml(creationData.name_suggestion || 'Новый персонаж')}»`];
+        const newLines = [`${icon} **${actionText}**: Character Creation Proposal for "${creationData.name_suggestion || 'New Character'}"`];
         
         if (afterMsgId && addHistoryToSwipe(afterMsgId, newLines)) return;
 
-        const histText = `**Системное уведомление** — Редактирование карточки персонажа:\n${newLines.join('\n')}`;
+        const histText = `**System Notification** — Character card edits:\n${newLines.join('\n')}`;
         const msg = addMessage(session, 'system', histText, { isCharEditHistory: true, isLBHistory: true, appliedLines: [...newLines] });
         appendLBHistoryEl(msg);
     } catch (_) {}

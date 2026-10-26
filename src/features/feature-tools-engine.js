@@ -85,7 +85,7 @@ export async function executeTool(toolName, toolInput) {
                 if (!data) continue;
                 for (const entry of wiEntriesToArray(data)) {
                     const outletField = (entry.outlet || entry.outlet_name || entry.outletName || entry.automation_id || entry.automationId || '').trim();
-                    const isOutletPos = String(entry.position) === '5' || String(entry.position).toLowerCase() === 'outlet';
+                    const isOutletPos = String(entry.position) === '7' || String(entry.position).toLowerCase() === 'outlet';
                     const isEntryOutlet = isOutletPos || outletField !== '';
                     if (onlyConstant && !entry.constant) continue;
                     if (onlyOutlet && !isEntryOutlet) continue;
@@ -161,7 +161,7 @@ export async function executeTool(toolName, toolInput) {
                 if (!data) { result[getDisplayName(name)] = []; continue; }
                 result[getDisplayName(name)] = wiEntriesToArray(data).map(e => {
                     const outletField = (e.outlet || e.outlet_name || e.outletName || e.automation_id || e.automationId || '').trim();
-                    const isOutletPos = String(e.position) === '5' || String(e.position).toLowerCase() === 'outlet';
+                    const isOutletPos = String(e.position) === '7' || String(e.position).toLowerCase() === 'outlet';
                     return {
                         name: e.comment || `#${e.uid}`,
                         uid: e.uid,
@@ -179,13 +179,13 @@ export async function executeTool(toolName, toolInput) {
         }
         case 'read_url': {
             const url = String(toolInput.url || '').trim();
-            if (!/^https?:\/\//i.test(url)) return { error: 'Требуется полный http(s) URL.' };
+            if (!/^https?:\/\//i.test(url)) return { error: 'A full http(s) URL is required.' };
             const res = await fetch('/api/search/visit', {
                 method: 'POST',
                 headers: ctx.getRequestHeaders(),
                 body: JSON.stringify({ url }),
             });
-            if (!res.ok) return { error: `Не удалось загрузить страницу (HTTP ${res.status}). Сайт может блокировать ботов или требовать JS.` };
+            if (!res.ok) return { error: `Failed to fetch the page (HTTP ${res.status}). The site may block bots or require JS.` };
             const html = await res.text();
             const doc = new DOMParser().parseFromString(html, 'text/html');
             doc.querySelectorAll('script,style,noscript,svg,iframe,nav,footer,header,form').forEach(el => el.remove());
@@ -198,13 +198,13 @@ export async function executeTool(toolName, toolInput) {
                 url,
                 title: doc.title || null,
                 total_length: text.length,
-                text: text.length > max ? text.slice(0, max) + '…[truncated — уточните max_chars или читайте страницу по частям]' : text,
+                text: text.length > max ? text.slice(0, max) + '…[truncated — increase max_chars or read the page in parts]' : text,
             };
         }
         case 'search_web': {
             const provider = String(toolInput.provider || 'zai');
             const query = String(toolInput.query || '').trim();
-            if (!query) return { error: 'Пустой поисковый запрос.' };
+            if (!query) return { error: 'Empty search query.' };
             const bodies = {
                 zai: { query },
                 tavily: { query },
@@ -213,15 +213,15 @@ export async function executeTool(toolName, toolInput) {
                 searxng: { baseUrl: toolInput.searxng_url, query },
             };
             const body = bodies[provider];
-            if (!body) return { error: `Неизвестный провайдер: ${provider}.` };
-            if (provider === 'searxng' && !body.baseUrl) return { error: 'Для provider=searxng требуется параметр searxng_url.' };
+            if (!body) return { error: `Unknown provider: ${provider}.` };
+            if (provider === 'searxng' && !body.baseUrl) return { error: 'provider=searxng requires the searxng_url parameter.' };
             const res = await fetch(`/api/search/${provider}`, {
                 method: 'POST',
                 headers: ctx.getRequestHeaders(),
                 body: JSON.stringify(body),
             });
-            if (res.status === 400) return { error: `Провайдер ${provider} не настроен: добавьте API-ключ в ST (Secrets) или выберите другого провайдера.` };
-            if (!res.ok) return { error: `Поиск не удался (HTTP ${res.status}).` };
+            if (res.status === 400) return { error: `Provider ${provider} is not configured: add an API key in ST (Secrets) or choose another provider.` };
+            if (!res.ok) return { error: `Search failed (HTTP ${res.status}).` };
             const raw = await res.text();
             let parsed;
             try { parsed = JSON.parse(raw); } catch (_) { parsed = null; }
@@ -238,7 +238,7 @@ export async function executeTool(toolName, toolInput) {
         }
         case 'get_char_info': {
             const charInfoFull = getCharInfo();
-            if (!charInfoFull) return { error: 'Нет активного персонажа.' };
+            if (!charInfoFull) return { error: 'No active character.' };
             const charCtx = ctx.characters?.[ctx.characterId];
             const requestedFields = toolInput.fields || ['description', 'personality', 'scenario'];
             const result = { name: charInfoFull.name };
@@ -270,6 +270,8 @@ export async function executeTool(toolName, toolInput) {
             const count = Math.min(toolInput.count ?? 10, 50);
             const fromEnd = toolInput.from_end !== false;
             const role = toolInput.role || 'all';
+            // full=true: модель обязана видеть точный текст перед правкой (якоря дословные).
+            const maxLen = toolInput.full ? 20000 : 600;
             let filtered = msgs.map((m, i) => ({ ...m, _idx: i }));
             if (role === 'user') filtered = filtered.filter(m => m.is_user);
             if (role === 'assistant') filtered = filtered.filter(m => !m.is_user);
@@ -280,12 +282,12 @@ export async function executeTool(toolName, toolInput) {
                     index: m._idx,
                     role: m.is_user ? 'user' : 'assistant',
                     name: m.name || (m.is_user ? (ctx.name1 || 'User') : (ctx.name2 || 'Character')),
-                    content: (m.mes || '').length > 600 ? m.mes.slice(0, 600) + '...[truncated]' : (m.mes || ''),
+                    content: (m.mes || '').length > maxLen ? m.mes.slice(0, maxLen) + '...[truncated — request full=true]' : (m.mes || ''),
                 })),
                 note: 'Use "index" values in chat-changes proposals for precise targeting.',
             };
         }
-        default: return { error: `Неизвестный инструмент: ${toolName}` };
+        default: return { error: `Unknown tool: ${toolName}` };
     }
 }
 

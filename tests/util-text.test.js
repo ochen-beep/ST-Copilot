@@ -110,19 +110,82 @@ describe('applySearchReplaceToField', () => {
     expect(r.result).toBe('[REPLACED]');
   });
 
-  it('fuzzy match — замена при близком тексте', () => {
+  it('whitespace-толерантность: перенос строки внутри якоря — замена', () => {
+    const r = applySearchReplaceToField(
+      'The ancient castle\nwas built in 1240 by a grumpy dwarf.',
+      'The ancient castle was built in 1240',
+      '[REPLACED]'
+    );
+    expect(r.matched).toBe(true);
+    expect(r.result).toBe('[REPLACED] by a grumpy dwarf.');
+  });
+
+  it('fuzzy-угадывание удалено: близкий, но не дословный текст — отказ', () => {
+    // Было: скользящие окна с levenshtein «угадывали» (порог 0.72).
+    // Стало: правка либо дословная, либо отклоняется с причиной.
     const r = applySearchReplaceToField(
       'The ancient castle was built by a grumpy dwarf.',
       'The ancient castle || grumpy dwarfs',
       '[REPLACED]'
     );
-    expect(r.matched).toBe(true);
-    // Точка trailing — не-alphanumeric, не входит в match range.
-    expect(r.result).toBe('[REPLACED].');
+    expect(r.matched).toBe(false);
+    expect(r.result).toBe('The ancient castle was built by a grumpy dwarf.');
+    expect(r.reason).toBeTruthy();
   });
 
-  it('no match — возвращает исходный текст и matched=false', () => {
-    // Абсолютно unrelated текст — fuzzy match не сработает.
+  it('неоднозначный якорь (два вхождения) — отказ с причиной', () => {
+    const r = applySearchReplaceToField(
+      'The castle gate. The castle tower.',
+      'The castle',
+      '[X]'
+    );
+    expect(r.matched).toBe(false);
+    expect(r.result).toBe('The castle gate. The castle tower.');
+    expect(r.reason).toContain('несколько раз');
+  });
+
+  it('уникальный якорь в тексте с повторами других слов — замена', () => {
+    const r = applySearchReplaceToField(
+      'The castle gate. The castle tower is tall.',
+      'The castle tower is tall',
+      '[X]'
+    );
+    expect(r.matched).toBe(true);
+    expect(r.result).toBe('The castle gate. [X].');
+  });
+
+  it('неоднозначный конец диапазонного якоря — отказ', () => {
+    const r = applySearchReplaceToField(
+      'Tower A stands. Below the tower stands a wall.',
+      'Tower || stands',
+      '[X]'
+    );
+    // Начало «Tower» уникально (с учётом регистра), конец «stands» в остатке дважды.
+    expect(r.matched).toBe(false);
+    expect(r.reason).toContain('конец якоря');
+  });
+
+  it('повторяющийся диапазон — отказ (не хватает контекста)', () => {
+    const r = applySearchReplaceToField(
+      'room with a red door. Corridor. room with a red door.',
+      'room with a red door || red door',
+      '[X]'
+    );
+    expect(r.matched).toBe(false);
+    expect(r.reason).toBeTruthy();
+  });
+
+  it('неоднозначное одиночное вхождение — причина содержит подсказку', () => {
+    const r = applySearchReplaceToField(
+      'aaa bbb aaa',
+      'aaa',
+      '[X]'
+    );
+    expect(r.matched).toBe(false);
+    expect(r.reason).toContain('больше контекста');
+  });
+
+  it('no match — возвращает исходный текст и matched=false с причиной', () => {
     const r = applySearchReplaceToField(
       'The quick brown fox jumps over the lazy dog.',
       ' совершенно другой несвязанный текст который нигде не встречается ',
@@ -130,6 +193,13 @@ describe('applySearchReplaceToField', () => {
     );
     expect(r.matched).toBe(false);
     expect(r.result).toBe('The quick brown fox jumps over the lazy dog.');
+    expect(r.reason).toContain('не найден');
+  });
+
+  it('поиск длиннее текста — отказ без угадывания', () => {
+    const r = applySearchReplaceToField('old dark castle', 'old dark castle extra', '[NEW]');
+    expect(r.matched).toBe(false);
+    expect(r.result).toBe('old dark castle');
   });
 
   it('пустой fieldContent — matched=true, result=replaceText', () => {
@@ -240,15 +310,9 @@ describe('levenshtein', () => {
     expect(levenshtein(null, '')).toBe(4);  // 'null' → '' = 4
   });
 
-  it(': сидит в applySearchReplaceToField как fuzzy metric (smoke)', () => {
-    // Подтверждаем, что levenshtein используется внутри applySearchReplaceToField
-    // голоземный fuzzy match должен пройти.
-    const r = applySearchReplaceToField(
-      'old dark castle',
-      'old dark castle extra',
-      '[NEW]'
-    );
-    // 'old dark castle' полностью matched как prefix → replacement отрезает только ' extra'.
-    expect(r.matched).toBe(true);
+  it('levenshtein больше не применяется в applySearchReplaceToField (smoke)', () => {
+    // Голозёмный «почти совпадающий» якорь должен быть отклонён, а не угадан.
+    const r = applySearchReplaceToField('old dark castle', 'old dark castel', '[NEW]');
+    expect(r.matched).toBe(false);
   });
 });

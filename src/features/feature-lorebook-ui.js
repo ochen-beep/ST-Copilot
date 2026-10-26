@@ -153,12 +153,12 @@ export function logLBHistoryChanges(changes, statusStr, afterMsgId = null) {
 
         const newLines = changes.map(c => {
             const act = (c.action || 'edit').toUpperCase();
-            return `${statusIcon} **${actionText}**: ${icons[c.action] || '·'} ${act} «${escHtml(c.name || c.originalName || `Запись #${c.uid || '?'}`)}» в \`${escHtml(c.worldName || '?')}\``;
+            return `${statusIcon} **${actionText}**: ${icons[c.action] || '·'} ${act} "${c.name || c.originalName || `Entry #${c.uid || '?'}`}" in \`${c.worldName || '?'}\``;
         });
 
         if (afterMsgId && addHistoryToSwipe(afterMsgId, newLines)) return;
 
-        const histText = `**Системное уведомление** — Взаимодействие пользователя с предложенными изменениями лорбука:\n${newLines.join('\n')}`;
+        const histText = `**System Notification** — User interaction with proposed lorebook changes:\n${newLines.join('\n')}`;
         const histMsg = addMessage(session, 'system', histText, { isLBHistory: true, appliedLines: [...newLines] });
         appendLBHistoryEl(histMsg);
     } catch (_) {}
@@ -319,7 +319,7 @@ export async function applyLBChanges(changes, afterMsgId = null) {
 
     if (changes.length > 0 && !Object.keys(bookCache).length) {
         toastr.warning('[ЛБ] Изменения не применены — подробности см. в консоли браузера (F12)', EXT_DISPLAY, { timeOut: 10000 });
-        return;
+        return [];
     }
 
     for (const [name, data] of Object.entries(bookCache)) {
@@ -334,6 +334,7 @@ export async function applyLBChanges(changes, afterMsgId = null) {
         recordStat(SM.lb, successfulChanges.length);
         logLBHistoryChanges(successfulChanges, 'Accepted', afterMsgId);
     }
+    return successfulChanges;
 }
 
 export function renderProposalCard(changes, msgEl) {
@@ -610,7 +611,11 @@ export function renderProposalCard(changes, msgEl) {
             closeEditPanel();
             applyItemBtn.disabled = true; applyItemBtn.textContent = '…';
             try {
-                await applyLBChanges([editableChanges[ci]], card.dataset.for);
+                const applied = await applyLBChanges([editableChanges[ci]], card.dataset.for);
+                if (!applied?.length) {
+                    applyItemBtn.disabled = false; applyItemBtn.textContent = '✓';
+                    return;
+                }
                 itemStates[ci] = 'applied'; item.classList.add('scp-lb-item-applied');
                 itemBtns.querySelectorAll('button').forEach(b => { b.disabled = true; });
                 updateCountBadge(); updateFooterBtns(); syncBlockToMessage(); checkAllResolved();
@@ -790,10 +795,19 @@ export function renderProposalCard(changes, msgEl) {
         if (!pending.length) return;
         applyAllBtn.disabled = true; applyAllBtn.textContent = 'Применение…';
         try {
-            await applyLBChanges(pending, card.dataset.for);
-            itemStates.forEach((s, i) => { if (s === 'pending') { itemStates[i] = 'applied'; itemEls[i].classList.add('scp-lb-item-applied'); itemEls[i].querySelectorAll('button').forEach(b => { b.disabled = true; }); } });
+            const applied = await applyLBChanges(pending, card.dataset.for) || [];
+            itemStates.forEach((s, i) => {
+                if (s === 'pending' && applied.includes(editableChanges[i])) {
+                    itemStates[i] = 'applied';
+                    itemEls[i].classList.add('scp-lb-item-applied');
+                    itemEls[i].querySelectorAll('button').forEach(b => { b.disabled = true; });
+                }
+            });
             updateCountBadge(); updateFooterBtns(); checkAllResolved();
-            toastr.success(`[ЛБ] ${pending.length} изменений применено.`, EXT_DISPLAY);
+            if (applied.length) toastr.success(`[ЛБ] ${applied.length} изменений применено.`, EXT_DISPLAY);
+            if (applied.length < pending.length) {
+                applyAllBtn.disabled = false; applyAllBtn.textContent = 'Применить всё';
+            }
         } catch (e) {
             toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
             applyAllBtn.disabled = false; applyAllBtn.textContent = 'Применить всё';

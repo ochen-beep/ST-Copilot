@@ -172,12 +172,13 @@ function defaultToggle() {
 export function watchLauncherHost() {
     if (_launcherObserver) _launcherObserver.disconnect();
     const sendForm = document.querySelector('#send_form') || document.body;
-    // RAF-коалесцинг: мутации поддерева send_form идут пачками (печать, тулбары),
-    // ensureLauncher() достаточно позвать один раз на кадр.
-    let _moRaf = 0;
+    // Коалесцинг таймером, а не rAF: мутации поддерева send_form идут пачками
+    // (печать, тулбары), а rAF в фоновой/невидимой вкладке может не тикать
+    // вообще — тогда лаунчер не перемонтируется никогда.
+    let _moTimer = 0;
     _launcherObserver = new MutationObserver(() => {
-        if (_moRaf) return;
-        _moRaf = requestAnimationFrame(() => { _moRaf = 0; ensureLauncher(); });
+        if (_moTimer) return;
+        _moTimer = setTimeout(() => { _moTimer = 0; ensureLauncher(); }, 100);
     });
     _launcherObserver.observe(sendForm, { childList: true, subtree: true });
 }

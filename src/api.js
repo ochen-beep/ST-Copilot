@@ -17,7 +17,7 @@ import { buildLorebookContextBlock, buildLBAIInstructions, expandOutletsAsync } 
 import { buildCharacterContextBlock, buildCharEditAIInstructions } from './features/feature-character-engine.js';
 import { buildChatEditAIInstructions } from './features/feature-chatedit-engine.js';
 import { buildMemoryContextBlock, buildMemoryAIInstructions, processMemoryUpdates, stripMemoryBlock } from './features/feature-memory.js';
-import { buildToolCallsSystemBlock, parseToolCallsFromText, executeTool, getEnabledTools, toOpenAITools, extractProviderToolCalls } from './features/feature-tools-engine.js';
+import { buildToolCallsSystemBlock, parseToolCallsFromText, stripToolCallsFromText, executeTool, getEnabledTools, toOpenAITools, extractProviderToolCalls } from './features/feature-tools-engine.js';
 
 import { updateMsgCount, smartScrollToBottom, setGeneratingState, showGenerationError, _renderMsgBodyContent, _refreshSwipeBars, appendMsgEl } from './ui/ui-chat.js';
 import { getDisplayContent, extractToolCallPlaceholders, renderMarkdown, postProcessHTMLBlocks } from './ui/ui-chat.js';
@@ -228,7 +228,7 @@ const TOOL_TIMEOUT_MS = 60000;
 
 function withTimeout(promise, ms = TOOL_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error(`Инструмент не ответил за ${Math.round(ms / 1000)}с`)), ms);
+        const t = setTimeout(() => reject(new Error(`Tool did not respond within ${Math.round(ms / 1000)}s`)), ms);
         promise.then(
             v => { clearTimeout(t); resolve(v); },
             e => { clearTimeout(t); reject(e); },
@@ -311,6 +311,7 @@ export async function assembleMessages(session, settings, pendingUserText, pendi
             const outMsg = { role: apiRole, content: finalContent };
             // Нативные tool-раунды: assistant.tool_calls и role:'tool' идут в API как есть
             if (m.tool_calls) outMsg.tool_calls = m.tool_calls;
+            if (m.tool_call_id) outMsg.tool_call_id = m.tool_call_id;
             messages.push(outMsg);
 
             if (hasAttachedHistory) {
@@ -731,7 +732,7 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
                         signal: abort.signal,
                         extractData: false,
                         includePreset: true
-                    });
+                    }, toolsPayload);
                 } else {
                     const mainApi = window.main_api || ctx.main_api;
                     if (mainApi === 'openai' && ctx.ChatCompletionService) {
@@ -739,14 +740,16 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
                         asyncGeneratorFn = await ctx.ChatCompletionService.processRequest({
                             messages: messages,
                             max_tokens: maxTokens,
-                            stream: false
+                            stream: false,
+                            ...toolsPayload
                         }, { presetName: oaiSettings.preset_settings_openai }, false, abort.signal);
                     } else if (mainApi === 'textgenerationwebui' && ctx.TextCompletionService) {
                         const textGenSettings = window.textgenerationwebui_settings || ctx.textgenerationwebui_settings || {};
                         asyncGeneratorFn = await ctx.TextCompletionService.processRequest({
                             prompt: messages,
                             max_tokens: maxTokens,
-                            stream: false
+                            stream: false,
+                            ...toolsPayload
                         }, { presetName: textGenSettings.preset_settings_textgenerationwebui }, false, abort.signal);
                     }
                 }
@@ -793,7 +796,7 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
             rawToolCalls = prov?.raw || null;
         }
 
-        const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason;
+        const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason || lastValue?.choices?.[0]?.finish_reason;
         const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
         state.abortController = null;
@@ -838,7 +841,7 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
         throw e;
     }
 
-    const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason;
+    const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason || lastValue?.choices?.[0]?.finish_reason;
     const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
     state.abortController = null;
@@ -848,6 +851,8 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
 export async function runGenerate(session, userText, addUserMsg = true, processedAtts = null) {
     if (state.generating) return;
     state.generating = true;
+    state.generationStopped = false;
+    const myEpoch = ++state.genEpoch;
     state.activeToolCalls = [];
     const settings = getEffectiveSettings();
     setGeneratingState(true);
@@ -1031,6 +1036,8 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
             let accumulatedText = roundText;
             let accumulatedReasoning = roundReasoning || null;
+            // Ретрай пустого continuation — один на всю генерацию, чтобы не зациклиться.
+            let emptyContinuationRetried = false;
 
             const _updateLiveUI = (tempText = '', tempReasoning = null) => {
                 if (!streamMsgEl || !streamContentEl) return;
@@ -1051,6 +1058,17 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 }
                 if (/```tool_call/i.test(procText)) {
                     procText = extractToolCallPlaceholders(procText, tcIndex).text;
+                }
+
+                // cleanupCursor() после раунда 1 уничтожил рендереры —
+                // пересоздаём, иначе раунды 2+ идут вслепую (текст не стримится).
+                // recreated-рендерер с renderedLen=0 при первом push делает полный
+                // innerHTML-replace — накопленный текст раунда 1 перерисуется корректно.
+                if (!streamRenderer && streamContentEl) {
+                    streamRenderer = createStreamRenderer({ el: streamContentEl, preprocessed: true, onScroll: () => smartScrollToBottom() });
+                }
+                if (!reasoningRenderer && streamReasoningContentEl) {
+                    reasoningRenderer = createStreamRenderer({ el: streamReasoningContentEl, preprocessed: true });
                 }
 
                 if (combinedReasoning && streamReasoningBlockEl) {
@@ -1079,8 +1097,8 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 _updateLiveUI();
 
                 const execEntry = async (entry) => {
-                    if (state.abortController?.signal.aborted) {
-                        entry.result = { error: 'Генерация остановлена пользователем.' };
+                    if (state.generationStopped || state.abortController?.signal.aborted) {
+                        entry.result = { error: 'Generation stopped by user.' };
                         entry.status = 'error';
                         return;
                     }
@@ -1113,6 +1131,10 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 }
                 _updateLiveUI();
 
+                // Stop, нажатый во время исполнения инструментов: не запускаем
+                // следующий раунд — выходим с тем, что успели накопить.
+                if (state.generationStopped) break;
+
                 if (nativeTools) {
                     const rawCalls = roundRawToolCalls || roundEntries.map((e, i) => ({
                         id: e.callId || `call_${round}_${i}`,
@@ -1136,7 +1158,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                     // требует пары tool_calls → tool-сообщение.
                     for (const m of nativeHistory) {
                         if (m.role === 'tool' && m._round < round - 1) {
-                            m.content = `[${m._toolName}: результат убран из контекста для экономии токенов]`;
+                            m.content = `[${m._toolName}: result removed from context to save tokens]`;
                         }
                     }
                     for (const eh of nativeHistory) {
@@ -1154,7 +1176,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                     // более старые раунды сжимаются в плейсхолдер.
                     for (const eh of extraHistory) {
                         if (eh._round !== undefined && eh._round < round - 1) {
-                            eh.content = `[результаты инструментов раунда ${eh._round + 1} убраны из контекста для экономии токенов]`;
+                            eh.content = `[tool results from round ${eh._round + 1} removed from context to save tokens]`;
                         }
                     }
 
@@ -1178,13 +1200,44 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                     messages: session.messages.filter(m => m.id !== streamMsgId)
                 };
 
-                const nextResult = await callGenerate(tempSession, settings, null, (t, r) => {
+                let nextResult = await callGenerate(tempSession, settings, null, (t, r) => {
                     _updateLiveUI(t, r);
                     if (streamContentEl) streamContentEl.appendChild(cursor2);
                 }, nativeTools);
 
+                // Пустой continuation (ни текста, ни новых вызовов) — типичный обрыв
+                // после тривиального результата тула (например, пустой лорбук): модель
+                // молча останавливается, и финальным текстом остаётся голый tool_call-блок.
+                // Даём модели один шанс продолжить с явной подсказкой.
+                if (nextResult !== null
+                    && !String(nextResult.text || '').trim()
+                    && !(nextResult.toolCalls || []).length
+                    && !emptyContinuationRetried) {
+                    emptyContinuationRetried = true;
+                    _dbgAdd('GEN_ROUND_EMPTY_RETRY', { round: round + 2 });
+                    const retry = await callGenerate(tempSession, settings,
+                        '(system note: your previous reply was empty. You MUST now write the actual answer to the user, using the tool results above. Do not call the same tool again.)',
+                        (t, r) => {
+                            _updateLiveUI(t, r);
+                            if (streamContentEl) streamContentEl.appendChild(cursor2);
+                        }, nativeTools);
+                    if (retry !== null) {
+                        nextResult.text = retry.text;
+                        nextResult.reasoning = nextResult.reasoning || retry.reasoning;
+                        nextResult.toolCalls = retry.toolCalls;
+                        nextResult.rawToolCalls = retry.rawToolCalls;
+                    }
+                }
+
                 session.messages = session.messages.filter(m => !m._tcTemp);
                 cursor2.remove();
+
+                _dbgAdd('GEN_TOOL_ROUND', {
+                    round: round + 2,
+                    textLen: (nextResult?.text || '').length,
+                    toolCalls: (nextResult?.toolCalls || parseToolCallsFromText(nextResult?.text || '')).map(t => t.name),
+                    empty: nextResult !== null && !String(nextResult?.text || '').trim(),
+                });
 
                 if (nextResult === null) break;
 
@@ -1200,6 +1253,13 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
                 result = { text: accumulatedText, reasoning: accumulatedReasoning };
             }
+        }
+
+        // Страховка от «тихого» завершения: инструменты отработали, а текста модель
+        // так и не написала — сообщение не должно рендериться пустым.
+        if (result !== null && state.activeToolCalls.length && !stripToolCallsFromText(result.text || '').trim()) {
+            _dbgAdd('GEN_EMPTY_FINAL_TEXT', { toolCalls: state.activeToolCalls.map(t => t.name) });
+            result.text = (result.text || '') + '\n\n_Модель завершила ответ, не написав текст после вызова инструментов. Попробуйте переспросить или повторить запрос._';
         }
 
         if (result === null) {
@@ -1261,12 +1321,14 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
     } catch (err) {
         cleanupCursor();
-        if (state.abortController?.signal?.aborted || err?.message === 'userStopped') {
-            state.generating = false;
-            setGeneratingState(false);
+        if (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped') {
+            if (myEpoch === state.genEpoch) {
+                state.generating = false;
+                setGeneratingState(false);
+            }
             return;
         }
-        
+
         const inputEl = document.getElementById('scp-input');
         if (inputEl && inputEl.value.trim() === '' && userText) {
             inputEl.value = userText;
@@ -1274,11 +1336,14 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
         _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack });
         console.error(`[${EXT_DISPLAY}] Generation failed:`, err);
-        
+
         showGenerationError(err);
     } finally {
-        state.generating = false;
-        setGeneratingState(false);
+        // Зомби-генерация (после смены чата) не трогает флаги новой генерации.
+        if (myEpoch === state.genEpoch) {
+            state.generating = false;
+            setGeneratingState(false);
+        }
     }
 }
 
@@ -1297,6 +1362,8 @@ export async function runContinue(session, targetMsgId) {
     if (!targetMsg || targetMsg.role !== 'assistant') return;
 
     state.generating = true;
+    state.generationStopped = false;
+    const myEpoch = ++state.genEpoch;
     state.activeToolCalls = [];
     const settings = getEffectiveSettings();
     setGeneratingState(true);
@@ -1339,8 +1406,11 @@ export async function runContinue(session, targetMsgId) {
         const combined = _joinContinuation(originalContent, text);
         let tcIndex = 0;
         let procText = /```memory-update/i.test(combined) ? stripMemoryBlock(combined) : combined;
+        let resC = { text: procText, nextIndex: 0 };
         if (/```tool_call/i.test(procText)) {
-            procText = extractToolCallPlaceholders(procText, tcIndex).text;
+            resC = extractToolCallPlaceholders(procText, tcIndex);
+            procText = resC.text;
+            tcIndex = resC.nextIndex;
         }
 
         const { content: disp } = getDisplayContent(procText, settings);
@@ -1441,9 +1511,11 @@ export async function runContinue(session, targetMsgId) {
 
     } catch (err) {
         cleanupCursor();
-        if (state.abortController?.signal?.aborted || err?.message === 'userStopped') {
-            state.generating = false;
-            setGeneratingState(false);
+        if (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped') {
+            if (myEpoch === state.genEpoch) {
+                state.generating = false;
+                setGeneratingState(false);
+            }
             return;
         }
         _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack });
@@ -1451,7 +1523,9 @@ export async function runContinue(session, targetMsgId) {
 
         showGenerationError(err);
     } finally {
-        state.generating = false;
-        setGeneratingState(false);
+        if (myEpoch === state.genEpoch) {
+            state.generating = false;
+            setGeneratingState(false);
+        }
     }
 }

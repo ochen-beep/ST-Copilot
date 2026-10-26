@@ -2,7 +2,7 @@ import { _dbgAdd } from './util-debug.js';
 
 /**
  * Итеративный Левенштейн с двумя строками-буферами (O(N) памяти).
- * Используется для fuzzy match в applySearchReplaceToField и resolveCharacterByName.
+ * Используется для мягкого подбора имени в resolveCharacterByName.
  */
 export function levenshtein(a, b) {
     a = String(a); b = String(b);
@@ -78,18 +78,48 @@ export function normalizeCharNamesInBlock(text) {
     const ctx = SillyTavern.getContext();
     const charName = ctx.characters?.[ctx.characterId]?.name;
     const userName = ctx.name1;
+    // \b не работает с кириллицей (в JS \w = [A-Za-z0-9_]), поэтому границы
+    // «целого слова» строим на Unicode-классах букв/цифр.
+    const wordRe = (name) => new RegExp(
+        `(?<![\\p{L}\\p{N}_])${_escapeRe(name)}(?![\\p{L}\\p{N}_])`, 'giu'
+    );
     return text.replace(/(```(?:character-changes|character-create)[\s\S]*?(?:```|$))/g, block => {
         let r = block;
         if (charName && charName.length > 2) {
-            const charRe = new RegExp(`\\b${charName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-            r = r.replace(charRe, '{{char}}');
+            r = r.replace(wordRe(charName), '{{char}}');
         }
         if (userName && userName.length > 2) {
-            const userRe = new RegExp(`\\b${userName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-            r = r.replace(userRe, '{{user}}');
+            r = r.replace(wordRe(userName), '{{user}}');
         }
         return r;
     });
+}
+
+function _escapeRe(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Уникальное вхождение: literal → whitespace-толерантный (переносы строк и
+// кратные пробелы внутри якоря). Никакого фаззи-подбора: правка либо ложится
+// точно и однозначно, либо не ложится вовсе.
+// Возвращает { start, end } | { ambiguous: true } | null.
+function _findUniqueRange(src, query) {
+    const q = query.trim();
+    if (!q) return null;
+
+    let first = src.indexOf(q);
+    if (first !== -1) {
+        if (src.indexOf(q, first + 1) !== -1) return { ambiguous: true };
+        return { start: first, end: first + q.length };
+    }
+
+    const parts = q.split(/\s+/).map(_escapeRe);
+    if (parts.length < 2) return null;
+    const wsRe = new RegExp(parts.join('\\s+'), 'g');
+    const m1 = wsRe.exec(src);
+    if (!m1) return null;
+    if (wsRe.exec(src)) return { ambiguous: true };
+    return { start: m1.index, end: m1.index + m1[0].length };
 }
 
 export function applySearchReplaceToField(fieldContent, searchText, replaceText) {
@@ -98,137 +128,43 @@ export function applySearchReplaceToField(fieldContent, searchText, replaceText)
     const srch = searchText || '';
     const repl = replaceText || '';
 
-    function getTokenSimilarity(t1, t2) {
-        if (t1 === t2) return 1.0;
-        if (t1.length >= 3 && t2.length >= 3) {
-            if (t1.startsWith(t2) || t2.startsWith(t1)) return 0.85;
-        }
-        const dist = levenshtein(t1, t2);
-        return 1 - (dist / Math.max(t1.length, t2.length));
-    }
+    const fail = (reason) => {
+        _dbgAdd('TEXT_REPLACE_FAILED', { reason, search: srch.slice(0, 120), srcLength: src.length });
+        return { result: src, matched: false, reason };
+    };
 
-    function getTokensWithOffsets(text) {
-        const tokens = [];
-        const re = /[a-zA-Z0-9\u00C0-\u00FF]+/g;
-        let match;
-        while ((match = re.exec(text)) !== null) {
-            tokens.push({ text: match[0].toLowerCase(), start: match.index, end: re.lastIndex });
-        }
-        return tokens;
-    }
+    if (!srch.trim()) return fail('пустой якорь');
 
-    function findFuzzyRange(srcText, queryText, minScore = 0.72) {
-        const srcTokens = getTokensWithOffsets(srcText);
-        const queryTokens = queryText.toLowerCase().match(/[a-zA-Z0-9\u00C0-\u00FF]+/g) || [];
-
-        if (!queryTokens.length) {
-            const litIdx = srcText.indexOf(queryText.trim());
-            if (litIdx !== -1) return { start: litIdx, end: litIdx + queryText.trim().length, score: 1.0 };
-            return null;
-        }
-        if (!srcTokens.length) return null;
-
-        let bestScore = 0;
-        let bestStartIdx = -1;
-        let bestEndIdx = -1;
-
-        const minWinSize = Math.max(1, queryTokens.length - 1);
-        const maxWinSize = queryTokens.length + 1;
-
-        for (let winSize = minWinSize; winSize <= maxWinSize; winSize++) {
-            for (let i = 0; i <= srcTokens.length - winSize; i++) {
-                const windowTokens = srcTokens.slice(i, i + winSize);
-                let totalSim = 0;
-                const compareCount = Math.max(queryTokens.length, windowTokens.length);
-                for (let j = 0; j < compareCount; j++) {
-                    const qT = queryTokens[j];
-                    const wT = windowTokens[j]?.text;
-                    if (qT && wT) totalSim += getTokenSimilarity(qT, wT);
-                }
-                const score = totalSim / compareCount;
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestStartIdx = i;
-                    bestEndIdx = i + winSize - 1;
-                }
-            }
-        }
-
-        if (bestScore >= minScore) {
-            let startPos = srcTokens[bestStartIdx].start;
-            let endPos = srcTokens[bestEndIdx].end;
-
-            const qLower = queryText.toLowerCase();
-            const lastQTok = queryTokens[queryTokens.length - 1];
-            const lastTokIdx = qLower.lastIndexOf(lastQTok);
-            if (lastTokIdx !== -1) {
-                const trailMatch = queryText.slice(lastTokIdx + lastQTok.length).match(/^[^a-zA-Z0-9\u00C0-\u00FF]+/);
-                if (trailMatch && srcText.slice(endPos, endPos + trailMatch[0].length) === trailMatch[0]) {
-                    endPos += trailMatch[0].length;
-                }
-            }
-
-            const firstQTok = queryTokens[0];
-            const firstTokIdx = qLower.indexOf(firstQTok);
-            if (firstTokIdx > 0) {
-                const leadMatch = queryText.slice(0, firstTokIdx).match(/[^a-zA-Z0-9\u00C0-\u00FF]+$/);
-                if (leadMatch && srcText.slice(startPos - leadMatch[0].length, startPos) === leadMatch[0]) {
-                    startPos -= leadMatch[0].length;
-                }
-            }
-
-            return { start: startPos, end: endPos, score: bestScore };
-        }
-        return null;
-    }
-
-    if (srch.trim()) {
-        const exactIdx = src.indexOf(srch.trim());
-        if (exactIdx !== -1) {
-            return {
-                result: src.slice(0, exactIdx) + repl + src.slice(exactIdx + srch.trim().length),
-                matched: true
-            };
-        }
-    }
-
+    // Диапазонный якорь "start || end" / "start ... end": снести всё между
+    // однозначными началом и концом. Не сошёлся — падаем в общий поиск ниже.
     let sepIdx = srch.indexOf(' || ');
     let sepLen = 4;
     if (sepIdx === -1) { sepIdx = srch.indexOf('||'); sepLen = 2; }
     if (sepIdx === -1) { sepIdx = srch.indexOf('...'); sepLen = 3; }
 
-    if (sepIdx !== -1 && sepIdx > 0 && srch.length - sepIdx - sepLen > 0) {
+    if (sepIdx > 0 && srch.length - sepIdx - sepLen > 0) {
         const startPart = srch.slice(0, sepIdx).trim();
         const endPart = srch.slice(sepIdx + sepLen).trim();
 
         if (startPart && endPart) {
-            const startMatch = findFuzzyRange(src, startPart);
-            if (startMatch) {
-                const remainingSrc = src.slice(startMatch.end);
-                const endMatch = findFuzzyRange(remainingSrc, endPart);
-                if (endMatch) {
-                    const absoluteEnd = startMatch.end + endMatch.end;
-                    return {
-                        result: src.slice(0, startMatch.start) + repl + src.slice(absoluteEnd),
-                        matched: true
-                    };
+            const s = _findUniqueRange(src, startPart);
+            if (s?.ambiguous) return fail(`начало якоря «${startPart.slice(0, 60)}» встречается несколько раз — уточни его`);
+            if (s) {
+                const e = _findUniqueRange(src.slice(s.end), endPart);
+                if (e?.ambiguous) return fail(`конец якоря «${endPart.slice(0, 60)}» встречается несколько раз — уточни его`);
+                if (e) {
+                    const absEnd = s.end + e.end;
+                    return { result: src.slice(0, s.start) + repl + src.slice(absEnd), matched: true };
                 }
             }
         }
     }
 
-    if (srch.trim()) {
-        const match = findFuzzyRange(src, srch);
-        if (match) {
-            return {
-                result: src.slice(0, match.start) + repl + src.slice(match.end),
-                matched: true
-            };
-        }
-    }
+    const m = _findUniqueRange(src, srch);
+    if (m?.ambiguous) return fail(`якорь «${srch.trim().slice(0, 60)}» встречается несколько раз — включи в якорь больше контекста`);
+    if (m) return { result: src.slice(0, m.start) + repl + src.slice(m.end), matched: true };
 
-    _dbgAdd('LB_PATCH_FUZZY_MATCH_FAILED', { search: srch, srcLength: src.length });
-    return { result: src, matched: false };
+    return fail('якорь не найден — запроси точный текст поля инструментом чтения и процитируй его дословно');
 }
 
 export function _ensureWrapped(text, tag) {

@@ -1,4 +1,4 @@
-import { CHAR_EDIT_FORMAT_BLOCK, CHAR_CREATE_FORMAT_BLOCK, DEFAULT_CHAR_EDIT_DIRECTIVE } from '../constants.js';
+import { CHAR_EDIT_FORMAT_BLOCK, CHAR_CREATE_FORMAT_BLOCK, DEFAULT_CHAR_EDIT_DIRECTIVE, EXT_DISPLAY } from '../constants.js';
 import { getSettings } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
 import { escHtml } from '../utils/util-dom.js';
@@ -168,46 +168,47 @@ export function resolveCharacterByName(aiName, entities = null) {
     const list = entities || getActiveCharacterEntities();
     if (!list.length) return null;
 
-    let found = list.find(e => e.char.name === aiName);
-    if (found) return found.char;
-
     const normAi = aiName.toLowerCase().trim();
-    found = list.find(e => e.char.name.toLowerCase().trim() === normAi);
+    let found = list.find(e => e.char.name === aiName)
+        || list.find(e => e.char.name.toLowerCase().trim() === normAi);
     if (found) return found.char;
 
+    // В группе неточное имя = отказ, а не чужая карточка.
+    if (list.length > 1) return null;
+
+    // Одиночный чат: цель одна, мягкие проходы не могут промахнуться в чужую карту.
     found = list.find(e => {
         const n = e.char.name.toLowerCase().trim();
         return n.includes(normAi) || normAi.includes(n);
     });
     if (found) return found.char;
 
-    if (list.length === 1) {
-        const userName = (ctx.name1 || '').toLowerCase().trim();
-        if (normAi !== userName) return list[0].char;
-    }
+    if (normAi !== (ctx.name1 || '').toLowerCase().trim()) return list[0].char;
 
     let best = null, bestDist = Infinity;
     for (const e of list) {
         const dist = levenshtein(normAi, e.char.name.toLowerCase().trim());
         if (dist < bestDist) { bestDist = dist; best = e.char; }
     }
-    if (best && bestDist <= 2) return best;
-
-    return null;
+    return (best && bestDist <= 2) ? best : null;
 }
 
 export function groupChangesByCharacter(changes) {
-    const ctx = SillyTavern.getContext();
     const entities = getActiveCharacterEntities();
     const groups = new Map();
 
     for (const change of changes) {
         let resolvedChar = change.char ? resolveCharacterByName(change.char, entities) : null;
+        if (!resolvedChar && entities.length === 1) resolvedChar = entities[0].char;
         if (!resolvedChar) {
-            if (entities.length === 1) resolvedChar = entities[0].char;
-            else resolvedChar = ctx.characters?.[ctx.characterId] || entities[0]?.char || null;
+            // ponytail: в группе не угадываем автора правки — модель должна
+            // назвать персонажа точно; правка без адресата отклоняется.
+            _dbgAdd('CHAR_EDIT_UNRESOLVED', { changeChar: change.char || null, field: change.field });
+            if (typeof toastr !== 'undefined') {
+                toastr.warning(`[Карточки] Правка поля «${change.field}» пропущена: персонаж «${change.char}» не найден в группе. Назовите персонажа точно.`, EXT_DISPLAY, { timeOut: 8000 });
+            }
+            continue;
         }
-        if (!resolvedChar) continue;
         const key = resolvedChar.avatar;
         if (!groups.has(key)) groups.set(key, { char: resolvedChar, changes: [] });
         groups.get(key).changes.push(change);
@@ -217,26 +218,53 @@ export function groupChangesByCharacter(changes) {
 
 function _parseTagAttrs(attrStr) {
     const attrs = {};
-    const re = /([\w-]+)="([^"]*)"/g;
+    // Модели пишут атрибуты с одинарными кавычками, без кавычек и лишними
+    // пробелами вокруг «=» — принимаем все формы.
+    const re = /([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
     let m;
-    while ((m = re.exec(attrStr || '')) !== null) attrs[m[1]] = m[2];
+    while ((m = re.exec(attrStr || '')) !== null) attrs[m[1]] = m[2] ?? m[3] ?? m[4] ?? '';
     return attrs;
 }
 
 function _matchTagsWithAttrs(xml, tagName) {
-    const re = new RegExp(`<${tagName}((?:\\s+[\\w-]+="[^"]*")*)\\s*>([\\s\\S]*?)<\\/${tagName}>`, 'g');
+    const re = new RegExp(`<${tagName}(\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}\\s*>`, 'g');
     const out = [];
     let m;
     while ((m = re.exec(xml)) !== null) out.push({ attrs: _parseTagAttrs(m[1]), content: m[2] });
     return out;
 }
 
+// Модели называют поля карточек по-разному — сводим к внутренним id.
+const FIELD_ALIASES = {
+    first_message: 'first_mes', firstmessages: 'first_mes', greeting: 'first_mes', opening_message: 'first_mes',
+    author_note: 'authors_note', author_s_note: 'authors_note', authorsnote: 'authors_note', note: 'authors_note',
+    systemprompt: 'system_prompt', system: 'system_prompt',
+    post_history: 'post_history_instructions', posthistory: 'post_history_instructions',
+    desc: 'description',
+    examples: 'mes_example', example_messages: 'mes_example', exampledialogue: 'mes_example',
+    alternategreetings: 'alternate_greetings', alt_greetings: 'alternate_greetings',
+    persona: 'user_persona', userdescription: 'user_persona',
+};
+
+function _normalizeFieldName(f) {
+    const s = String(f || '').trim();
+    if (!s) return '';
+    if (/^evolutia_(char|user):/.test(s)) return s;
+    const key = s.toLowerCase().replace(/[\s'’-]+/g, '_');
+    return FIELD_ALIASES[key] || key;
+}
+
+// Имена proposal-блоков: промпт просит каноничное, старые промпты и модели
+// пишут варианты — терпим их.
+const CHAR_CHANGES_BLOCK = '(?:character-changes|character-edits?)(?![\\w-])';
+const CHAR_CREATE_BLOCK = '(?:character-creation|character-create)(?![\\w-])';
+
 export function parseCharChangesFromText(text) {
     let raw = null;
-    const strict = text.match(/```character-changes\s*([\s\S]*?)```/);
+    const strict = text.match(new RegExp('```' + CHAR_CHANGES_BLOCK + '\\s*([\\s\\S]*?)```'));
     if (strict) raw = strict[1];
     else {
-        const open = text.match(/```character-changes\s*([\s\S]*?)(?=```|$)/);
+        const open = text.match(new RegExp('```' + CHAR_CHANGES_BLOCK + '\\s*([\\s\\S]*?)(?=```|$)'));
         if (open) raw = open[1];
     }
     if (!raw) return null;
@@ -245,7 +273,7 @@ export function parseCharChangesFromText(text) {
 
     const replaceByKey = {};
     for (const { attrs, content } of _matchTagsWithAttrs(xml, 'replace')) {
-        const field = attrs.field;
+        const field = _normalizeFieldName(attrs.field);
         if (!field) continue;
         const charName = attrs.char || null;
         const index = attrs.index ? parseInt(attrs.index, 10) : undefined;
@@ -287,35 +315,39 @@ export function parseCharChangesFromText(text) {
     for (const item of Object.values(replaceByKey)) changes.push(item);
 
     for (const { attrs, content } of _matchTagsWithAttrs(xml, 'overwrite')) {
-        if (!attrs.field) continue;
+        const field = _normalizeFieldName(attrs.field);
+        if (!field) continue;
         let val = content.trim();
-        if (attrs.field === 'tags') val = _sanitizeProposedTags(val);
-        const item = { field: attrs.field, action: 'overwrite', value: val, char: attrs.char || null };
+        if (field === 'tags') val = _sanitizeProposedTags(val);
+        const item = { field, action: 'overwrite', value: val, char: attrs.char || null };
         if (attrs.index) item.index = parseInt(attrs.index, 10);
         changes.push(item);
     }
 
     for (const { attrs, content } of _matchTagsWithAttrs(xml, 'append')) {
-        if (!attrs.field) continue;
+        const field = _normalizeFieldName(attrs.field);
+        if (!field) continue;
         let val = content.trim();
-        if (attrs.field === 'tags') val = _sanitizeProposedTags(val);
-        changes.push({ field: attrs.field, action: 'append', value: val, char: attrs.char || null });
+        if (field === 'tags') val = _sanitizeProposedTags(val);
+        changes.push({ field, action: 'append', value: val, char: attrs.char || null });
     }
 
     for (const { attrs, content } of _matchTagsWithAttrs(xml, 'prepend')) {
-        if (!attrs.field) continue;
+        const field = _normalizeFieldName(attrs.field);
+        if (!field) continue;
         let val = content.trim();
-        if (attrs.field === 'tags') val = _sanitizeProposedTags(val);
-        const item = { field: attrs.field, action: 'prepend', value: val, char: attrs.char || null };
+        if (field === 'tags') val = _sanitizeProposedTags(val);
+        const item = { field, action: 'prepend', value: val, char: attrs.char || null };
         if (attrs.index) item.index = parseInt(attrs.index, 10);
         changes.push(item);
     }
 
     for (const { attrs, content } of _matchTagsWithAttrs(xml, 'append_text')) {
-        if (!attrs.field) continue;
+        const field = _normalizeFieldName(attrs.field);
+        if (!field) continue;
         let val = content.trim();
-        if (attrs.field === 'tags') val = _sanitizeProposedTags(val);
-        const item = { field: attrs.field, action: 'append_text', value: val, char: attrs.char || null };
+        if (field === 'tags') val = _sanitizeProposedTags(val);
+        const item = { field, action: 'append_text', value: val, char: attrs.char || null };
         if (attrs.index) item.index = parseInt(attrs.index, 10);
         changes.push(item);
     }
@@ -373,19 +405,18 @@ export function _repairCharChangesXML(raw) {
 }
 
 export function stripCharChangesBlock(text) {
-    return text
-        .replace(/```character-changes[\s\S]*?```/g, '')
-        .replace(/```character-changes[\s\S]*/g, '')
-        .trim();
+    const re = new RegExp('```' + CHAR_CHANGES_BLOCK + '[\\s\\S]*?```', 'g');
+    const reOpen = new RegExp('```' + CHAR_CHANGES_BLOCK + '[\\s\\S]*', 'g');
+    return text.replace(re, '').replace(reOpen, '').trim();
 }
 
 export function parseCharCreationFromText(text) {
     let raw = null;
-    const strict = text.match(/```character-create\s*([\s\S]*?)```/);
+    const strict = text.match(new RegExp('```' + CHAR_CREATE_BLOCK + '\\s*([\\s\\S]*?)```'));
     if (strict) {
         raw = strict[1].trim();
     } else {
-        const open = text.match(/```character-create\s*([\s\S]*?)(?=```|$)/);
+        const open = text.match(new RegExp('```' + CHAR_CREATE_BLOCK + '\\s*([\\s\\S]*?)(?=```|$)'));
         if (open) raw = open[1].trim();
     }
     if (!raw) return null;
@@ -408,10 +439,9 @@ export function parseCharCreationFromText(text) {
 }
 
 export function stripCharCreationBlock(text) {
-    return text
-        .replace(/```character-create[\s\S]*?```/g, '')
-        .replace(/```character-create[\s\S]*/g, '')
-        .trim();
+    const re = new RegExp('```' + CHAR_CREATE_BLOCK + '[\\s\\S]*?```', 'g');
+    const reOpen = new RegExp('```' + CHAR_CREATE_BLOCK + '[\\s\\S]*', 'g');
+    return text.replace(re, '').replace(reOpen, '').trim();
 }
 
 export function getCharFieldValue(char, fieldId) {
