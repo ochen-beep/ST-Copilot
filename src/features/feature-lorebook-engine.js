@@ -394,7 +394,12 @@ export async function buildLorebookContextBlock(settings) {
 export function buildLBAIInstructions(settings) {
     if (!settings.lorebookAIManageEnabled) return '';
     const excludedBooks = new Set(settings.lorebookExcludedBooks || []);
-    const activeBooks =[...new Set(lastActiveEntries.map(e => e.displayName || e.bookName))].filter(b => !excludedBooks.has(b));
+    // Активны = книги, реально подключённые к чату (глобальные/персонажа/чата/персоны),
+    // а не только те, из которых сработали записи. Иначе пустая или несработавшая книга
+    // невидима для модели, и она предлагает создать новую вместо использования существующей.
+    const activeBooks = getActiveLorebookNames()
+        .filter(b => !excludedBooks.has(b))
+        .map(b => getDisplayName(b));
     const activeBooksStr = activeBooks.length > 0 ? activeBooks.map(b => `"${b}"`).join(', ') : 'None';
     
     let rawPrompt = settings.lorebookManagePrompt || DEFAULT_LB_MANAGE_PROMPT;
