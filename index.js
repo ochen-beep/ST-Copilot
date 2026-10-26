@@ -2685,7 +2685,12 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
   function buildLBAIInstructions(settings) {
       if (!settings.lorebookAIManageEnabled) return '';
       const excludedBooks = new Set(settings.lorebookExcludedBooks || []);
-      const activeBooks =[...new Set(lastActiveEntries.map(e => e.displayName || e.bookName))].filter(b => !excludedBooks.has(b));
+      // Активны = книги, реально подключённые к чату (глобальные/персонажа/чата/персоны),
+      // а не только те, из которых сработали записи. Иначе пустая или несработавшая книга
+      // невидима для модели, и она предлагает создать новую вместо использования существующей.
+      const activeBooks = getActiveLorebookNames()
+          .filter(b => !excludedBooks.has(b))
+          .map(b => getDisplayName(b));
       const activeBooksStr = activeBooks.length > 0 ? activeBooks.map(b => `"${b}"`).join(', ') : 'None';
       
       let rawPrompt = settings.lorebookManagePrompt || DEFAULT_LB_MANAGE_PROMPT;
@@ -7863,7 +7868,7 @@ ${scopeHtml}
                               await ctx.executeSlashCommandsWithOptions(`${cmd} ${idx}-${idx}`);
                           }
                       }
-                      successLog.push({ ...change, affectedCount: valid.length });
+                      successLog.push(Object.assign(change, { affectedCount: valid.length }));
                   } else {
                       let startIdx = 0, endIdx = msgs.length - 1;
                       if (Array.isArray(change.msg_range)) {
@@ -7874,7 +7879,7 @@ ${scopeHtml}
                       if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
                           await ctx.executeSlashCommandsWithOptions(`${cmd} ${startIdx}-${endIdx}`);
                       }
-                      successLog.push({ ...change, affectedCount: endIdx - startIdx + 1 });
+                      successLog.push(Object.assign(change, { affectedCount: endIdx - startIdx + 1 }));
                   }
                   continue;
               }
@@ -7943,7 +7948,7 @@ ${scopeHtml}
                           affected++;
                       }
                   }
-                  successLog.push({ ...change, affectedCount: affected });
+                  successLog.push(Object.assign(change, { affectedCount: affected }));
                   continue;
               }
 
@@ -8034,6 +8039,9 @@ ${scopeHtml}
           await logChatEditHistory$1(successLog, 'Applied', afterMsgId);
           toastr.success(`[Редактор чата] Применено изменений: ${successLog.length}.`, EXT_DISPLAY);
       }
+      // Возвращаем фактически применённые изменения: UI сверяется с ними,
+      // чтобы не помечать «применено» правки, у которых не совпал якорь.
+      return successLog;
   }
 
   var featureChateditEngine = /*#__PURE__*/Object.freeze({
@@ -8111,6 +8119,8 @@ ${scopeHtml}
               saveSessionsToMetadata(); 
           }
       };
+
+      const persistState = () => {};
       const getPending = () => itemStates.filter(s => s === 'pending').length;
       const checkAllResolved = () => { 
           if (getPending() === 0) { 
@@ -8404,18 +8414,24 @@ ${scopeHtml}
                   e.stopPropagation();
                   if (itemStates[ci] !== 'pending' || applyBtn.disabled) return;
                   
-                  applyBtn.disabled = true; 
+                  applyBtn.disabled = true;
                   applyBtn.textContent = '…';
-                  
-                  itemStates[ci] = 'applied';
-                  item.classList.add('scp-lb-item-applied');
-                  btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
-                  countBadge.textContent = `${getPending()} ожидает`; 
-                  updateFooterBtns(); 
-                  syncBlockToMessage(); 
 
                   try {
-                      await module.applyChatChanges([editableChanges[ci]], card.dataset.for);
+                      const applied = await module.applyChatChanges([editableChanges[ci]], card.dataset.for);
+                      if (!applied?.length) {
+                          // Ничего не применилось (например, якорь не совпал) — оставляем pending.
+                          applyBtn.disabled = false;
+                          applyBtn.textContent = '✓';
+                          return;
+                      }
+                      itemStates[ci] = 'applied';
+                      item.classList.add('scp-lb-item-applied');
+                      btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
+                      persistState();
+                      countBadge.textContent = `${getPending()} ожидает`;
+                      updateFooterBtns();
+                      syncBlockToMessage();
                       checkAllResolved();
                   } catch(err) {
                       itemStates[ci] = 'pending';
@@ -8679,28 +8695,25 @@ ${scopeHtml}
               if (!pending.length) return;
               applyAllBtn.disabled = true; applyAllBtn.textContent = 'Применение…';
 
-              pendingIndices.forEach(i => {
-                  itemStates[i] = 'applied';
-                  itemEls[i]?.classList.add('scp-lb-item-applied');
-                  itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = true; });
-              });
-              countBadge.textContent = `${getPending()} ожидает`; 
-              updateFooterBtns(); 
-              syncBlockToMessage(); 
-
               try {
-                  await module.applyChatChanges(pending, card.dataset.for);
-                  checkAllResolved();
-              } catch(e) {
+                  const applied = await module.applyChatChanges(pending, card.dataset.for) || [];
+                  // Помечаем только фактически применённые; несработавшие остаются pending.
                   pendingIndices.forEach(i => {
-                      itemStates[i] = 'pending';
-                      itemEls[i]?.classList.remove('scp-lb-item-applied');
-                      itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = false; });
+                      if (!applied.includes(editableChanges[i])) return;
+                      itemStates[i] = 'applied';
+                      itemEls[i]?.classList.add('scp-lb-item-applied');
+                      itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = true; });
                   });
-                  countBadge.textContent = `${getPending()} ожидает`; 
-                  updateFooterBtns(); 
-                  syncBlockToMessage(); 
-                  
+                  persistState();
+                  countBadge.textContent = `${getPending()} ожидает`;
+                  updateFooterBtns();
+                  syncBlockToMessage();
+                  checkAllResolved();
+                  if (applied.length < pending.length) {
+                      applyAllBtn.disabled = false;
+                      applyAllBtn.textContent = 'Применить всё';
+                  }
+              } catch(e) {
                   toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
                   applyAllBtn.disabled = false;
                   applyAllBtn.textContent = 'Применить всё';

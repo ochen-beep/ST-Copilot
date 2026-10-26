@@ -221,7 +221,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                             await ctx.executeSlashCommandsWithOptions(`${cmd} ${idx}-${idx}`);
                         }
                     }
-                    successLog.push({ ...change, affectedCount: valid.length });
+                    successLog.push(Object.assign(change, { affectedCount: valid.length }));
                 } else {
                     let startIdx = 0, endIdx = msgs.length - 1;
                     if (Array.isArray(change.msg_range)) {
@@ -232,7 +232,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                     if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
                         await ctx.executeSlashCommandsWithOptions(`${cmd} ${startIdx}-${endIdx}`);
                     }
-                    successLog.push({ ...change, affectedCount: endIdx - startIdx + 1 });
+                    successLog.push(Object.assign(change, { affectedCount: endIdx - startIdx + 1 }));
                 }
                 continue;
             }
@@ -301,7 +301,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                         affected++;
                     }
                 }
-                successLog.push({ ...change, affectedCount: affected });
+                successLog.push(Object.assign(change, { affectedCount: affected }));
                 continue;
             }
 
@@ -392,4 +392,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
         await logChatEditHistory(successLog, 'Applied', afterMsgId);
         toastr.success(`[Редактор чата] Применено изменений: ${successLog.length}.`, EXT_DISPLAY);
     }
+    // Возвращаем фактически применённые изменения: UI сверяется с ними,
+    // чтобы не помечать «применено» правки, у которых не совпал якорь.
+    return successLog;
 }

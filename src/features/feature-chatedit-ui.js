@@ -364,19 +364,24 @@ export function renderChatProposalCard(changes, msgEl) {
                 e.stopPropagation();
                 if (itemStates[ci] !== 'pending' || applyBtn.disabled) return;
                 
-                applyBtn.disabled = true; 
+                applyBtn.disabled = true;
                 applyBtn.textContent = '…';
-                
-                itemStates[ci] = 'applied';
-                item.classList.add('scp-lb-item-applied');
-                btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
-                persistState(); 
-                countBadge.textContent = `${getPending()} ожидает`; 
-                updateFooterBtns(); 
-                syncBlockToMessage(); 
 
                 try {
-                    await module.applyChatChanges([editableChanges[ci]], card.dataset.for);
+                    const applied = await module.applyChatChanges([editableChanges[ci]], card.dataset.for);
+                    if (!applied?.length) {
+                        // Ничего не применилось (например, якорь не совпал) — оставляем pending.
+                        applyBtn.disabled = false;
+                        applyBtn.textContent = '✓';
+                        return;
+                    }
+                    itemStates[ci] = 'applied';
+                    item.classList.add('scp-lb-item-applied');
+                    btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
+                    persistState();
+                    countBadge.textContent = `${getPending()} ожидает`;
+                    updateFooterBtns();
+                    syncBlockToMessage();
                     checkAllResolved();
                 } catch(err) {
                     itemStates[ci] = 'pending';
@@ -641,30 +646,25 @@ export function renderChatProposalCard(changes, msgEl) {
             if (!pending.length) return;
             applyAllBtn.disabled = true; applyAllBtn.textContent = 'Применение…';
 
-            pendingIndices.forEach(i => {
-                itemStates[i] = 'applied';
-                itemEls[i]?.classList.add('scp-lb-item-applied');
-                itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = true; });
-            });
-            persistState(); 
-            countBadge.textContent = `${getPending()} ожидает`; 
-            updateFooterBtns(); 
-            syncBlockToMessage(); 
-
             try {
-                await module.applyChatChanges(pending, card.dataset.for);
-                checkAllResolved();
-            } catch(e) {
+                const applied = await module.applyChatChanges(pending, card.dataset.for) || [];
+                // Помечаем только фактически применённые; несработавшие остаются pending.
                 pendingIndices.forEach(i => {
-                    itemStates[i] = 'pending';
-                    itemEls[i]?.classList.remove('scp-lb-item-applied');
-                    itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = false; });
+                    if (!applied.includes(editableChanges[i])) return;
+                    itemStates[i] = 'applied';
+                    itemEls[i]?.classList.add('scp-lb-item-applied');
+                    itemEls[i]?.querySelectorAll('button').forEach(b => { b.disabled = true; });
                 });
-                persistState(); 
-                countBadge.textContent = `${getPending()} ожидает`; 
-                updateFooterBtns(); 
-                syncBlockToMessage(); 
-                
+                persistState();
+                countBadge.textContent = `${getPending()} ожидает`;
+                updateFooterBtns();
+                syncBlockToMessage();
+                checkAllResolved();
+                if (applied.length < pending.length) {
+                    applyAllBtn.disabled = false;
+                    applyAllBtn.textContent = 'Применить всё';
+                }
+            } catch(e) {
                 toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
                 applyAllBtn.disabled = false;
                 applyAllBtn.textContent = 'Применить всё';

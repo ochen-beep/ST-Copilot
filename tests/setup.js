@@ -7,6 +7,7 @@ const ctxStub = {
   eventSource: { on: noop, off: noop, emit: noop },
   event_types: {},
   getRequestHeaders: () => ({ 'X-ST-Test': '1' }),
+  renderExtensionTemplateAsync: async () => '',
   substituteParams: (t) => t,
   saveMetadata: noop,
   saveSettingsDebounced: noop,
