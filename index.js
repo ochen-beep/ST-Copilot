@@ -11658,16 +11658,18 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       let displayText = cleanContent;
       let reasoning = msg.reasoning !== undefined ? (msg.reasoning || null) : null;
 
+      // Плейсхолдеры нумеруем от КОНТЕНТА, не от reasoning: исполненные инструменты
+      // (msg.toolCalls) соответствуют фенсам контента; fence, написанный моделью
+      // в размышлениях, не должен уводить индекс и оставлять карточку пустой.
       let tcIndex = 0;
+      const resC = extractToolCallPlaceholders(displayText, tcIndex);
+      displayText = resC.text;
+      tcIndex = resC.nextIndex;
       if (reasoning) {
           const resR = extractToolCallPlaceholders(reasoning, tcIndex);
           reasoning = resR.text;
           tcIndex = resR.nextIndex;
       }
-      
-      const resC = extractToolCallPlaceholders(displayText, tcIndex);
-      displayText = resC.text;
-      tcIndex = resC.nextIndex;
 
       if (msg.reasoning === undefined || msg.reasoning === null) {
           const d = getDisplayContent(displayText, settings);
@@ -12138,20 +12140,23 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               let procText = /```memory-update/i.test(text) ? stripMemoryBlock(text) : text;
               let tcIndex = 0;
 
+              // Контент первым: toolCalls соответствуют фенсам контента (см. _renderMsgBodyContent).
+              if (/```tool_call/i.test(procText)) {
+                  const resC = extractToolCallPlaceholders(procText, tcIndex);
+                  procText = resC.text;
+                  tcIndex = resC.nextIndex;
+              }
               if (procReasoning && /```tool_call/i.test(procReasoning)) {
                   const resR = extractToolCallPlaceholders(procReasoning, tcIndex);
                   procReasoning = resR.text;
                   tcIndex = resR.nextIndex;
-              }
-              if (/```tool_call/i.test(procText)) {
-                  procText = extractToolCallPlaceholders(procText, tcIndex).text;
               }
 
               const { content: disp } = getDisplayContent(procText, settings);
               if (streamRenderer) streamRenderer.push(disp);
 
               if (tcIndex > 0) {
-                  const liveTCs = parseToolCallsFromText((reasoning || '') + '\n' + text);
+                  const liveTCs = parseToolCallsFromText(text + '\n' + (reasoning || ''));
                   const displayed = liveTCs.map((tc, i) => ({
                       id: `live_${i}`, name: tc.name, input: tc.input, status: 'done', result: undefined
                   }));
@@ -16036,13 +16041,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           let procText = /```memory-update/i.test(text) ? stripMemoryBlock(text) : text;
 
           let tcIndex = 0;
+          // Контент первым: исполненные инструменты соответствуют фенсам контента.
+          if (/```tool_call/i.test(procText)) {
+              const resC = extractToolCallPlaceholders(procText, tcIndex);
+              procText = resC.text;
+              tcIndex = resC.nextIndex;
+          }
           if (procReasoning && /```tool_call/i.test(procReasoning)) {
               const resR = extractToolCallPlaceholders(procReasoning, tcIndex);
               procReasoning = resR.text;
               tcIndex = resR.nextIndex;
-          }
-          if (/```tool_call/i.test(procText)) {
-              procText = extractToolCallPlaceholders(procText, tcIndex).text;
           }
 
           if (reasoning && streamReasoningBlockEl) {
@@ -16059,7 +16067,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           streamRenderer.push(procText);
 
           if (state.activeToolCalls.length || tcIndex > 0) {
-              const liveTCs = parseToolCallsFromText((reasoning || '') + '\n' + text);
+              const liveTCs = parseToolCallsFromText(text + '\n' + (reasoning || ''));
               const displayed = liveTCs.map((tc, i) => state.activeToolCalls[i] || {
                   id: `live_${i}`, name: tc.name, input: tc.input, status: 'running', result: undefined
               });
@@ -16124,14 +16132,17 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                   let procReasoning = combinedReasoning;
                   let procText = /```memory-update/i.test(combinedText) ? stripMemoryBlock(combinedText) : combinedText;
                   let tcIndex = 0;
-                  
+
+                  // Контент первым: см. комментарий в _streamFlushChunk.
+                  if (/```tool_call/i.test(procText)) {
+                      const resC = extractToolCallPlaceholders(procText, tcIndex);
+                      procText = resC.text;
+                      tcIndex = resC.nextIndex;
+                  }
                   if (procReasoning && /```tool_call/i.test(procReasoning)) {
                       const resR = extractToolCallPlaceholders(procReasoning, tcIndex);
                       procReasoning = resR.text;
                       tcIndex = resR.nextIndex;
-                  }
-                  if (/```tool_call/i.test(procText)) {
-                      procText = extractToolCallPlaceholders(procText, tcIndex).text;
                   }
 
                   // cleanupCursor() после раунда 1 уничтожил рендереры —
