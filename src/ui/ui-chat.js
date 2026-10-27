@@ -37,17 +37,7 @@ import('../features/feature-character-ui.js').then(m => featCharUiMod = m);
 
 export function renderMarkdown(text) {
     const codeBlocks = [];
-    let out = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-        if (lang && lang.toLowerCase() === 'html') {
-            const id = `scp-hb-${state.htmlBlockCounter++}`;
-            state.htmlBlockRegistry.set(id, code.trim());
-            // Страховка от утечки: записи, которые никогда не будут потреблены
-            // postProcessHTMLBlocks (прерванный рендер), не должны жить вечно.
-            if (state.htmlBlockRegistry.size > 400) {
-                state.htmlBlockRegistry.delete(state.htmlBlockRegistry.keys().next().value);
-            }
-            return `\x00H${id}\x00`;
-        }
+    const pushCodeBlock = (lang, code) => {
         const i = codeBlocks.length;
         const escaped = code.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const langAttr = lang ? ` lang-${lang}` : '';
@@ -64,7 +54,27 @@ export function renderMarkdown(text) {
             + `</div>`
         );
         return `\x00B${i}\x00`;
+    };
+    let out = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+        if (lang && lang.toLowerCase() === 'html') {
+            const id = `scp-hb-${state.htmlBlockCounter++}`;
+            state.htmlBlockRegistry.set(id, code.trim());
+            // Страховка от утечки: записи, которые никогда не будут потреблены
+            // postProcessHTMLBlocks (прерванный рендер), не должны жить вечно.
+            if (state.htmlBlockRegistry.size > 400) {
+                state.htmlBlockRegistry.delete(state.htmlBlockRegistry.keys().next().value);
+            }
+            return `\x00H${id}\x00`;
+        }
+        return pushCodeBlock(lang, code);
     });
+
+    // Незакрытый фенс в хвосте (стрим оборвался / оборвали на стриме): рендерим
+    // как код-блок до конца текста, иначе сырой маркер ``` висит в сообщении.
+    // html-фенс тут сознательно НЕ исполняется: частичный скрипт запускать нельзя.
+    if (/```/.test(out)) {
+        out = out.replace(/```(\w*)\n?([\s\S]*)$/, (_, lang, code) => pushCodeBlock(lang, code));
+    }
 
     out = out.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     out = out.replace(/`([^`\n]+)`/g, '<code class="scp-inline-code">$1</code>');
@@ -445,11 +455,26 @@ export function _renderMsgBodyContent(msgEl, msg) {
         msg.attachments.forEach(att => {
             const badge = document.createElement('div');
             badge.className = 'scp-msg-att-badge';
+            // dataUrl приходит из персистентных сессий (в т.ч. импортированных) —
+            // только DOM API, никакой интерполяции в innerHTML.
             if (att.isImage) {
-                badge.innerHTML = `<img src="${att.dataUrl}"> <span>${escHtml(att.name)}</span>`;
+                const img = document.createElement('img');
+                img.src = typeof att.dataUrl === 'string' && /^(data:|https?:|blob:)/i.test(att.dataUrl) ? att.dataUrl : '';
+                img.alt = '';
+                const span = document.createElement('span');
+                span.textContent = att.name || '';
+                badge.appendChild(img);
+                badge.appendChild(document.createTextNode(' '));
+                badge.appendChild(span);
                 badge.onclick = () => _openImageLightbox(att);
             } else {
-                badge.innerHTML = `<i class="fa-solid fa-file"></i> <span>${escHtml(att.name)}</span>`;
+                const icon = document.createElement('i');
+                icon.className = 'fa-solid fa-file';
+                const span = document.createElement('span');
+                span.textContent = att.name || '';
+                badge.appendChild(icon);
+                badge.appendChild(document.createTextNode(' '));
+                badge.appendChild(span);
                 badge.onclick = () => _openTextLightbox(att);
             }
             attWrap.appendChild(badge);
@@ -512,7 +537,9 @@ export function _renderMsgBodyContent(msgEl, msg) {
 
     let liveTCs = msg.toolCalls || [];
     if (!liveTCs.length && tcIndex > 0) {
-        liveTCs = parseToolCallsFromText((msg.reasoning || '') + '\n' + msg.content).map((tc, i) => ({
+        // Порядок обязан совпадать с нумерацией плейсхолдеров выше: сначала
+        // контент, потом reasoning — иначе карточки встают не на свои места.
+        liveTCs = parseToolCallsFromText((msg.content || '') + '\n' + (msg.reasoning || '')).map((tc, i) => ({
             id: `past_${i}`, name: tc.name, input: tc.input, status: 'done', result: 'Result hidden/expired'
         }));
     }
@@ -652,6 +679,7 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
 
         prevBtn.addEventListener('click', async () => {
             if (prevBtn.disabled || state.generating) return;
+            if (wrap.classList.contains('is-editing')) { toastr.info('Сначала завершите редактирование сообщения.', EXT_DISPLAY); return; }
             const session = getCurrentSession();
             if (!getSwipesForMsg(session, msg.id)) return;
             
@@ -675,6 +703,7 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
 
         nextBtn.addEventListener('click', async () => {
             if (nextBtn.disabled || state.generating) return;
+            if (wrap.classList.contains('is-editing')) { toastr.info('Сначала завершите редактирование сообщения.', EXT_DISPLAY); return; }
             const session = getCurrentSession();
             const msgData = session.messages.find(m => m.id === msg.id);
             if (!msgData) return;
@@ -712,6 +741,7 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
         delSwipeBtn.title = 'Удалить текущий вариант ответа';
         delSwipeBtn.addEventListener('click', async () => {
             if (state.generating) return;
+            if (wrap.classList.contains('is-editing')) { toastr.info('Сначала завершите редактирование сообщения.', EXT_DISPLAY); return; }
             const session = getCurrentSession();
             const msgData = session.messages.find(m => m.id === msg.id);
             if (!msgData || (msgData.swipes?.length || 1) < 2) return;
@@ -811,6 +841,9 @@ export async function _runSwipeRegen(session, msgId, wrapEl) {
 
     state.generating = true;
     state.activeToolCalls = [];
+    // Эпоха генерации — как в runGenerate: зомби-реген после смены чата не должен
+    // снимать флаги уже начавшейся новой генерации в своём finally.
+    const myEpoch = ++state.genEpoch;
     const settings = getEffectiveSettings();
     setGeneratingState(true);
 
@@ -970,8 +1003,10 @@ export async function _runSwipeRegen(session, msgId, wrapEl) {
         if (state.abortController?.signal?.aborted || err?.message === 'userStopped') {} 
         else { showGenerationError(err); }
     } finally {
-        state.generating = false;
-        setGeneratingState(false);
+        if (myEpoch === state.genEpoch) {
+            state.generating = false;
+            setGeneratingState(false);
+        }
     }
 }
 
@@ -1386,13 +1421,16 @@ export async function handleDelete(wrapEl, msg) {
 const MSG_RENDER_WINDOW = 80;
 const _renderFromBySession = new Map(); // sessionId -> первый отрисованный индекс
 
-export function renderSession(session) {
+export function renderSession(session, opts = {}) {
     clearSearchHighlights();
     state.searchMatches = [];
     state.searchIdx = -1;
     updateSearchCount();
     const c = document.getElementById('scp-messages');
     if (!c) return;
+    // keepScroll: рендер растёт только сверху (подгрузка старых сообщений или
+    // расширение окна под поиск) — держим видимую позицию, а не прыгаем вниз.
+    const anchor = opts.keepScroll ? { h: c.scrollHeight, top: c.scrollTop } : null;
     c.innerHTML = '';
     if (!session.messages.length) {
         c.innerHTML = `
@@ -1420,7 +1458,7 @@ export function renderSession(session) {
         loadOlder.addEventListener('click', () => {
             const prev = _renderFromBySession.get(session.id) ?? 0;
             _renderFromBySession.set(session.id, Math.max(0, prev - MSG_RENDER_WINDOW));
-            renderSession(session);
+            renderSession(session, { keepScroll: true });
         });
         c.appendChild(loadOlder);
     }
@@ -1437,7 +1475,13 @@ export function renderSession(session) {
     updateMsgCount(session);
     _refreshContinueBtns();
     _refreshSwipeBars(session);
-    requestAnimationFrame(() => scrollToBottom());
+    if (anchor) {
+        // Контент дорисовался сверху — сдвигаем scrollTop на высоту добавленного,
+        // чтобы читаемое сообщение осталось на месте.
+        requestAnimationFrame(() => { c.scrollTop = anchor.top + (c.scrollHeight - anchor.h); });
+    } else {
+        requestAnimationFrame(() => scrollToBottom());
+    }
 }
 
 export function appendMsgEl(msg, isStreamInit = false) {
@@ -1780,6 +1824,19 @@ export function performSearch() {
     if (!container) return;
     state.searchMatches = _applyHighlightsInRoot(container);
 
+    // Ленивое окно рендера прячет старые сообщения из DOM: совпадение там
+    // раньше молча давало «нет результатов». Проверяем данные и при попадании
+    // дорисовываем скрытую часть, потом подсвечиваем заново.
+    if (!state.searchMatches.length) {
+        const session = getCurrentSession();
+        const from = _renderFromBySession.get(session.id) ?? 0;
+        if (from > 0 && _sessionHeadHasMatch(session, from, q)) {
+            _renderFromBySession.set(session.id, 0);
+            renderSession(session, { keepScroll: true });
+            state.searchMatches = _applyHighlightsInRoot(container);
+        }
+    }
+
     _dbgAdd('SEARCH_QUERY_EXECUTE', { query: state.searchQuery, wholeWord: state.searchWholeWord, matches: state.searchMatches.length });
 
     if (state.searchMatches.length) {
@@ -1788,6 +1845,25 @@ export function performSearch() {
         state.searchMatches[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
     }
     updateSearchCount();
+}
+
+// Есть ли совпадение в скрытой (неотрисованной) части сессии: messages[0..from).
+// Условия совпадения те же, что у подсветки: подстрока без учёта регистра
+// или whole-word с Unicode-границами (см. _applyHighlightsInRoot).
+function _sessionHeadHasMatch(session, from, q) {
+    const lq = q.toLowerCase();
+    let regex = null;
+    if (state.searchWholeWord) {
+        try { regex = new RegExp(`(?<![\\p{L}\\p{N}_])${lq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`, 'iu'); } catch(_) {}
+    }
+    const texts = m => [m.content, m.reasoning, ...(m.swipes || []).map(s => s?.content)].filter(t => typeof t === 'string');
+    for (let i = 0; i < Math.min(from, session.messages.length); i++) {
+        for (const t of texts(session.messages[i])) {
+            if (regex) { regex.lastIndex = 0; if (regex.test(t)) return true; }
+            else if (t.toLowerCase().includes(lq)) return true;
+        }
+    }
+    return false;
 }
 
 export function navigateSearch(dir) {

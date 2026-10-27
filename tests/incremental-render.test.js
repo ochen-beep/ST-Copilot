@@ -106,4 +106,40 @@ describe('findSafeRenderBoundary', () => {
         expect(b).toBeGreaterThan(0);
         expect(b).toBeLessThanOrEqual(code.length);
     });
+
+    // ── Незакрытый code-fence: разрывать внутри нельзя (регрессия: раньше
+    // MAX_PENDING_HOLD коммитил фенс посередине, и закрывающий ``` «переворачивал»
+    // все фенсы до конца сообщения) ──
+
+    it('unclosed fence longer than MAX_PENDING_HOLD: hold, не коммитим середину', () => {
+        const text = '```javascript\n' + 'const x = 1;\n'.repeat(100); // ~1300 chars > 800
+        expect(findSafeRenderBoundary(text)).toBe(-1);
+    });
+
+    it('unclosed fence with paragraph before it: коммитим текст ДО фенса', () => {
+        const text = 'Intro paragraph.\n\n```js\nconst a = 1;';
+        // \n\n на позициях 16-17, фенс начинается с 18. Boundary ровно перед фенсом.
+        expect(findSafeRenderBoundary(text)).toBe(18);
+    });
+
+    it('unclosed fence beyond MAX_FENCE_HOLD: экстренный коммит целиком', async () => {
+        const { MAX_FENCE_HOLD } = await import('../src/ui/render/find-safe-boundary.js');
+        const text = '```javascript\n' + 'x\n'.repeat(MAX_FENCE_HOLD / 2 + 100);
+        expect(findSafeRenderBoundary(text)).toBe(text.length);
+    });
+
+    it('paragraph after \\n\\n + ordered list item — не граница (нумерация не должна сбиваться)', () => {
+        const text = '1. первый пункт\n\n2. второй пункт';
+        expect(findSafeRenderBoundary(text)).toBe(-1);
+    });
+
+    it('paragraph after \\n\\n + `+` list item — не граница', () => {
+        const text = '- первый пункт\n\n+ второй пункт';
+        expect(findSafeRenderBoundary(text)).toBe(-1);
+    });
+
+    it('paragraph after \\n\\n + обычный текст — граница', () => {
+        const text = '1. первый пункт\n\nОбычный абзац';
+        expect(findSafeRenderBoundary(text)).toBeGreaterThan(0);
+    });
 });

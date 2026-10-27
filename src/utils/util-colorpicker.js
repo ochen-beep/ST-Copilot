@@ -57,7 +57,9 @@ export function showColorPicker(anchorEl, initialVal, onChange) {
     _activeColorPop = pop;
 
     const rect = anchorEl.getBoundingClientRect();
-    pop.style.cssText += `position:fixed;z-index:999999;left:${rect.left}px;top:${rect.bottom + 6}px`;
+    // z-index на уровне остальных попапов Copilot (окно/оверлеи живут на
+    // 2147483000+, см. ui-window.js) — иначе пикер прячется под ними.
+    pop.style.cssText += `position:fixed;z-index:2147483060;left:${rect.left}px;top:${rect.bottom + 6}px`;
     requestAnimationFrame(() => {
         const pr = pop.getBoundingClientRect();
         if (pr.right > window.innerWidth - 8) pop.style.left = `${window.innerWidth - pr.width - 8}px`;

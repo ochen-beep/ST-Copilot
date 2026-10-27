@@ -46,6 +46,12 @@ export function createStreamRenderer(opts = {}) {
     let rafScheduled = false;
     let cursorEl = null;
     let destroyed = false;
+    // Экстренный коммит незакрытого code-fence (MAX_FENCE_HOLD): <code>-элемент,
+    // в который дописываем последующий код как text node, пока не придёт
+    // закрывающий ```. Без этого длинный стримящийся листинг показывался бы
+    // сырым markdown, а закрывающий маркер «переворачивал» бы фенсы до конца
+    // сообщения.
+    let openFenceCodeEl = null;
 
     function _scheduleFlush() {
         if (rafScheduled || destroyed) return;
@@ -61,24 +67,20 @@ export function createStreamRenderer(opts = {}) {
         });
     }
 
-    function _flush() {
-        if (destroyed || !targetEl) return;
-        if (!pendingTail) return;
-
-        // Курсор виден и пока хвост копится (граница ещё не найдена) —
-        // иначе пустое сообщение в первые секунды стрима выглядит сломанным.
-        if (cursorEl && !cursorEl.parentNode) targetEl.appendChild(cursorEl);
-
-        const boundary = findSafeRenderBoundary(pendingTail);
-        if (boundary < 0) {
-            // копим ещё
-            return;
+    // Заканчивается ли текст незакрытым code-fence (нечётное число ```-маркеров).
+    function _endsInsideFence(txt) {
+        let count = 0;
+        for (let i = 0; i < txt.length - 2; i++) {
+            if (txt.charCodeAt(i) === 96 && txt.charCodeAt(i + 1) === 96 && txt.charCodeAt(i + 2) === 96) {
+                count++;
+                i += 2;
+            }
         }
+        return count % 2 === 1;
+    }
 
-        const commitText = pendingTail.slice(0, boundary);
-        pendingTail = pendingTail.slice(boundary);
+    function _commitChunk(commitText) {
         if (!commitText) return;
-
         // Рендерим commit-чанк: для первого блока заменяем innerHTML, далее append.
         if (renderedLen === 0) {
             targetEl.innerHTML = renderMarkdown(commitText);
@@ -87,7 +89,67 @@ export function createStreamRenderer(opts = {}) {
             targetEl.insertAdjacentHTML('beforeend', renderMarkdown(commitText));
         }
         renderedLen += commitText.length;
-        try { onPostProcess(targetEl); } catch (e) { /* ignore */ }
+        // Форсированный коммит незакрытого фенса (MAX_FENCE_HOLD): запоминаем его
+        // <code>, чтобы дальше писать код туда, а не рендерить markdown заново.
+        if (_endsInsideFence(commitText)) {
+            const wraps = targetEl.querySelectorAll('.scp-code-block-wrap');
+            openFenceCodeEl = wraps.length ? wraps[wraps.length - 1].querySelector('code') : null;
+        }
+    }
+
+    // Потребление хвоста в режиме открытого фенса: код — text node'ами в открытый
+    // <code>, закрывающий маркер-строку съедаем. Возвращает true, если режим
+    // активен и хвост обработан (полностью или до закрытия фенса).
+    function _consumeFenceTail() {
+        if (!openFenceCodeEl) return false;
+        const closeIdx = pendingTail.indexOf('```');
+        if (closeIdx === -1) {
+            openFenceCodeEl.appendChild(document.createTextNode(pendingTail));
+            renderedLen += pendingTail.length;
+            pendingTail = '';
+            return true;
+        }
+        const codePart = pendingTail.slice(0, closeIdx);
+        if (codePart) openFenceCodeEl.appendChild(document.createTextNode(codePart));
+        let end = closeIdx + 3;
+        while (end < pendingTail.length && pendingTail.charCodeAt(end) !== 10) end++;
+        if (end < pendingTail.length) end++; // съесть \n после ```
+        renderedLen += end;
+        pendingTail = pendingTail.slice(end);
+        openFenceCodeEl = null;
+        return false; // фенс закрыт — дальше обычный markdown
+    }
+
+    function _flush() {
+        if (destroyed || !targetEl) return;
+        if (!pendingTail) return;
+
+        // Курсор виден и пока хвост копится (граница ещё не найдена) —
+        // иначе пустое сообщение в первые секунды стрима выглядит сломанным.
+        if (cursorEl && !cursorEl.parentNode) targetEl.appendChild(cursorEl);
+
+        let committed = false;
+        while (pendingTail && !destroyed) {
+            // Режим открытого фенса: хвост — это код; пишем его text node'ми
+            // в тот же <code> до закрывающего ``` (маркер-строку потребляем).
+            if (openFenceCodeEl) {
+                if (_consumeFenceTail()) break; // хвост кончился внутри фенса
+                continue; // фенс закрыт — остаток обрабатываем как обычно
+            }
+
+            const boundary = findSafeRenderBoundary(pendingTail);
+            if (boundary < 0) break; // копим ещё
+
+            const commitText = pendingTail.slice(0, boundary);
+            pendingTail = pendingTail.slice(boundary);
+            if (!commitText) break;
+            _commitChunk(commitText);
+            committed = true;
+        }
+
+        if (committed) {
+            try { onPostProcess(targetEl); } catch (e) { /* ignore */ }
+        }
 
         // Добавляем курсор в конец, если ещё что-то копим.
         if (cursorEl && pendingTail) {
@@ -117,6 +179,7 @@ export function createStreamRenderer(opts = {}) {
                 renderedLen = 0;
                 pendingTail = displayText;
                 lastFullDisplayText = displayText;
+                openFenceCodeEl = null;
                 _scheduleFlush();
                 return;
             }
@@ -133,16 +196,18 @@ export function createStreamRenderer(opts = {}) {
             if (destroyed || !targetEl) return;
             // Игнорируем «безопасную границу» — рендерим всё, что накопилось.
             if (pendingTail) {
-                if (renderedLen === 0) {
-                    targetEl.innerHTML = renderMarkdown(pendingTail);
-                } else {
-                    targetEl.insertAdjacentHTML('beforeend', renderMarkdown(pendingTail));
+                // В режиме открытого фенса закрывающий ``` может быть уже в хвосте —
+                // его обязательно потребляем как маркер, иначе он уедет в код
+                // (гонка принудительного flush с отложенным RAF-флашем).
+                if (openFenceCodeEl) _consumeFenceTail();
+                if (pendingTail) {
+                    _commitChunk(pendingTail);
+                    pendingTail = '';
                 }
-                renderedLen += pendingTail.length;
-                pendingTail = '';
                 try { onPostProcess(targetEl); } catch (e) { /* ignore */ }
                 try { onScroll(); } catch (e) { /* ignore */ }
             }
+            openFenceCodeEl = null;
         },
         /** Сброс для нового раунда tool-call. */
         reset() {
@@ -150,6 +215,7 @@ export function createStreamRenderer(opts = {}) {
             pendingTail = '';
             lastFullDisplayText = '';
             rafScheduled = false;
+            openFenceCodeEl = null;
         },
         destroy() {
             destroyed = true;

@@ -225,6 +225,10 @@ export function hasSessionOverrides() {
 let _inMemoryBucket = { activeSessionId: null, sessions: [] };
 let _currentSessionFileId = null;
 const _saveQueue = new Map();
+// Эпоха инициализации bucket: CHAT_CHANGED может прийти повторно, пока прошлый
+// init ещё await'ит файл — без guard'а два пересекающихся init'а перемешивают
+// _currentSessionFileId/_inMemoryBucket (побеждает поздно завершившийся).
+let _bucketInitEpoch = 0;
 
 // Контракт хранилища: файл на диске существует ⟺ в нём есть контент.
 // Автосозданная «Сессия 1» без сообщений файл не заслуживает — иначе каждое
@@ -385,6 +389,8 @@ export async function loadSessionFile(file_id, { expectBucket = false } = {}) {
 }
 
 export async function initChatBucket({ forceReset = false } = {}) {
+    const myEpoch = ++_bucketInitEpoch;
+    const isStale = () => myEpoch !== _bucketInitEpoch;
     const ctx = SillyTavern.getContext();
     if (!ctx.chatMetadata) ctx.chatMetadata = {};
     const { charId, chatId } = getBindingKey();
@@ -419,27 +425,32 @@ export async function initChatBucket({ forceReset = false } = {}) {
         if (meta.chat_id === chatId) {
             targetFileId = meta.file_id;
             payload = await loadSessionFile(targetFileId, { expectBucket: true });
+            if (isStale()) return;
         } else {
             _dbgAdd('STORAGE_CHAT_BRANCH_DETECTED', { oldChatId: meta.chat_id, newChatId: chatId });
             payload = await loadSessionFile(meta.file_id);
+            if (isStale()) return;
             targetFileId = `copilot_sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.json`;
-            
+
             if (payload && payload !== false) {
                 await saveSessionFile(targetFileId, payload);
+                if (isStale()) return;
             }
-            
+
             ctx.chatMetadata.st_copilot = { format: 'v4', file_id: targetFileId, chat_id: chatId };
             if (typeof ctx.saveMetadata === 'function') ctx.saveMetadata();
         }
     } else {
         targetFileId = `copilot_sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.json`;
         _dbgAdd('STORAGE_MIGRATION_V4_INIT', { targetFileId });
-        
+
         const safeChatId = chatId.replace(/[^a-zA-Z0-9_-]/g, '_');
         payload = await loadSessionFile(`copilot_sess_${safeChatId}.json`);
+        if (isStale()) return;
 
         if (!payload && meta && meta.file_id && meta.format !== 'v4') {
             payload = await loadSessionFile(meta.file_id);
+            if (isStale()) return;
         }
 
         if (!payload) {
@@ -459,9 +470,11 @@ export async function initChatBucket({ forceReset = false } = {}) {
         if (typeof ctx.saveMetadata === 'function') ctx.saveMetadata();
     }
 
+    if (isStale()) return;
     _currentSessionFileId = targetFileId;
 
     if (payload === false) {
+        if (isStale()) return;
         _dbgAdd('STORAGE_LOAD_CORRUPTED_RECOVERY', { brokenFileId: targetFileId, charId, chatId });
         const recoveryFileId = `copilot_sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.json`;
         ctx.chatMetadata.st_copilot = { format: 'v4', file_id: recoveryFileId, chat_id: chatId, recoveredFrom: targetFileId };

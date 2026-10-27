@@ -68,7 +68,11 @@ async function _buildSystemContentInner(settings) {
     const ctx = SillyTavern.getContext();
 
     if (settings.includeSystemPrompt) {
-        const sp = ctx.systemPrompt || ctx.system_prompt || '';
+        // В st-context.js полей systemPrompt/system_prompt нет — мейн-промпт живёт
+        // в настройках chat completion (oai_settings.system_prompt). Старые ключи
+        // оставлены как fallback для гипотетических форков.
+        const sp = ctx.chatCompletionSettings?.system_prompt
+            || ctx.systemPrompt || ctx.system_prompt || '';
         if (sp) parts.push(`\n\n<st_system_prompt>\n${sp}\n</st_system_prompt>`);
     }
 
@@ -454,7 +458,64 @@ export async function estimateTokens(text) {
     }
 }
 
-export async function callGenerate(session, settings, pendingText, onChunk, nativeTools = false) {
+// Патчим только собственные генерационные эндпоинты ST: любой другой код
+// (основной чат, другие расширения), чей запрос попадёт в окно патча, не должен
+// ни попадать в журнал инспектора, ни получать переписанное тело.
+const _GEN_BACKEND_RE = /\/api\/backends\/(chat-completions|text-completions)\/(generate|caption-image)(?:\?|$)/;
+
+let _fetchPatchDepth = 0;
+let _fetchPatchOrig = null;
+
+function _patchFetchForGeneration() {
+    if (_fetchPatchDepth++ > 0) return; // внешний вызов уже пропатчил
+    _fetchPatchOrig = window.fetch;
+    window.fetch = async function(...args) {
+        const requestUrl = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
+        if (_GEN_BACKEND_RE.test(requestUrl) && args[1] && typeof args[1].body === 'string') {
+            try {
+                let reqBody = JSON.parse(args[1].body);
+                logOutgoingRequest(requestUrl, reqBody);
+                let changed = false;
+
+                if (reqBody.reasoning_effort === 'auto') { delete reqBody.reasoning_effort; changed = true; }
+                else if (reqBody.reasoning_effort === 'min') { reqBody.reasoning_effort = 'low'; changed = true; }
+                else if (reqBody.reasoning_effort === 'max') { reqBody.reasoning_effort = 'high'; changed = true; }
+
+                if (reqBody.reasoning && typeof reqBody.reasoning === 'object') {
+                    if (reqBody.reasoning.effort === 'auto') { delete reqBody.reasoning.effort; changed = true; }
+                    else if (reqBody.reasoning.effort === 'min') { reqBody.reasoning.effort = 'low'; changed = true; }
+                    else if (reqBody.reasoning.effort === 'max') { reqBody.reasoning.effort = 'high'; changed = true; }
+                }
+
+                if (reqBody.custom_prompt_post_processing === '') { delete reqBody.custom_prompt_post_processing; changed = true; }
+                if (reqBody.request_image_resolution === '') { delete reqBody.request_image_resolution; changed = true; }
+                if (reqBody.request_image_aspect_ratio === '') { delete reqBody.request_image_aspect_ratio; changed = true; }
+
+                if (reqBody.chat_completion_source === 'zai' || (typeof reqBody.model === 'string' && reqBody.model.toLowerCase().includes('glm'))) {
+                    if (reqBody.reasoning_effort !== undefined) { delete reqBody.reasoning_effort; changed = true; }
+                    if (reqBody.reasoning !== undefined) { delete reqBody.reasoning; changed = true; }
+                    if (Array.isArray(reqBody.messages)) {
+                        reqBody.messages.forEach(m => { if (m.name !== undefined) { delete m.name; changed = true; } });
+                    }
+                }
+
+                if (changed) args[1].body = JSON.stringify(reqBody);
+            } catch(_) {}
+        }
+        return _fetchPatchOrig.apply(this, args);
+    };
+}
+
+function _unpatchFetchForGeneration() {
+    if (--_fetchPatchDepth > 0) return;
+    _fetchPatchDepth = 0;
+    if (_fetchPatchOrig) {
+        window.fetch = _fetchPatchOrig;
+        _fetchPatchOrig = null;
+    }
+}
+
+async function _callGenerateInner(session, settings, pendingText, onChunk, nativeTools = false) {
     const ctx = SillyTavern.getContext();
     const messages = await assembleMessages(session, settings, pendingText);
     const maxTokens = parseInt(settings.maxTokens) || 8200;
@@ -596,7 +657,7 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
                 let buffer = "";
 
                 while (true) {
-                    if (abort.signal.aborted) { state.abortController = null; return null; }
+                    if (abort.signal.aborted) { if (state.abortController === abort) state.abortController = null; return null; }
                     const { done, value } = await reader.read();
                     if (done) break;
                     
@@ -634,16 +695,16 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
                 text = ext.t || '';
                 reasoning = ext.r;
                 const prov = extractProviderToolCalls(data);
-                state.abortController = null;
+            if (state.abortController === abort) state.abortController = null;
                 return { text: text.trim(), reasoning, isMaxTokens: false, toolCalls: prov?.calls || null, rawToolCalls: prov?.raw || null };
             }
         } catch (e) {
-            state.abortController = null;
+            if (state.abortController === abort) state.abortController = null;
             if (abort.signal.aborted || e?.name === 'AbortError') return null;
             throw e;
         }
 
-        state.abortController = null;
+        if (state.abortController === abort) state.abortController = null;
         return { text: text.trim(), reasoning, isMaxTokens: false, toolCalls: null, rawToolCalls: null };
     }
 
@@ -686,43 +747,13 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
     }
 
     let asyncGeneratorFn;
-    const origFetch = window.fetch;
 
-    window.fetch = async function(...args) {
-        let requestUrl = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
-        if ((requestUrl.includes('/generate') || requestUrl.includes('/caption-image')) && args[1] && typeof args[1].body === 'string') {
-            try {
-                let reqBody = JSON.parse(args[1].body);
-                logOutgoingRequest(requestUrl, reqBody);
-                let changed = false;
-
-                if (reqBody.reasoning_effort === 'auto') { delete reqBody.reasoning_effort; changed = true; }
-                else if (reqBody.reasoning_effort === 'min') { reqBody.reasoning_effort = 'low'; changed = true; }
-                else if (reqBody.reasoning_effort === 'max') { reqBody.reasoning_effort = 'high'; changed = true; }
-
-                if (reqBody.reasoning && typeof reqBody.reasoning === 'object') {
-                    if (reqBody.reasoning.effort === 'auto') { delete reqBody.reasoning.effort; changed = true; }
-                    else if (reqBody.reasoning.effort === 'min') { reqBody.reasoning.effort = 'low'; changed = true; }
-                    else if (reqBody.reasoning.effort === 'max') { reqBody.reasoning.effort = 'high'; changed = true; }
-                }
-
-                if (reqBody.custom_prompt_post_processing === '') { delete reqBody.custom_prompt_post_processing; changed = true; }
-                if (reqBody.request_image_resolution === '') { delete reqBody.request_image_resolution; changed = true; }
-                if (reqBody.request_image_aspect_ratio === '') { delete reqBody.request_image_aspect_ratio; changed = true; }
-
-                if (reqBody.chat_completion_source === 'zai' || (typeof reqBody.model === 'string' && reqBody.model.toLowerCase().includes('glm'))) {
-                    if (reqBody.reasoning_effort !== undefined) { delete reqBody.reasoning_effort; changed = true; }
-                    if (reqBody.reasoning !== undefined) { delete reqBody.reasoning; changed = true; }
-                    if (Array.isArray(reqBody.messages)) {
-                        reqBody.messages.forEach(m => { if (m.name !== undefined) { delete m.name; changed = true; } });
-                    }
-                }
-                
-                if (changed) args[1].body = JSON.stringify(reqBody);
-            } catch(_) {}
-        }
-        return origFetch.apply(this, args);
-    };
+    // Перехват window.fetch на время ИНИЦИАЦИИ запроса (sendRequest/processRequest
+    // делают fetch внутри себя): нормализуем тело (reasoning_effort и пр.) и пишем
+    // в журнал инспектора. Scope сужен до бэкенд-эндпоинтов генерации ST, чтобы не
+    // трогать чужие запросы; счётчик вложенности делает restore корректным при
+    // пересекающихся генерациях (раньше внешний finally гасил патч внутренней).
+    _patchFetchForGeneration();
 
     try {
         if (useConnectionManager && service && typeof service.sendRequest === 'function') {
@@ -733,7 +764,7 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
                 includePreset: true
             }, toolsPayload);
         } else {
-            const mainApi = window.main_api || ctx.main_api;
+            const mainApi = ctx.mainApi || document.getElementById('main_api')?.value;
             if (mainApi === 'openai' && ctx.ChatCompletionService) {
                 const oaiSettings = window.oai_settings || ctx.oai_settings || {};
                 asyncGeneratorFn = await ctx.ChatCompletionService.processRequest({
@@ -768,7 +799,7 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
                         includePreset: true
                     }, toolsPayload);
                 } else {
-                    const mainApi = window.main_api || ctx.main_api;
+                    const mainApi = ctx.mainApi || document.getElementById('main_api')?.value;
                     if (mainApi === 'openai' && ctx.ChatCompletionService) {
                         const oaiSettings = window.oai_settings || ctx.oai_settings || {};
                         asyncGeneratorFn = await ctx.ChatCompletionService.processRequest({
@@ -788,19 +819,19 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
                     }
                 }
             } catch (err2) {
-                state.abortController = null;
+            if (state.abortController === abort) state.abortController = null;
                 if (abort.signal.aborted || err2?.name === 'AbortError' || err2?.message === 'userStopped') return null;
                 if (err2.cause) err2.message = `${err2.message} — CAUSE: ${err2.cause.message || String(err2.cause)}`;
                 throw err2;
             }
         } else {
-            state.abortController = null;
+            if (state.abortController === abort) state.abortController = null;
             if (abort.signal.aborted || e?.name === 'AbortError' || e?.message === 'userStopped') return null;
             if (e.cause) e.message = `${e.message} — CAUSE: ${e.cause.message || String(e.cause)}`;
             throw e;
         }
     } finally {
-        window.fetch = origFetch;
+        _unpatchFetchForGeneration();
     }
 
     let text = '';
@@ -843,7 +874,7 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
             }
         }
 
-        state.abortController = null;
+        if (state.abortController === abort) state.abortController = null;
         return { text, reasoning, isMaxTokens, toolCalls, rawToolCalls };
     }
 
@@ -859,7 +890,7 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
 
     try {
         while (true) {
-            if (abort.signal.aborted) { state.abortController = null; const c = cutResult(); if (c) return c; return null; }
+            if (abort.signal.aborted) { if (state.abortController === abort) state.abortController = null; const c = cutResult(); if (c) return c; return null; }
             const { value, done } = await gen.next();
             if (done) {
                 if (value) lastValue = value;
@@ -897,7 +928,7 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
             }
         }
     } catch (e) {
-        state.abortController = null;
+        if (state.abortController === abort) state.abortController = null;
         if (tcCutAt !== null) { const c = cutResult(); if (c) return c; }
         if (abort.signal.aborted || e?.name === 'AbortError' || e?.message === 'userStopped') return null;
         throw e;
@@ -906,8 +937,40 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
     const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason || lastValue?.choices?.[0]?.finish_reason;
     const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
-    state.abortController = null;
+    if (state.abortController === abort) state.abortController = null;
     return { text: text.trim(), reasoning, isMaxTokens, toolCalls: null, rawToolCalls: null };
+}
+
+// Watchdog тишины: открытое SSE-соединение без чанков раньше держало генерацию
+// бесконечно (снималась только ручным Stop). Таймер петится на каждом чанке;
+// срабатывание = abort + помеченная ошибка, чтобы UI показал её, а не молчал.
+const STALL_TIMEOUT_MS = 180000;
+
+export async function callGenerate(session, settings, pendingText, onChunk, nativeTools = false) {
+    let stalled = false;
+    let stallTimer = null;
+    const pet = () => {
+        clearTimeout(stallTimer);
+        stallTimer = setTimeout(() => {
+            stalled = true;
+            _dbgAdd('GEN_STALL_TIMEOUT', { timeoutMs: STALL_TIMEOUT_MS });
+            try { state.abortController?.abort(); } catch (_) {}
+        }, STALL_TIMEOUT_MS);
+    };
+    pet();
+    try {
+        const result = await _callGenerateInner(session, settings, pendingText,
+            typeof onChunk === 'function' ? (...a) => { pet(); onChunk(...a); } : onChunk,
+            nativeTools);
+        if (result === null && stalled && !state.generationStopped) {
+            const err = new Error(`Генерация зависла: провайдер не присылал данные ${Math.round(STALL_TIMEOUT_MS / 1000)} с подряд. Запрос прерван — проверьте соединение и повторите.`);
+            err._stalled = true;
+            throw err;
+        }
+        return result;
+    } finally {
+        clearTimeout(stallTimer);
+    }
 }
 
 export async function runGenerate(session, userText, addUserMsg = true, processedAtts = null) {
@@ -1069,7 +1132,8 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
         }
 
         const fullMessages = await assembleMessages(session, settings, null);
-        const fullPromptText = fullMessages.map(m => m.content).join('\n');
+        const fullPromptText = fullMessages.map(m => typeof m.content === 'string' ? m.content
+            : (Array.isArray(m.content) ? m.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : '')).join('\n');
         const tokensIn = await estimateTokens(fullPromptText);
 
         _dbgAdd('GEN_START', {
@@ -1101,6 +1165,10 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
             let accumulatedText = roundText;
             let accumulatedReasoning = roundReasoning || null;
+            // Текст текущего раунда по состоянию на последний чанк: при Stop
+            // посреди раунда nextResult=null, и без него настримленный кусок
+            // пропадал из финального сообщения, хотя был виден на экране.
+            let lastRoundPartialText = '';
             // Ретрай пустого continuation — один на всю генерацию, чтобы не зациклиться.
             let emptyContinuationRetried = false;
 
@@ -1249,7 +1317,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                     }
 
                     for (const eh of extraHistory) {
-                        session.messages.push({ id: `tc_hist_${Date.now()}`, role: eh.role, content: eh.content, timestamp: Date.now(), _tcTemp: true });
+                        session.messages.push({ id: `tc_hist_${Date.now()}_${extraHistory.indexOf(eh)}_${round}`, role: eh.role, content: eh.content, timestamp: Date.now(), _tcTemp: true });
                     }
                 }
 
@@ -1268,7 +1336,9 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                     messages: session.messages.filter(m => m.id !== streamMsgId)
                 };
 
+                lastRoundPartialText = '';
                 let nextResult = await callGenerate(tempSession, settings, null, (t, r) => {
+                    if (t) lastRoundPartialText = t;
                     _updateLiveUI(t, r);
                     if (streamContentEl) streamContentEl.appendChild(cursor2);
                 }, nativeTools);
@@ -1307,7 +1377,13 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                     empty: nextResult !== null && !String(nextResult?.text || '').trim(),
                 });
 
-                if (nextResult === null) break;
+                if (nextResult === null) {
+                    // Stop посреди раунда: сохраняем настримленный кусок раунда,
+                    // иначе он был бы виден на экране, но потерян в сохранённом тексте.
+                    if (lastRoundPartialText.trim()) accumulatedText += '\n\n' + lastRoundPartialText;
+                    result = { text: accumulatedText, reasoning: accumulatedReasoning };
+                    break;
+                }
 
                 roundText = nextResult.text || '';
                 roundReasoning = nextResult.reasoning || null;
@@ -1393,7 +1469,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
     } catch (err) {
         cleanupCursor();
-        if (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped') {
+        if (!err?._stalled && (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped')) {
             if (myEpoch === state.genEpoch) {
                 state.generating = false;
                 setGeneratingState(false);
@@ -1411,6 +1487,10 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
         showGenerationError(err);
     } finally {
+        // Сбой/стоп посреди tool-раунда: временные tool-сообщения вычищаем из
+        // живой сессии — на диск они и так не попадают (_stripTempMessages),
+        // но в памяти переживали ошибку и рендерились как обычные сообщения.
+        if (session.messages?.some(m => m._tcTemp)) session.messages = session.messages.filter(m => !m._tcTemp);
         // Зомби-генерация (после смены чата) не трогает флаги новой генерации.
         if (myEpoch === state.genEpoch) {
             state.generating = false;
@@ -1527,7 +1607,8 @@ export async function runContinue(session, targetMsgId) {
 
     try {
         const fullMessages = await assembleMessages(session, settings, CONTINUE_PROMPT);
-        const fullPromptText = fullMessages.map(m => m.content).join('\n');
+        const fullPromptText = fullMessages.map(m => typeof m.content === 'string' ? m.content
+            : (Array.isArray(m.content) ? m.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : '')).join('\n');
         
         const tokensIn = await estimateTokens(fullPromptText);
 
@@ -1583,7 +1664,7 @@ export async function runContinue(session, targetMsgId) {
 
     } catch (err) {
         cleanupCursor();
-        if (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped') {
+        if (!err?._stalled && (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped')) {
             if (myEpoch === state.genEpoch) {
                 state.generating = false;
                 setGeneratingState(false);

@@ -500,7 +500,13 @@ function attachWindowListeners() {
     setupDepthClickEdit();
 }
 
+let _initDone = false;
+
 async function init() {
+    // Повторный запуск (re-import расширения, дублированный вызов) не должен
+    // плодить второе окно и второй комплект слушателей.
+    if (_initDone) return;
+    _initDone = true;
     _dbgSetupGlobalErrorHandlers();
     
     try { ST_WorldInfo = await import('/scripts/world-info.js'); } catch(e) { console.warn('ST-Copilot: Could not import world-info.js'); }
@@ -578,12 +584,9 @@ async function init() {
     const et = ctx.event_types || window.event_types || {};
 
     if (es) {
+        // Смена персонажа всегда сопровождается CHAT_CHANGED — отдельного
+        // CHARACTER_SELECTED в ST нет (подписка на него была мёртвой).
         es.on(et.CHAT_CHANGED || 'chat_changed', async () => {
-            await onChatChanged();
-            refreshSessionDropdown();
-            renderSession(getCurrentSession());
-        });
-        es.on(et.CHARACTER_SELECTED || 'character_selected', async () => {
             await onChatChanged();
             refreshSessionDropdown();
             renderSession(getCurrentSession());
@@ -645,7 +648,13 @@ async function init() {
         if (!e.data || typeof e.data !== 'object') return;
         if (e.data.type === 'scp-iframe-h') {
             const f = _findIframeBySource(e.source);
-            if (f) f.style.height = `${Math.max(40, Math.min(1200, e.data.h + 16))}px`;
+            if (!f) return;
+            // Превью не должно превышать ~62% высоты окна Copilot: абсолютный
+            // кап 1200px мог оказаться выше самого окна, и блок «расползался»
+            // на несколько экранов. Контент остаётся доступен скроллом в iframe.
+            const winH = f.closest('#scp-window')?.getBoundingClientRect().height || 900;
+            const cap = Math.max(200, Math.min(1200, Math.round(winH * 0.62)));
+            f.style.height = `${Math.max(40, Math.min(cap, e.data.h + 16))}px`;
         } else if (e.data.type === 'scp-iframe-bg') {
             const f = _findIframeBySource(e.source);
             if (f) f.style.background = e.data.hasBg ? 'transparent' : '#ffffff';

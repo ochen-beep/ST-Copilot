@@ -101,9 +101,13 @@ export function getGenStamp(settings) {
             if (p) return p.model ? `${p.name} · ${p.model}` : p.name;
             return null;
         }
-        const mainApi = ctx.main_api || window.main_api;
+        // st-context отдаёт mainApi (camelCase); window.main_api в современном ST —
+        // DOM-селект, а не строка. Строку берём только из строковых источников.
+        let mainApi = typeof ctx.mainApi === 'string' ? ctx.mainApi : null;
+        if (!mainApi) mainApi = document.getElementById('main_api')?.value || null;
         if (mainApi === 'openai') {
-            return (ctx.oai_settings?.model || window.oai_settings?.model) || 'Chat Completion';
+            const oai = ctx.chatCompletionSettings || (typeof window.oai_settings === 'object' ? window.oai_settings : null);
+            return oai?.model || 'Chat Completion';
         }
         if (mainApi === 'textgenerationwebui') return 'Text Completion';
         return mainApi || null;

@@ -121,23 +121,28 @@ export function _resolveStMsgByIndexOrId(change) {
     return null;
 }
 
+// Событие об обновлении сообщения — на каждое изменение, а вот само сохранение
+// чата (сериализация всего чата на диск) — один раз в конце applyChatChanges:
+// раньше bulk-правка из N сообщений делала N полных saveChat подряд.
 export async function _saveChatMessage(ctx, idx, msg) {
     try {
-        if (typeof ctx.saveChat === 'function') await ctx.saveChat();
-        else if (typeof window.saveChat === 'function') await window.saveChat();
         const es = ctx.eventSource || window.eventSource;
         const et = ctx.event_types || window.event_types;
         if (es && et?.MESSAGE_UPDATED) {
             es.emit(et.MESSAGE_UPDATED, idx);
         }
-    } catch(e) { console.warn('[ChatEdit] Save error:', e); }
+    } catch(e) { console.warn('[ChatEdit] Event error:', e); }
 }
 
 export async function _saveChatAfterDelete(ctx) {
+    // намеренно пусто: сохранение централизовано в конце applyChatChanges
+}
+
+async function _persistChat(ctx) {
     try {
         if (typeof ctx.saveChat === 'function') await ctx.saveChat();
         else if (typeof window.saveChat === 'function') await window.saveChat();
-    } catch(e) {}
+    } catch(e) { console.warn('[ChatEdit] Save error:', e); }
 }
 
 export function _refreshSTChatDOM(ctx) {
@@ -388,6 +393,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
     }
 
     if (successLog.length > 0) {
+        await _persistChat(ctx);
         setTimeout(() => _refreshSTChatDOM(ctx), 100);
         await logChatEditHistory(successLog, 'Applied', afterMsgId);
         toastr.success(`[Редактор чата] Применено изменений: ${successLog.length}.`, EXT_DISPLAY);

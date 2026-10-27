@@ -55,7 +55,9 @@ export function _mergeContent(baseText, atts) {
     else if (textPrefix) combinedText = textPrefix;
     else combinedText = baseText;
     
-    const imgBlocks = atts.filter(a => a.isImage && !a.sendAsText).map(a => ({ type: 'image_url', image_url: { url: a.dataUrl } }));
+    // Битый/импортированный dataUrl не должен ломать весь запрос (провайдеры
+    // отвечают 500 на невалидный image_url) — такое вложение пропускаем.
+    const imgBlocks = atts.filter(a => a.isImage && !a.sendAsText && typeof a.dataUrl === 'string' && /^(data:image\/|https?:|blob:)/i.test(a.dataUrl)).map(a => ({ type: 'image_url', image_url: { url: a.dataUrl } }));
     
     if (imgBlocks.length > 0) {
         return [...imgBlocks, { type: 'text', text: combinedText }];

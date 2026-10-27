@@ -3,9 +3,15 @@
 // Используется stream-renderer.js (см. там полный потоковый рендерер).
 
 // Лимит «копить хвост»: если pending длиннее этого — рендерим целиком, не дожидаясь
-// красивой границы. Страхует от pathological случаев (длинный абзац без \n\n,
-// древовидный code-fence).
+// красивой границы. Страхует от pathological случаев (длинный абзац без \n\n).
+// НЕ применяется к открытым code-fence: разрыв посередине фенса навсегда ломает
+// раскраску остатка сообщения (закрывающий ``` становится «открывающим»).
 export const MAX_PENDING_HOLD = 800;
+
+// Абсолютный предел ожидания закрытия code-fence: если модель пишет код-фенс
+// длиннее этого (или забыла закрыть), хвост коммитится как есть — рендерер
+// переводит DOM в режим «открытый фенс» и дописывает код в тот же <code>.
+export const MAX_FENCE_HOLD = 12000;
 
 /**
  * Находит индекс безопасной точки разрыва в `text` (для инкрементального рендера).
@@ -30,22 +36,31 @@ export function findSafeRenderBoundary(text) {
     // 1. Определяем, открыта ли code-fence: считаем количество ``` на строках-началах.
     //    Упрощённо: проходим по ```, toggle'им inFence.
     let inFence = false;
+    let fenceStart = -1;
     for (let i = 0; i < text.length - 2; i++) {
         if (text.charCodeAt(i) === 96 /* ` */
             && text.charCodeAt(i + 1) === 96
             && text.charCodeAt(i + 2) === 96) {
+            if (!inFence) fenceStart = i;
             inFence = !inFence;
             i += 2;
         }
     }
-    // Если fence ещё открыт — безопасно резать только на закрывающем ```.
-    // Пока он не пришёл — режем не внутри: ждём (return -1), если хвост короткий.
+    // Если fence ещё открыт — резать внутри него нельзя: закоммиченный «сырой»
+    // кусок навсегда останется текстом, а закрывающий ``` станет открывающим
+    // для всего остального (весь хвост сообщения превращается в код).
+    // Вместо этого коммитим текст ДО фенса по последнему \n\n перед ним…
     if (inFence) {
-        // есть ли ``` вообще в конце text? inFence=true значит, что последний ```
-        // был открывающим. Мы не режем, пока не закроется.
-        if (text.length < MAX_PENDING_HOLD) return -1;
-        // Если накопилось уже много — fallback к концу (полный рендер хвоста).
-        return text.length;
+        for (let i = fenceStart - 2; i >= 1; i--) {
+            if (text.charCodeAt(i) === 10 && text.charCodeAt(i + 1) === 10) {
+                return i + 2;
+            }
+        }
+        // …или ждём закрытия. Лимит MAX_FENCE_HOLD — страховка от бесконечного
+        // ожидания, если модель забыла закрыть фенс: коммитим как есть, рендерер
+        // откроет <code> и продолжит дописывать в него (см. stream-renderer).
+        if (text.length >= MAX_FENCE_HOLD) return text.length;
+        return -1;
     }
 
     // 2. Ищем последний `\n\n`.
@@ -59,9 +74,17 @@ export function findSafeRenderBoundary(text) {
             let j = afterIdx;
             while (j < text.length && (text.charCodeAt(j) === 32 || text.charCodeAt(j) === 9)) j++;
             const ch = text.charCodeAt(j);
-            const nextIsListItem = (ch === 42 /* * */ || ch === 45 /* - */)
+            let nextIsListItem = (ch === 42 /* * */ || ch === 45 /* - */ || ch === 43 /* + */)
                 && j + 1 < text.length
                 && (text.charCodeAt(j + 1) === 32 || text.charCodeAt(j + 1) === 9);
+            // Нумерованный пункт «2. » — тоже продолжение списка: иначе \n\n перед ним
+            // режет ol пополам и нумерация в стриме перезапускается с 1.
+            if (!nextIsListItem && ch >= 48 && ch <= 57) {
+                let k = j;
+                while (k < text.length && text.charCodeAt(k) >= 48 && text.charCodeAt(k) <= 57) k++;
+                nextIsListItem = k > j && text.charCodeAt(k) === 46 /* . */
+                    && (text.charCodeAt(k + 1) === 32 || text.charCodeAt(k + 1) === 9);
+            }
             if (!nextIsListItem) {
                 lastBoundary = i + 2; // режем после \n\n
             }
