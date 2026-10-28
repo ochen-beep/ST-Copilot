@@ -12619,6 +12619,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
   function handleEdit(wrapEl, msg) {
       if (wrapEl.classList.contains('is-editing')) return;
+      // The streaming epilogue writes msg.content and re-renders the body on
+      // completion — an edit made mid-generation would be silently clobbered.
+      if (state.generating) { toastr.info('Дождитесь завершения генерации.', EXT_DISPLAY); return; }
       wrapEl.classList.add('is-editing');
       const { charId, chatId } = getBindingKey();
       const session = getCurrentSession();
@@ -12675,17 +12678,23 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           if (msg.swipes && msg.swipeIndex !== undefined) msg.swipes[msg.swipeIndex].reasoning = msg.reasoning;
           const rBlock = wrapEl.querySelector('.scp-reasoning-block');
           if (!msg.reasoning) { rBlock?.remove(); return; }
+          let rc = null;
           if (rBlock) {
-              rBlock.querySelector('.scp-reasoning-content').innerHTML = renderMarkdown(msg.reasoning);
+              rc = rBlock.querySelector('.scp-reasoning-content');
+              rc.innerHTML = renderMarkdown(msg.reasoning);
           } else {
               const nb = document.createElement('details');
               nb.className = 'scp-reasoning-block';
               nb.innerHTML = `<summary class="scp-reasoning-summary">Размышления</summary><div class="scp-reasoning-content"></div>`;
-              nb.querySelector('.scp-reasoning-content').innerHTML = renderMarkdown(msg.reasoning);
+              rc = nb.querySelector('.scp-reasoning-content');
+              rc.innerHTML = renderMarkdown(msg.reasoning);
               const body = wrapEl.querySelector('.scp-msg-body');
               const contentNow = wrapEl.querySelector('.scp-msg-content');
               if (body && contentNow) body.insertBefore(nb, contentNow);
           }
+          // Without this, an ```html fence in edited reasoning renders as a bare
+          // placeholder div and its htmlBlockRegistry entry is never consumed.
+          postProcessHTMLBlocks(rc);
       };
 
       const restoreMessageDOM = (textToRender) => {
@@ -12732,7 +12741,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           ta.replaceWith(nc);
           row.remove();
           wrapEl.classList.remove('is-editing');
-          if (msg.toolCalls?.length) postProcessToolCalls(wrapEl, msg.toolCalls);
+          // Same fallback as _renderMsgBodyContent: messages without persisted
+          // toolCalls (older/imported) keep their cards via the flat re-parse,
+          // otherwise cancel/save leaves empty placeholder divs.
+          let liveTCs = msg.toolCalls;
+          if ((!liveTCs || !liveTCs.length) && resR.nextIndex > 0) {
+              liveTCs = parseToolCallsFromText((msg.content || '') + '\n' + (msg.reasoning || '')).map((tc, i) => ({
+                  id: `past_${i}`, name: tc.name, input: tc.input, status: 'done', result: 'Result hidden/expired'
+              }));
+          }
+          if (liveTCs?.length) postProcessToolCalls(wrapEl, liveTCs);
       };
 
       cancelBtn.addEventListener('click', () => {
@@ -12832,6 +12850,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
   }
 
   async function handleDelete(wrapEl, msg) {
+      // Deleting mid-generation truncates the session under the streaming epilogue,
+      // which then re-finds/re-writes messages by id — block it like handleEdit.
+      if (state.generating) { toastr.info('Дождитесь завершения генерации.', EXT_DISPLAY); return; }
       const isUser = msg.role === 'user';
       const confirmed = await showCustomDialog({
           type: 'confirm',
@@ -13614,6 +13635,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       
       // clean cache
       if (uiWdgMod) uiWdgMod.closeFavoritesPanel();
+      // A picker left open after a chat switch shows rows of the old chat; Apply
+      // would persist those indices into the new chat's session context.
+      closeChatPicker();
       
       const badge = document.getElementById('scp-char-badge');
       if (badge) {
