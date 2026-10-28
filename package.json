@@ -8,7 +8,8 @@
     "dev": "rollup -c -w",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "check": "vitest run && rollup -c && git diff --exit-code index.js"
   },
   "keywords": [],
   "author": "",
