@@ -259,25 +259,48 @@ function _stripTempMessages(bucket) {
     };
 }
 
+const _retryScheduled = new Set();
+const _warnedSaveFailed = new Set();
+
 export async function saveSessionFile(file_id, payload, useKeepalive = false) {
-    if (payload && !_filesWithContent.has(file_id) && !bucketHasContent(payload.bucket)) return true;
-    const ctx = SillyTavern.getContext();
-    try {
-        const jsonStr = JSON.stringify({ ...payload, bucket: _stripTempMessages(payload.bucket) });
-        const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
-        const res = await fetch('/api/files/upload', {
-            method: 'POST',
-            headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: file_id, data: b64 }),
-            keepalive: useKeepalive
-        });
-        if (res.ok) _filesWithContent.add(file_id);
-        return res.ok;
-    } catch (e) {
-        _dbgAdd('STORAGE_WRITE_FAILED', { file_id, error: e.message });
-        console.error(`[${EXT_DISPLAY}] saveSessionFile error:`, e);
-        return false;
-    }
+    const attempt = async () => {
+        if (payload && !_filesWithContent.has(file_id) && !bucketHasContent(payload.bucket)) return true;
+        const ctx = SillyTavern.getContext();
+        try {
+            const jsonStr = JSON.stringify({ ...payload, bucket: _stripTempMessages(payload.bucket) });
+            const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+            const res = await fetch('/api/files/upload', {
+                method: 'POST',
+                headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: file_id, data: b64 }),
+                keepalive: useKeepalive
+            });
+            if (res.ok) _filesWithContent.add(file_id);
+            return res.ok;
+        } catch (e) {
+            _dbgAdd('STORAGE_WRITE_FAILED', { file_id, error: e.message });
+            console.error(`[${EXT_DISPLAY}] saveSessionFile error:`, e);
+            return false;
+        }
+    };
+
+    const ok = await attempt();
+    if (ok) return true;
+
+    // One delayed retry: payload.bucket is the live bucket object, so the retry
+    // serializes current state rather than the moment of failure. A keepalive
+    // (unload) save cannot outlive a timer — retry regular saves only.
+    if (useKeepalive || _retryScheduled.has(file_id)) return false;
+    _retryScheduled.add(file_id);
+    setTimeout(async () => {
+        _retryScheduled.delete(file_id);
+        const retried = await attempt();
+        if (!retried && typeof toastr !== 'undefined' && !_warnedSaveFailed.has(file_id)) {
+            _warnedSaveFailed.add(file_id);
+            toastr.warning('Не удалось сохранить сессии Copilot на сервер. Изменения держатся в памяти и могут потеряться при закрытии страницы.', EXT_DISPLAY, { timeOut: 12000 });
+        }
+    }, 5000);
+    return false;
 }
 
 export async function deleteSessionFile(file_id) {
@@ -313,6 +336,18 @@ window.addEventListener('beforeunload', () => {
         if (typeof ctx?.saveSettings === 'function') ctx.saveSettings();
         else if (typeof window.saveSettings === 'function') window.saveSettings();
     } catch (_) {}
+});
+
+// Tab close/navigate almost always fires visibilitychange first, and regular
+// fetches are not capped at the 64 KiB keepalive body limit — flush there;
+// the beforeunload keepalive above stays as a fallback for small payloads.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden') return;
+    for (const [fileId, item] of _saveQueue.entries()) {
+        clearTimeout(item.timer);
+        _saveQueue.delete(fileId);
+        saveSessionFile(fileId, item.payload);
+    }
 });
 
 function _decodeBase64Utf8(b64) {
@@ -445,10 +480,13 @@ export async function initChatBucket({ forceReset = false } = {}) {
         return;
     }
 
+    // Await the flush: a fire-and-forget save races the load below when the same
+    // file is re-inited within the debounce window, and the stale disk read then
+    // gets adopted into memory and written back without the queued changes.
     for (const [fileId, item] of _saveQueue.entries()) {
         clearTimeout(item.timer);
         _saveQueue.delete(fileId);
-        saveSessionFile(fileId, item.payload);
+        await saveSessionFile(fileId, item.payload);
     }
 
     let meta = ctx.chatMetadata.st_copilot;
