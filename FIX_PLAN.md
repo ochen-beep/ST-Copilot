@@ -12,7 +12,7 @@
 
 ## Фаза 1 — P0 и острые P1
 
-- [ ] **1.1 (P0)** Двойное удаление сообщения: одиночный `delete` → паттерн `msg_indices`-ветки (splice + `_saveChatAfterDelete`, без `ctx.deleteMessage`) — `feature-chatedit-engine.js:359`
+- [x] **1.1 (P0)** Двойное удаление сообщения: одиночный `delete` → паттерн `msg_indices`-ветки (splice + `_saveChatAfterDelete`, без `ctx.deleteMessage`) — `feature-chatedit-engine.js:359` ✅ 2026-10-28: vitest 177/177 (новый регресс-тест), живая таверна: удаление ровно 1 из 4 сообщений через карточку proposals
 - [ ] **1.2 (P1)** Дубли tool-раундов: пушить только дельту раунда, компакция применяется и к запушенным `_tcTemp`; чистая функция + юнит-тест — `api.js:1300-1321`
 - [ ] **1.3 (P1)** Транспорт ≠ порча: `loadSessionFile` → `null` на HTTP-сбой, `false` только на порчу; recovery только на порчу — `session.js:356, 476`
 - [ ] **1.4 (P1)** Импорт `EXT_DISPLAY` в `ui-chat.js:682`

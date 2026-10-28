@@ -8288,9 +8288,12 @@ ${scopeHtml}
               const { idx, msg } = resolved;
 
               if (change.action === 'delete') {
+                  // Splice only: ctx.deleteMessage() splices ctx.chat again, which
+                  // removes the message that shifted into idx (same contract as the
+                  // msg_indices path). DOM + disk are handled by _refreshSTChatDOM
+                  // and _persistChat after the batch loop.
                   msgs.splice(idx, 1);
-                  if (typeof ctx.deleteMessage === 'function') ctx.deleteMessage(idx);
-                  else await _saveChatAfterDelete(ctx);
+                  await _saveChatAfterDelete(ctx);
                   successLog.push(change);
                   continue;
               }

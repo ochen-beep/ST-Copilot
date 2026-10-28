@@ -36,4 +36,20 @@ describe('applyChatChanges возвращает только применённ�
         expect(SillyTavern.getContext().chat).toHaveLength(2);
         expect(SillyTavern.getContext().chat[1].mes).toBe('rewritten');
     });
+
+    it('одиночный delete удаляет ровно одно сообщение при сплайсингом deleteMessage ядра ST', async () => {
+        const ctx = SillyTavern.getContext();
+        ctx.chat = [
+            { mes: 'm0', is_user: false },
+            { mes: 'm1', is_user: true },
+            { mes: 'm2', is_user: false },
+        ];
+        // Ядро ST внутри deleteMessage() само делает chat.splice(id, 1) над тем же
+        // массивом — движок не должен дублировать удаление.
+        ctx.deleteMessage = (i) => { ctx.chat.splice(i, 1); };
+        const applied = await applyChatChanges([{ action: 'delete', msg_index: 1 }]);
+        expect(applied).toHaveLength(1);
+        expect(ctx.chat).toHaveLength(2);
+        expect(ctx.chat.map(m => m.mes)).toEqual(['m0', 'm2']);
+    });
 });
