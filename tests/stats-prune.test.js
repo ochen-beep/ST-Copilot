@@ -17,7 +17,8 @@ beforeEach(() => {
     const ctx = SillyTavern.getContext();
     ctx.extensionSettings[EXT_KEY] = {};
     ctx.characterId = 5;
-    ctx.characters = [{ avatar: 'a.png', name: 'A' }];
+    ctx.characters = [];
+    ctx.characters[5] = { avatar: 'a.png', name: 'A' };
     ctx.chat = [];
 });
 
@@ -43,5 +44,15 @@ describe('подрезка бакетов статистики', () => {
 
         recordStat(0, 1);
         expect(Object.keys(settings().stats.g).length).toBe(101);
+    });
+});
+
+// Бакеты статистики ключуются на стабильный avatar (не индекс ростера).
+describe('ключ статистики персонажа', () => {
+    it('recordStat пишет в бакет по avatar', () => {
+        recordStat(0, 2);
+        const st = settings().stats;
+        expect(st.c['a.png']).toBeDefined();
+        expect(Object.keys(st.c)).not.toContain('5');
     });
 });

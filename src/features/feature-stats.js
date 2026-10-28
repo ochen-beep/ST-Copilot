@@ -1,4 +1,4 @@
-import { getSettings, saveSettings, getBindingKey } from '../session.js';
+import { getSettings, saveSettings, getBindingKey, getStableCharId } from '../session.js';
 import { escHtml, showCustomDialog } from '../utils/util-dom.js';
 import { EXT_DISPLAY } from '../constants.js';
 
@@ -56,7 +56,8 @@ export function recordStat(metricIdx, value = 1) {
         if (metricIdx < 0 || metricIdx >= _STAT_N || !value) return;
         const st = _ensureStats();
         const dk = _statDateKey();
-        const { charId, chatId } = getBindingKey();
+        const chatId = getBindingKey().chatId;
+        const charId = getStableCharId();
         const chk = `${charId}\x1f${chatId}`;
         const inc = obj => {
             if (!obj[dk]) obj[dk] = [0,0,0,0,0,0,0,0];
@@ -74,7 +75,8 @@ export function recordStat(metricIdx, value = 1) {
 
 export function _statGetObj(scope) {
     const st = _ensureStats();
-    const { charId, chatId } = getBindingKey();
+    const chatId = getBindingKey().chatId;
+    const charId = getStableCharId();
     if (scope === 'g') return st.g;
     if (scope === 'ch') return st.ch[`${charId}\x1f${chatId}`] || {};
     return st.c[charId] || {};

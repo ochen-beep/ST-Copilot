@@ -184,6 +184,14 @@ export function getBindingKey() {
     return { charId, chatId };
 }
 
+// Stable per-character key for persisted data (memories, stats): the roster
+// index shifts on delete/reorder, the avatar file name does not.
+export function getStableCharId() {
+    const ctx = SillyTavern.getContext();
+    const char = ctx.characters?.[ctx.characterId];
+    return char?.avatar || String(ctx.characterId ?? '');
+}
+
 // ─── Session Override System ─────────────────────────────────────────────────
 export function getSessionOverrides() {
     try { return getActiveSession(false)?.overrides || {}; } catch(_) { return {}; }

@@ -1,5 +1,5 @@
 import { EXT_DISPLAY, DEFAULT_MEMORY_PROMPT, MEMORY_FORMAT_BLOCK } from '../constants.js';
-import { getSettings, saveSettings, getCurrentSession, getBindingKey } from '../session.js';
+import { getSettings, saveSettings, getCurrentSession, getBindingKey, getStableCharId } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
 import { escHtml, showCustomDialog } from '../utils/util-dom.js';
 import { _ensureWrapped } from '../utils/util-text.js';
@@ -22,9 +22,7 @@ export function getMemories() {
 // avatar (the on-disk identity used everywhere else in this extension) rather
 // than ctx.characterId, which is a volatile roster index.
 function getMemoryCharKey() {
-    const ctx = SillyTavern.getContext();
-    const char = ctx.characters?.[ctx.characterId];
-    return char?.avatar || String(ctx.characterId ?? '');
+    return getStableCharId();
 }
 
 // One-time rewrite of index-keyed records to avatar keys. Records whose
