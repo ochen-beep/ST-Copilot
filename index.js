@@ -12274,6 +12274,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       }
 
       state.generating = true;
+      // Same reset as runGenerate/runContinue: a stale flag from a previously
+      // stopped generation suppresses the stall-watchdog error for this regen.
+      state.generationStopped = false;
       state.activeToolCalls = [];
       // Эпоха генерации — как в runGenerate: зомби-реген после смены чата не должен
       // снимать флаги уже начавшейся новой генерации в своём finally.
@@ -13600,6 +13603,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
   async function onChatChanged() {
       if (state.generating) {
           state.abortController?.abort();
+          // The abort alone does not stop tool rounds: the round loop checks
+          // generationStopped, not the (already nulled) controller. Without this
+          // flag a zombie generation keeps issuing paid API rounds for the old chat.
+          state.generationStopped = true;
           state.generating = false;
           setGeneratingState(false);
       }
