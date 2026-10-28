@@ -15760,49 +15760,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         return ctx.chat.slice(-depth).map((m, i) => extractData(m, total - depth + i));
     }
 
-    // Таймаут одного вызова инструмента: сетевые тулы (search_web/read_url) не должны
-    // вешать весь раунд. Константа вместо настройки — пока ни один сценарий не потребовал другого.
-    const TOOL_TIMEOUT_MS = 60000;
-
-    // ─── Журнал «последних отправленных» запросов (инспектор) ───
-    // Ключи с секретами вымываются по имени поля; длинные строки (base64-вложения)
-    // схлопываются в размер. Ключи API ST живут в заголовках — сюда они не попадают,
-    // регулярка подстраховывает custom-эндпоинты.
-    const _SECRET_KEY_RE = /pass(word)?$|password|secret|(^|_)token$|api[_-]?key|authorization/i;
-
-    function redactRequestBody(v, depth = 0) {
-        if (v == null || depth > 8) return v;
-        if (typeof v === 'string') {
-            return v.length > 4000 ? `… (${Math.round(v.length / 1024)} KB)` : v;
-        }
-        if (Array.isArray(v)) return v.map(x => redactRequestBody(x, depth + 1));
-        if (typeof v === 'object') {
-            const out = {};
-            for (const [k, val] of Object.entries(v)) {
-                out[k] = _SECRET_KEY_RE.test(k) ? '***REDACTED***' : redactRequestBody(val, depth + 1);
-            }
-            return out;
-        }
-        return v;
-    }
-
-    function logOutgoingRequest(url, body) {
-        try {
-            state.requestLog.push({ ts: Date.now(), url: String(url).split('?')[0].slice(0, 200), body: redactRequestBody(body) });
-            if (state.requestLog.length > 5) state.requestLog.shift();
-        } catch (_) {}
-    }
-
-    function withTimeout(promise, ms = TOOL_TIMEOUT_MS) {
-        return new Promise((resolve, reject) => {
-            const t = setTimeout(() => reject(new Error(`Tool did not respond within ${Math.round(ms / 1000)}s`)), ms);
-            promise.then(
-                v => { clearTimeout(t); resolve(v); },
-                e => { clearTimeout(t); reject(e); },
-            );
-        });
-    }
-
     async function assembleMessages(session, settings, pendingUserText, pendingAtts = null) {
         const messages = [{ role: 'system', content: await buildSystemContent(settings) }];
         const depth = Math.max(0, parseInt(settings.contextDepth) || 0);
@@ -15994,6 +15951,36 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
     // Патчим только собственные генерационные эндпоинты ST: любой другой код
     // (основной чат, другие расширения), чей запрос попадёт в окно патча, не должен
+
+    // ─── Журнал «последних отправленных» запросов (инспектор) ───
+    // Ключи с секретами вымываются по имени поля; длинные строки (base64-вложения)
+    // схлопываются в размер. Ключи API ST живут в заголовках — сюда они не попадают,
+    // регулярка подстраховывает custom-эндпоинты.
+    const _SECRET_KEY_RE = /pass(word)?$|password|secret|(^|_)token$|api[_-]?key|authorization/i;
+
+    function redactRequestBody(v, depth = 0) {
+        if (v == null || depth > 8) return v;
+        if (typeof v === 'string') {
+            return v.length > 4000 ? `… (${Math.round(v.length / 1024)} KB)` : v;
+        }
+        if (Array.isArray(v)) return v.map(x => redactRequestBody(x, depth + 1));
+        if (typeof v === 'object') {
+            const out = {};
+            for (const [k, val] of Object.entries(v)) {
+                out[k] = _SECRET_KEY_RE.test(k) ? '***REDACTED***' : redactRequestBody(val, depth + 1);
+            }
+            return out;
+        }
+        return v;
+    }
+
+    function logOutgoingRequest(url, body) {
+        try {
+            state.requestLog.push({ ts: Date.now(), url: String(url).split('?')[0].slice(0, 200), body: redactRequestBody(body) });
+            if (state.requestLog.length > 5) state.requestLog.shift();
+        } catch (_) {}
+    }
+
     // ни попадать в журнал инспектора, ни получать переписанное тело.
     const _GEN_BACKEND_RE = /\/api\/backends\/(chat-completions|text-completions)\/(generate|caption-image)(?:\?|$)/;
 
@@ -16049,9 +16036,20 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         }
     }
 
-    // ask_user ждёт живого человека: без внешних гвардов неотправленный ответ или
-    // чат-свитч оставляли runGenerate висеть навсегда с залипшим state.generating.
-    const ASK_USER_TIMEOUT_MS = 300000;
+    // Таймаут одного вызова инструмента: сетевые тулы (search_web/read_url) не должны
+    // вешать весь раунд. Константа вместо настройки — пока ни один сценарий не потребовал другого.
+    const TOOL_TIMEOUT_MS = 60000;
+
+
+    function withTimeout(promise, ms = TOOL_TIMEOUT_MS) {
+        return new Promise((resolve, reject) => {
+            const t = setTimeout(() => reject(new Error(`Tool did not respond within ${Math.round(ms / 1000)}s`)), ms);
+            promise.then(
+                v => { clearTimeout(t); resolve(v); },
+                e => { clearTimeout(t); reject(e); },
+            );
+        });
+    }
 
     async function awaitAskUserAnswer(askPromise) {
         return new Promise((resolve) => {
