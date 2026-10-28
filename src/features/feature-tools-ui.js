@@ -160,12 +160,27 @@ export function setupToolsSettingsUI() {
 }
 
 let askUserResolve = null;
+let askUserWrap = null;
+
+// Resolves a pending ask_user without an answer. Called when the question is
+// superseded by a new one; generation stop / chat switch are covered by the
+// generationStopped polling in the api.js round executor.
+export function cancelPendingAskUser(reason = 'cancelled') {
+    if (!askUserResolve) return;
+    const r = askUserResolve;
+    askUserResolve = null;
+    askUserWrap?.remove();
+    askUserWrap = null;
+    r({ __ask_cancelled: true, reason });
+}
 
 export async function executeAskUser(input, msgEl) {
     const question = input.question || 'Есть ли у вас дополнительная информация?';
     const context = input.context || '';
     return new Promise(resolve => {
+        cancelPendingAskUser('superseded');
         askUserResolve = resolve;
+        askUserWrap = null; // re-assigned below once built
         const wrap = document.createElement('div');
         wrap.className = 'scp-tool-ask-wrap';
         if (context) {
@@ -193,13 +208,15 @@ export async function executeAskUser(input, msgEl) {
             _dbgAdd('ASK_USER_SUBMIT', { question, answer });
 
             wrap.remove();
-            resolve(answer);
+            askUserWrap = null;
             askUserResolve = null;
+            resolve(answer);
         });
         inp.addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); btn.click(); }
         });
         wrap.appendChild(btn);
+        askUserWrap = wrap;
         const body = msgEl?.querySelector('.scp-msg-body');
         if (body) body.appendChild(wrap);
         inp.focus();

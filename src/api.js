@@ -515,6 +515,28 @@ function _unpatchFetchForGeneration() {
     }
 }
 
+// ask_user ждёт живого человека: без внешних гвардов неотправленный ответ или
+// чат-свитч оставляли runGenerate висеть навсегда с залипшим state.generating.
+const ASK_USER_TIMEOUT_MS = 300000;
+
+async function awaitAskUserAnswer(askPromise) {
+    return new Promise((resolve) => {
+        let settled = false;
+        const finish = (v) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            clearInterval(poll);
+            resolve(v);
+        };
+        const timer = setTimeout(() => finish({ __ask_timeout: true }), ASK_USER_TIMEOUT_MS);
+        const poll = setInterval(() => {
+            if (state.generationStopped) finish({ __ask_cancelled: true });
+        }, 500);
+        askPromise.then(finish);
+    });
+}
+
 async function _callGenerateInner(session, settings, pendingText, onChunk, nativeTools = false) {
     const ctx = SillyTavern.getContext();
     const messages = await assembleMessages(session, settings, pendingText);
@@ -1245,8 +1267,17 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                                 entry.result = { warning: 'ask_user requires streaming to be enabled.' };
                                 entry.status = 'warning';
                             } else {
-                                entry.result = await executeAskUser(res, streamMsgEl);
-                                entry.status = 'done';
+                                const answer = await awaitAskUserAnswer(executeAskUser(res, streamMsgEl));
+                                if (answer?.__ask_timeout) {
+                                    entry.result = { error: 'Пользователь не ответил за 5 минут.' };
+                                    entry.status = 'warning';
+                                } else if (answer?.__ask_cancelled) {
+                                    entry.result = { error: `Ожидание ответа прервано (${answer.reason}).` };
+                                    entry.status = 'error';
+                                } else {
+                                    entry.result = answer;
+                                    entry.status = 'done';
+                                }
                             }
                         } else {
                             entry.result = res;

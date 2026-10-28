@@ -11192,10 +11192,28 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
       }
   }
 
+  let askUserResolve = null;
+  let askUserWrap = null;
+
+  // Resolves a pending ask_user without an answer. Called when the question is
+  // superseded by a new one; generation stop / chat switch are covered by the
+  // generationStopped polling in the api.js round executor.
+  function cancelPendingAskUser(reason = 'cancelled') {
+      if (!askUserResolve) return;
+      const r = askUserResolve;
+      askUserResolve = null;
+      askUserWrap?.remove();
+      askUserWrap = null;
+      r({ __ask_cancelled: true, reason });
+  }
+
   async function executeAskUser(input, msgEl) {
       const question = input.question || 'Есть ли у вас дополнительная информация?';
       const context = input.context || '';
       return new Promise(resolve => {
+          cancelPendingAskUser('superseded');
+          askUserResolve = resolve;
+          askUserWrap = null; // re-assigned below once built
           const wrap = document.createElement('div');
           wrap.className = 'scp-tool-ask-wrap';
           if (context) {
@@ -11223,12 +11241,15 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
               _dbgAdd('ASK_USER_SUBMIT', { question, answer });
 
               wrap.remove();
+              askUserWrap = null;
+              askUserResolve = null;
               resolve(answer);
           });
           inp.addEventListener('keydown', e => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); btn.click(); }
           });
           wrap.appendChild(btn);
+          askUserWrap = wrap;
           const body = msgEl?.querySelector('.scp-msg-body');
           if (body) body.appendChild(wrap);
           inp.focus();
@@ -11237,6 +11258,7 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
 
   var featureToolsUi = /*#__PURE__*/Object.freeze({
     __proto__: null,
+    cancelPendingAskUser: cancelPendingAskUser,
     createToolCallEl: createToolCallEl,
     executeAskUser: executeAskUser,
     postProcessToolCalls: postProcessToolCalls,
@@ -15860,6 +15882,28 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       }
   }
 
+  // ask_user ждёт живого человека: без внешних гвардов неотправленный ответ или
+  // чат-свитч оставляли runGenerate висеть навсегда с залипшим state.generating.
+  const ASK_USER_TIMEOUT_MS = 300000;
+
+  async function awaitAskUserAnswer(askPromise) {
+      return new Promise((resolve) => {
+          let settled = false;
+          const finish = (v) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              clearInterval(poll);
+              resolve(v);
+          };
+          const timer = setTimeout(() => finish({ __ask_timeout: true }), ASK_USER_TIMEOUT_MS);
+          const poll = setInterval(() => {
+              if (state.generationStopped) finish({ __ask_cancelled: true });
+          }, 500);
+          askPromise.then(finish);
+      });
+  }
+
   async function _callGenerateInner(session, settings, pendingText, onChunk, nativeTools = false) {
       const ctx = SillyTavern.getContext();
       const messages = await assembleMessages(session, settings, pendingText);
@@ -16590,8 +16634,17 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                                   entry.result = { warning: 'ask_user requires streaming to be enabled.' };
                                   entry.status = 'warning';
                               } else {
-                                  entry.result = await executeAskUser(res, streamMsgEl);
-                                  entry.status = 'done';
+                                  const answer = await awaitAskUserAnswer(executeAskUser(res, streamMsgEl));
+                                  if (answer?.__ask_timeout) {
+                                      entry.result = { error: 'Пользователь не ответил за 5 минут.' };
+                                      entry.status = 'warning';
+                                  } else if (answer?.__ask_cancelled) {
+                                      entry.result = { error: `Ожидание ответа прервано (${answer.reason}).` };
+                                      entry.status = 'error';
+                                  } else {
+                                      entry.result = answer;
+                                      entry.status = 'done';
+                                  }
                               }
                           } else {
                               entry.result = res;
