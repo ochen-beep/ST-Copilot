@@ -7156,6 +7156,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       return result;
   }
 
+  // A single memory value injected wholesale into every prompt — bound it.
+  const MEMORY_VALUE_CAP = 4000;
+
   function genMemoryId() { 
       return 'mem_' + Date.now() + '_' + Math.random().toString(36).slice(2,6); 
   }
@@ -7163,11 +7166,53 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
   function getMemories() {
       const s = getSettings();
       if (!s.memories || typeof s.memories !== 'object') s.memories = {};
+      migrateMemoryCharKeys(s);
       return s.memories;
   }
 
+  // Memory records persist across roster changes, so they key on the character's
+  // avatar (the on-disk identity used everywhere else in this extension) rather
+  // than ctx.characterId, which is a volatile roster index.
+  function getMemoryCharKey() {
+      const ctx = SillyTavern.getContext();
+      const char = ctx.characters?.[ctx.characterId];
+      return char?.avatar || String(ctx.characterId ?? '');
+  }
+
+  // One-time rewrite of index-keyed records to avatar keys. Records whose
+  // character no longer resolves keep the old key and stay invisible instead of
+  // silently attaching to whoever now occupies that roster slot.
+  function migrateMemoryCharKeys(s) {
+      if (s.memKeyMigrated) return;
+      const ctx = SillyTavern.getContext();
+      // Early-init callers (memory dot) run before the roster loads — without this
+      // guard the pass would find no characters, rewrite nothing and lock itself
+      // out with the flag.
+      if (!Array.isArray(ctx.characters) || ctx.characters.length === 0) return;
+      s.memKeyMigrated = true;
+      try {
+          let changed = false;
+          for (const mem of Object.values(s.memories)) {
+              if (mem.scope === 'global' || !mem.charId) continue;
+              const idx = Number(mem.charId);
+              if (!Number.isInteger(idx) || !ctx.characters?.[idx]) continue;
+              const char = ctx.characters[idx];
+              // Identity check: charName was captured at creation. A mismatch means
+              // the roster shifted since then — leave the record orphaned rather
+              // than attach it to a different character now holding that index.
+              if (!char.avatar || (mem.charName && mem.charName !== char.name)) continue;
+              if (char.avatar !== mem.charId) {
+                  mem.charId = char.avatar;
+                  changed = true;
+              }
+          }
+          if (changed) saveSettings$1({ quiet: true });
+      } catch (_) {}
+  }
+
   function getVisibleMemories() {
-      const { charId, chatId } = getBindingKey();
+      const { chatId } = getBindingKey();
+      const charId = getMemoryCharKey();
       const sessionId = getCurrentSession()?.id;
       const all = Object.values(getMemories());
       
@@ -7185,7 +7230,8 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
   }
 
   function addMemory(key, value, scope = 'character') {
-      const { charId, chatId } = getBindingKey();
+      const { chatId } = getBindingKey();
+      const charId = getMemoryCharKey();
       const ctx = SillyTavern.getContext();
       const charName = ctx.characters?.[charId]?.name || charId || 'Неизвестный персонаж';
       const chatName = chatId || 'Неизвестный чат';
@@ -7305,9 +7351,16 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           if (ch.action === 'add' && ch.key && ch.value) {
               const targetScope = ['global', 'character', 'chat', 'session'].includes(ch.scope) ? ch.scope : 'character';
               const mem = getVisibleMemories().find(m => m.scope === targetScope && m.key === ch.key);
-              
+
               if (mem) {
-                  const newVal = mem.value + '\n' + ch.value;
+                  // Re-emitted adds used to append forever, inflating every prompt.
+                  // Skip exact duplicates; cap the value keeping the newest tail.
+                  if (mem.value.split('\n').includes(ch.value)) {
+                      applied.push({ action: 'update', key: ch.key, value: mem.value });
+                      continue;
+                  }
+                  let newVal = mem.value + '\n' + ch.value;
+                  if (newVal.length > MEMORY_VALUE_CAP) newVal = '…' + newVal.slice(-MEMORY_VALUE_CAP);
                   updateMemory(mem.id, ch.key, newVal);
                   applied.push({ action: 'update', key: ch.key, value: newVal });
               } else {
