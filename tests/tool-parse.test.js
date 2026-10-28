@@ -133,3 +133,23 @@ describe('findToolCallCut — точка обрыва после tool_call', () 
         expect(text.slice(cut)).toBe('\nТеперь отвечу.');
     });
 });
+
+// extractToolCallPlaceholders
+// (плоский ре-парсинг в _renderMsgBodyContent использует тот же парсер —
+// расхождение числа слотов сдвигает карточки).
+import { extractToolCallPlaceholders } from '../src/ui/render-msg.js';
+
+describe('extractToolCallPlaceholders — слоты по факту парсинга', () => {
+    it('слоты равны числу вызовов плоского ре-парсинга (включая мусорные фенсы)', () => {
+        const text = '```tool_call' + '\n{"name": "search_chat", "input": {}}\n```\n' + '```tool_call' + '\nмусор без json\n```\n' + '```tool_call' + '\n{"name": "get_chat_stats", "input": {}}\n```';
+        const { nextIndex } = extractToolCallPlaceholders(text, 0);
+        expect(nextIndex).toBe(parseToolCallsFromText(text).length);
+    });
+
+    it('валидные фенсы нумеруются подряд', () => {
+        const text = 'a\n' + '```tool_call' + '\n{"name": "search_chat", "input": {}}\n```\n' + 'b\n' + '```tool_call' + '\n{"name": "search_chat", "input": {}}\n```';
+        const { text: out, nextIndex } = extractToolCallPlaceholders(text, 5);
+        expect(nextIndex).toBe(7);
+        expect(out.match(/\x00TC_\d+\x00/g)).toHaveLength(2);
+    });
+});

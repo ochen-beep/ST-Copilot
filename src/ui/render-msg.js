@@ -364,7 +364,7 @@ export function extractToolCallPlaceholders(text, startIndex = 0) {
     result = result.replace(/```tool_call\n?([\s\S]*?)```/gi, (match, inner) => {
         const blockTcs = parseToolCallsFromText(`\`\`\`tool_call\n${inner}\n\`\`\``);
         let phs = '';
-        const count = Math.max(1, blockTcs.length);
+        const count = blockTcs.length; // no inflation: empty fences must not consume slots
         for (let i = 0; i < count; i++) {
             phs += `\x00TC_${tcIndex++}\x00`;
         }
@@ -374,7 +374,7 @@ export function extractToolCallPlaceholders(text, startIndex = 0) {
     result = result.replace(/```tool_call\n?([\s\S]*)$/gi, (match, inner) => {
         const blockTcs = parseToolCallsFromText(`\`\`\`tool_call\n${inner}\n\`\`\``);
         let phs = '';
-        const count = Math.max(1, blockTcs.length);
+        const count = blockTcs.length; // no inflation: empty fences must not consume slots
         for (let i = 0; i < count; i++) {
             phs += `\x00TC_${tcIndex++}\x00`;
         }
