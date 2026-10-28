@@ -13,8 +13,8 @@
 ## Фаза 1 — P0 и острые P1
 
 - [x] **1.1 (P0)** Двойное удаление сообщения: одиночный `delete` → паттерн `msg_indices`-ветки (splice + `_saveChatAfterDelete`, без `ctx.deleteMessage`) — `feature-chatedit-engine.js:359` ✅ 2026-10-28: vitest 177/177 (новый регресс-тест), живая таверна: удаление ровно 1 из 4 сообщений через карточку proposals
-- [ ] **1.2 (P1)** Дубли tool-раундов: пушить только дельту раунда, компакция применяется и к запушенным `_tcTemp`; чистая функция + юнит-тест — `api.js:1300-1321`
-- [ ] **1.3 (P1)** Транспорт ≠ порча: `loadSessionFile` → `null` на HTTP-сбой, `false` только на порчу; recovery только на порчу — `session.js:356, 476`
+- [x] **1.2 (P1)** Дубли tool-раундов — ❌ **ложное срабатывание ревью**, фикс не требуется. Живая проверка 2026-10-28 (перехват тел запросов, 2 tool-раунда): 3 запроса содержали 4 → 6 → 8 сообщений, по одной паре assistant/tool_results на раунд, дублей `tool_call_id` нет. Причина ошибки ревью: не учтён `session.messages.filter(m => !m._tcTemp)` в конце каждого раунда (`api.js:1370`)
+- [x] **1.3 (P1)** Транспорт ≠ порча: `loadSessionFile` → контракт `object/null/false` (порча — только непарсящийся payload, с .corrupt-бэкапом), транспортные сбои бросают; `initChatBucket` через `safeLoad`/`abortIfTransport` прерывается без записей. ✅ 2026-10-28: vitest 184/184 (новый storage-transport.test.js, 7 тестов), живая таверна: fetch→503 + CHAT_CHANGED даёт тост-предупреждение, 0 записей, метаданные нетронуты; восстановление — штатная загрузка без recovery
 - [ ] **1.4 (P1)** Импорт `EXT_DISPLAY` в `ui-chat.js:682`
 - [ ] **1.5 (P1)** Инвалидация промпта в ветках `saveCharacterField` (authors_note/persona/evolutia) — `feature-character-engine.js:527+`
 - [ ] **1.6 (P1)** `onChatChanged` → `generationStopped = true`; сброс флага в `_runSwipeRegen` — `ui-chat.js:2167, 842`

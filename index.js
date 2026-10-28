@@ -1883,39 +1883,52 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       }
   }
 
+  // Контракт результата loadSessionFile:
+  //   payload object — файл прочитан и распарсен;
+  //   null           — файла нет (404) или он пуст;
+  //   false          — файл ЕСТЬ, но содержимое непарсится (порча; .corrupt-бэкап сделан).
+  // Транспортные сбои (сеть, 5xx, HTML вместо данных) бросают исключение, а не
+  // сворачиваются в false: recovery-ветка initChatBucket имеет право запускаться
+  // только на порчу, иначе один 502 навсегда заменяет хранилище сессий пустым файлом.
   async function loadSessionFile(file_id, { expectBucket = false } = {}) {
+      let res;
       try {
-          const res = await fetch(`/user/files/${file_id}`);
-          if (res.status === 404) return null;
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-          const text = await res.text();
-          const trimmed = text.trim();
-          if (!trimmed) return null;
-
-          if (trimmed.startsWith('<') || trimmed.startsWith('<!DOCTYPE')) {
-              _dbgAdd('STORAGE_LOAD_HTML_REDIRECT', { file_id });
-              return null;
-          }
-
-          const parsed = _tryParseSessionPayload(trimmed);
-          if (parsed === undefined) {
-              await _backupCorruptedFile(file_id, trimmed);
-              throw new Error('Unrecoverable payload after base64/repair fallback');
-          }
-          // Файл парсится, но это не bucket сессий: та же порча, просто валидный JSON.
-          // Бэкапим так же, иначе следующая запись молча затрёт данные.
-          if (expectBucket && !parsed?.bucket) {
-              _dbgAdd('STORAGE_SHAPE_INVALID', { file_id, keys: Object.keys(parsed || {}) });
-              await _backupCorruptedFile(file_id, trimmed);
-              throw new Error('Payload parsed but has no sessions bucket');
-          }
-          return parsed;
+          res = await fetch(`/user/files/${file_id}`);
       } catch (e) {
-          _dbgAdd('STORAGE_LOAD_ERROR', { file_id, error: e.message });
-          console.error(`[${EXT_DISPLAY$1}] loadSessionFile error:`, e);
-          return false; 
+          _dbgAdd('STORAGE_LOAD_TRANSPORT', { file_id, error: e.message });
+          throw new Error(`Session storage unreachable: ${e.message}`);
       }
+      if (res.status === 404) return null;
+      if (!res.ok) {
+          _dbgAdd('STORAGE_LOAD_HTTP', { file_id, status: res.status });
+          throw new Error(`Session storage HTTP ${res.status}`);
+      }
+
+      const text = await res.text();
+      const trimmed = text.trim();
+      if (!trimmed) return null;
+
+      // HTML вместо JSON: редирект на логин или заглушка сервера. Поверх такого
+      // ответа писать нельзя — приравниваем к транспортному сбою.
+      if (trimmed.startsWith('<') || trimmed.startsWith('<!DOCTYPE')) {
+          _dbgAdd('STORAGE_LOAD_HTML_REDIRECT', { file_id });
+          throw new Error('Session storage returned HTML instead of data');
+      }
+
+      const parsed = _tryParseSessionPayload(trimmed);
+      if (parsed === undefined) {
+          await _backupCorruptedFile(file_id, trimmed);
+          _dbgAdd('STORAGE_LOAD_CORRUPT', { file_id });
+          return false;
+      }
+      // Файл парсится, но это не bucket сессий: та же порча, просто валидный JSON.
+      // Бэкапим так же, иначе следующая запись молча затрёт данные.
+      if (expectBucket && !parsed?.bucket) {
+          _dbgAdd('STORAGE_SHAPE_INVALID', { file_id, keys: Object.keys(parsed || {}) });
+          await _backupCorruptedFile(file_id, trimmed);
+          return false;
+      }
+      return parsed;
   }
 
   async function initChatBucket({ forceReset = false } = {}) {
@@ -1924,6 +1937,27 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       const ctx = SillyTavern.getContext();
       if (!ctx.chatMetadata) ctx.chatMetadata = {};
       const { charId, chatId } = getBindingKey();
+
+      // Transport failure (network/5xx/HTML) must abort the whole init: treating it
+      // as "no data" would overwrite an unread bucket, and as "corrupt" would swap
+      // the store for an empty recovery file. Neither file id nor metadata may move.
+      let transportError = null;
+      const safeLoad = async (fileId, opts) => {
+          try {
+              return await loadSessionFile(fileId, opts);
+          } catch (e) {
+              transportError = transportError || e;
+              return null;
+          }
+      };
+      const abortIfTransport = () => {
+          if (!transportError) return false;
+          _dbgAdd('STORAGE_INIT_TRANSPORT_ABORT', { chatId, error: transportError.message });
+          if (typeof toastr !== 'undefined') {
+              toastr.warning('Хранилище сессий недоступно (сервер не ответил). Сессии не изменялись — повторите открытие чата, когда сервер ответит.', EXT_DISPLAY$1, { timeOut: 12000 });
+          }
+          return true;
+      };
 
       // Сменa чата/персонажа/ветки = полностью новые входы buildSystemContent.
       // Бампаем сразу, до любых ранних return'ов ниже, чтобы кэш гарантированно сбрасывался.
@@ -1954,12 +1988,12 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       if (meta && meta.file_id && meta.format === 'v4') {
           if (meta.chat_id === chatId) {
               targetFileId = meta.file_id;
-              payload = await loadSessionFile(targetFileId, { expectBucket: true });
-              if (isStale()) return;
+              payload = await safeLoad(targetFileId, { expectBucket: true });
+              if (abortIfTransport() || isStale()) return;
           } else {
               _dbgAdd('STORAGE_CHAT_BRANCH_DETECTED', { oldChatId: meta.chat_id, newChatId: chatId });
-              payload = await loadSessionFile(meta.file_id);
-              if (isStale()) return;
+              payload = await safeLoad(meta.file_id);
+              if (abortIfTransport() || isStale()) return;
               targetFileId = `copilot_sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.json`;
 
               if (payload && payload !== false) {
@@ -1975,12 +2009,12 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           _dbgAdd('STORAGE_MIGRATION_V4_INIT', { targetFileId });
 
           const safeChatId = chatId.replace(/[^a-zA-Z0-9_-]/g, '_');
-          payload = await loadSessionFile(`copilot_sess_${safeChatId}.json`);
-          if (isStale()) return;
+          payload = await safeLoad(`copilot_sess_${safeChatId}.json`);
+          if (abortIfTransport() || isStale()) return;
 
           if (!payload && meta && meta.file_id && meta.format !== 'v4') {
-              payload = await loadSessionFile(meta.file_id);
-              if (isStale()) return;
+              payload = await safeLoad(meta.file_id);
+              if (abortIfTransport() || isStale()) return;
           }
 
           if (!payload) {
