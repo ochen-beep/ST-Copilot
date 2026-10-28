@@ -1,0 +1,361 @@
+/* ponytail: transition: all заставлял компоситор диффить все свойства каждый
+   кадр; разрешены только визуальные. Новое анимируемое свойство — добавить сюда. */
+:root {
+    --scp-tr-props: color, background-color, border-color, outline-color, opacity, transform, box-shadow, fill, stroke;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ST-COPILOT — style.css
+   Theme variables applied via JS applyCustomTheme().
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Base Variable Defaults ──────────────────────────────────── */
+
+.scp-window {
+    --scp-bg:          rgb(18,18,22);
+    --scp-border:      1px solid rgba(255,255,255,0.09);
+    --scp-shadow:      0 2px 8px rgba(0,0,0,0.4);
+    --scp-warning:     #ffb432;
+    --scp-text:        #e2e2e6;
+    --scp-text-muted:  #72728a;
+    --scp-accent:      #7c6dfa;
+    --scp-accent-dim:  rgba(124,109,250,0.45);
+    --scp-accent-bg:   rgba(124,109,250,0.12);
+    --scp-header-bg:   rgba(255,255,255,0.04);
+    --scp-toolbar-bg:  rgba(0,0,0,0.25);
+    --scp-msg-user-bg: rgba(124,109,250,0.10);
+    --scp-msg-ai-bg:   rgba(255,255,255,0.03);
+    --scp-input-bg:    rgba(0,0,0,0.30);
+    --scp-code-bg:     rgba(0,0,0,0.35);
+    --scp-font:        var(--primaryFontFamily, 'Segoe UI', system-ui, sans-serif);
+    --scp-font-mono:   var(--monospaceFontFamily, 'Consolas', monospace);
+    --scp-font-size:   13px;
+    --scp-radius:      10px;
+    --scp-danger:      #ff5c5c;
+    --scp-success:     #4caf7d;
+}
+
+/* ── Base Window ─────────────────────────────────────────────── */
+
+.scp-window {
+    position: fixed;
+    top: 80px; right: 24px;
+    width: 440px; height: 600px;
+    min-width: 380px; min-height: 300px;
+    background: var(--scp-bg);
+    border: var(--scp-border);
+    border-radius: var(--scp-radius);
+    box-shadow: var(--scp-shadow);
+    display: flex;
+    flex-direction: column;
+    z-index: 9900;
+    overflow: hidden;
+    color: var(--scp-text);
+    font-family: var(--scp-font);
+    font-size: 13px;
+    line-height: 1.5;
+    transition: opacity 0.2s;
+}
+.scp-window.scp-dragging,
+.scp-window.scp-resizing {
+    will-change: left, top, width, height, transform;
+    transition: none;
+    user-select: none;
+}
+.scp-window.scp-dragging { cursor: grabbing; }
+.scp-window.scp-dragging * { pointer-events: none; }
+.scp-window.scp-resizing * { pointer-events: none; }
+.scp-window:not(.scp-dragging):not(.scp-resizing) {}
+
+.scp-window *::-webkit-scrollbar { width: 5px; height: 5px; }
+.scp-window *::-webkit-scrollbar-track { background: transparent; }
+.scp-window *::-webkit-scrollbar-thumb { background: var(--scp-text-muted); border-radius: 3px; }
+.scp-window *::-webkit-scrollbar-corner { background: transparent; }
+
+/* ── Resize Handles ──────────────────────────────────────────── */
+
+.scp-rh { position: absolute; z-index: 10; }
+.scp-rh-n  { top:0; left:6px; right:6px; height:4px; cursor:n-resize; }
+.scp-rh-s  { bottom:0; left:6px; right:6px; height:4px; cursor:s-resize; }
+.scp-rh-e  { right:0; top:6px; bottom:6px; width:4px; cursor:e-resize; }
+.scp-rh-w  { left:0; top:6px; bottom:6px; width:4px; cursor:w-resize; }
+.scp-rh-ne { top:0; right:0; width:10px; height:10px; cursor:ne-resize; }
+.scp-rh-se { bottom:0; right:0; width:10px; height:10px; cursor:se-resize; }
+.scp-rh-sw { bottom:0; left:0; width:10px; height:10px; cursor:sw-resize; }
+.scp-rh-nw { top:0; left:0; width:10px; height:10px; cursor:nw-resize; }
+
+/* ── Header ──────────────────────────────────────────────────── */
+
+.scp-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 12px 9px 14px;
+    background: var(--scp-header-bg);
+    border-bottom: var(--scp-border);
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+    gap: 8px;
+}
+.scp-header:active { cursor: grabbing; }
+.scp-header-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 1; overflow: visible; }
+/* Compact context widget (depth slider + value) embedded in the header. */
+.scp-ctx-widget { display: flex; align-items: center; gap: 4px; flex-shrink: 1; min-width: 0; }
+.scp-char-badge {
+    display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 20px;
+    background: var(--scp-accent-bg); color: var(--scp-accent);
+    border: 1px solid var(--scp-accent-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;
+    flex-shrink: 0;
+}
+.scp-header-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+.scp-hbtn {
+    background: none; border: none; color: var(--scp-text-muted); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 5px;
+    transition: color 0.15s, background 0.15s; padding: 0;
+}
+.scp-hbtn:hover { color: var(--scp-text); background: rgba(255,255,255,0.07); }
+.scp-hbtn-close:hover { color: var(--scp-danger); background: rgba(255,92,92,0.1); }
+
+.scp-opacity-wrap { position: relative; display: flex; }
+
+/* ── Ghost Mode ──────────────────────────────────────────────── */
+
+.scp-window.scp-ghost-mode {
+    pointer-events: none !important;
+    transition: opacity 0.4s ease !important;
+}
+
+.scp-window.scp-ghost-mode .scp-hbtn-ghost {
+    pointer-events: auto !important;
+}
+
+.scp-hbtn-ghost {
+    transition: color 0.15s, background 0.15s, transform 0.15s, opacity 0.4s !important;
+}
+
+.scp-hbtn-ghost:hover {
+    color: var(--scp-accent) !important;
+    background: var(--scp-accent-bg) !important;
+}
+
+.scp-hbtn-ghost.active {
+    color: var(--scp-accent) !important;
+    background: var(--scp-accent-bg) !important;
+    border: 1px solid var(--scp-accent-dim) !important;
+    border-radius: 5px;
+    animation: scp-ghost-bob 6s ease-in-out infinite !important;
+}
+
+.scp-window.scp-ghost-mode .scp-hbtn-ghost {
+    opacity: 1 !important;
+    color: var(--scp-accent) !important;
+    background: var(--scp-accent-bg) !important;
+    border: 1px solid var(--scp-accent-dim) !important;
+    box-shadow: 0 0 8px var(--scp-accent-dim) !important;
+}
+
+.scp-window.scp-ghost-mode .scp-hbtn-ghost:hover {
+    opacity: 1 !important;
+    box-shadow: 0 0 14px var(--scp-accent) !important;
+    animation-play-state: paused !important;
+}
+
+@keyframes scp-ghost-bob {
+    0%   { transform: translateY(0)    rotate(0deg);   }
+    25%  { transform: translateY(-4px) rotate(-6deg);  }
+    50%  { transform: translateY(0)    rotate(0deg);   }
+    75%  { transform: translateY(-3px) rotate(5deg);   }
+    100% { transform: translateY(0)    rotate(0deg);   }
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────── */
+
+/* ── Session Dropdown ────────────────────────────────────────── */
+
+.scp-sess-wrap { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 120px; }
+.scp-sess-dropdown { position: relative; flex: 1 1 auto; min-width: 60px; max-width: 500px; }
+
+.scp-sess-trigger {
+    width: 100%; display: flex; align-items: center; gap: 4px;
+    background: var(--scp-input-bg); border: var(--scp-border);
+    border-radius: 6px; color: var(--scp-text); font-size: 11px;
+    padding: 0 6px; cursor: pointer; transition-property: var(--scp-tr-props); transition-duration: 0.15s;
+    font-family: var(--scp-font); height: 26px; box-sizing: border-box;
+    user-select: none; min-width: 26px;
+}
+.scp-sess-trigger:hover,
+.scp-sess-trigger.open {
+    border-color: var(--scp-accent-dim);
+    background: var(--scp-accent-bg);
+}
+.scp-sess-trigger-name {
+    flex: 1 1 0; min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; text-align: left;
+}
+
+
+.scp-sess-chevron {
+    flex-shrink: 0; transition: transform 0.2s; color: var(--scp-text-muted);
+    display: block; width: 12px; height: 12px;
+}
+.scp-sess-trigger.open .scp-sess-chevron { transform: rotate(180deg); }
+
+.scp-sess-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 5px); left: 0;
+    min-width: 200px; width: max-content; max-width: 400px;
+    background: var(--scp-bg); border: var(--scp-border);
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    z-index: 99950; overflow: hidden;
+}
+.scp-sess-panel.open {
+    display: block;
+    animation: scp-panel-in 0.15s ease;
+}
+@keyframes scp-panel-in {
+    from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.scp-sess-list { max-height: 220px; overflow-y: auto; padding: 5px; }
+
+.scp-sess-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px; border-radius: 6px; cursor: pointer;
+    transition: background 0.12s; font-size: 12px; color: var(--scp-text);
+}
+.scp-sess-item:hover { background: rgba(255,255,255,0.05); }
+.scp-sess-item.active {
+    background: var(--scp-accent-bg);
+    color: var(--scp-accent);
+}
+
+.scp-sess-item-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--scp-text-muted); flex-shrink: 0;
+    transition: background 0.15s, box-shadow 0.15s;
+}
+.scp-sess-item.active .scp-sess-item-dot {
+    background: var(--scp-accent);
+    box-shadow: 0 0 6px var(--scp-accent-dim);
+}
+
+.scp-sess-item-name {
+    flex: 1; min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+}
+.scp-sess-item-count {
+    font-size: 10px; color: var(--scp-text-muted);
+    background: rgba(255,255,255,0.07); padding: 1px 6px;
+    border-radius: 10px; flex-shrink: 0;
+}
+.scp-sess-item.active .scp-sess-item-count {
+    background: var(--scp-accent-bg); color: var(--scp-accent);
+}
+
+.scp-sess-tmp-badge {
+    font-size: 9px; padding: 1px 5px; border-radius: 3px;
+    background: rgba(255,180,50,0.15); color: #ffb432;
+    border: 1px solid rgba(255,180,50,0.3);
+    font-weight: 700; letter-spacing: 0.03em; flex-shrink: 0;
+}
+.scp-sess-tmp-btn {
+    background: none; border: none; cursor: pointer;
+    font-size: 13px; padding: 0; width: 20px; height: 20px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 4px; opacity: 0.45; transition: opacity 0.15s, background 0.15s;
+    flex-shrink: 0;
+}
+.scp-sess-tmp-btn:hover { opacity: 1; background: rgba(255,255,255,0.07); }
+.scp-sess-tmp-btn.active { opacity: 0.9; }
+
+.scp-sess-tmp-label {
+    display: flex; align-items: center; gap: 8px;
+    cursor: pointer; margin-bottom: 16px; font-size: 12px;
+    color: var(--SmartThemeBodyColorTextMuted, #888);
+    user-select: none;
+}
+
+.scp-sess-empty-label {
+    padding: 14px 10px; font-size: 11px;
+    color: var(--scp-text-muted); text-align: center; font-style: italic;
+}
+
+.scp-sess-footer {
+    padding: 5px; border-top: var(--scp-border);
+}
+.scp-sess-new-btn {
+    width: 100%; display: flex; align-items: center; gap: 7px;
+    padding: 7px 10px; background: none; border: none;
+    color: var(--scp-accent); font-size: 11px; cursor: pointer;
+    border-radius: 6px; transition: background 0.15s;
+    font-family: var(--scp-font);
+}
+.scp-sess-new-btn:hover { background: var(--scp-accent-bg); }
+
+/* ── Toolbar Buttons ─────────────────────────────────────────── */
+
+.scp-tbtn {
+    background: none; border: var(--scp-border); color: var(--scp-text-muted);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 5px; flex-shrink: 0;
+    transition: color 0.15s, background 0.15s, border-color 0.15s; padding: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+.scp-tbtn:hover { color: var(--scp-accent); background: var(--scp-accent-bg); border-color: var(--scp-accent-dim); }
+.scp-tbtn.active { color: var(--scp-accent); background: var(--scp-accent-bg); border-color: var(--scp-accent-dim); }
+.scp-tbtn-danger:hover { color: var(--scp-danger); background: rgba(255,92,92,0.08); border-color: rgba(255,92,92,0.3); }
+
+
+.scp-depth-val {
+    font-size: 11px; color: var(--scp-accent);
+    width: 26px; height: 20px; min-width: 26px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--scp-accent-bg); border-radius: 4px;
+    flex-shrink: 0;
+}
+.scp-depth-clickable {
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+}
+.scp-depth-clickable:hover { background: var(--scp-accent); color: #fff; }
+
+.scp-depth-input {
+    width: 26px; height: 20px; background: var(--scp-input-bg);
+    border: 1px solid var(--scp-accent-dim); border-radius: 4px;
+    color: var(--scp-accent); font-size: 11px; font-family: var(--scp-font);
+    padding: 0; text-align: center; outline: none; flex-shrink: 0; box-sizing: border-box;
+    -moz-appearance: textfield;
+}
+.scp-depth-input::-webkit-inner-spin-button,
+.scp-depth-input::-webkit-outer-spin-button { display: none; }
+
+/* ── Sliders ─────────────────────────────────────────────────── */
+
+.scp-slider {
+    -webkit-appearance: none !important; appearance: none !important;
+    height: 4px !important; border-radius: 2px !important;
+    background: rgba(255,255,255,0.2) !important; outline: none !important;
+    cursor: pointer !important; margin: 0 !important; padding: 0 !important;
+    min-width: 40px !important; border: none !important;
+}
+.scp-slider::-webkit-slider-thumb {
+    -webkit-appearance: none !important; appearance: none !important;
+    width: 14px !important; height: 14px !important; border-radius: 50% !important;
+    background: var(--scp-accent) !important; cursor: pointer !important;
+    transition: transform 0.15s, box-shadow 0.15s !important;
+    border: none !important; margin-top: 0 !important;
+}
+.scp-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.3) !important;
+    box-shadow: 0 0 0 3px var(--scp-accent-bg) !important;
+}
+.scp-depth-slider { width: 50px; flex-shrink: 1; min-width: 28px !important; }
+

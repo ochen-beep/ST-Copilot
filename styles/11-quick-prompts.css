@@ -1,0 +1,268 @@
+/* ═══════════════════════════════════════════════════════════════
+   QUICK PROMPTS
+═══════════════════════════════════════════════════════════════ */
+
+/* ── QP Bar ──────────────────────────────────────────────────── */
+
+.scp-qp-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    /* closed state */
+    max-height: 0;
+    padding: 0 10px;
+    opacity: 0;
+    pointer-events: none;
+    overflow: hidden;
+    background: var(--scp-toolbar-bg);
+    border-top: 0px solid transparent;
+    transition:
+        max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+        opacity    0.22s ease,
+        padding    0.28s cubic-bezier(0.4, 0, 0.2, 1),
+        border-top 0.28s ease;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    mask-image: linear-gradient(to right, transparent 0, black 12px, black calc(100% - 12px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, black 12px, black calc(100% - 12px), transparent 100%);
+}
+.scp-qp-bar::-webkit-scrollbar { display: none; }
+
+.scp-qp-bar--open {
+    max-height: 52px;
+    padding: 6px 10px;
+    opacity: 1;
+    pointer-events: auto;
+    border-top: var(--scp-border);
+}
+
+.scp-qp-toggle-action {
+    padding: 3px 8px;
+    min-width: 26px;
+    justify-content: center;
+}
+.scp-qp-toggle-action svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+.scp-qp-toggle-action.active {
+    color: var(--scp-accent) !important;
+    background: var(--scp-accent-bg) !important;
+    border-color: var(--scp-accent-dim) !important;
+}
+
+/* ── QP Chip buttons ─────────────────────────────────────────── */
+
+.scp-qp-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px 3px 7px;
+    border-radius: 20px;
+    border: 1px solid var(--scp-accent-dim);
+    background: var(--scp-accent-bg);
+    color: var(--scp-accent);
+    font-size: 11px;
+    font-family: var(--scp-font);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.scp-qp-chip:hover {
+    background: var(--scp-accent);
+    border-color: var(--scp-accent);
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px var(--scp-accent-dim);
+}
+.scp-qp-chip:active { transform: translateY(0); box-shadow: none; }
+
+.scp-qp-icon { font-size: 13px; line-height: 1; }
+.scp-qp-label { font-weight: 500; }
+
+/* ── Icon Picker popup ───────────────────────────────────────── */
+
+.scp-qp-icon-picker {
+    display: grid;
+    grid-template-columns: repeat(10, 28px);
+    gap: 3px;
+    padding: 8px;
+    background: var(--SmartThemeBlurTrans, rgba(14,14,18,0.98));
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    animation: scp-panel-in 0.15s ease;
+    max-width: min(320px, 92vw);
+}
+
+.scp-qp-icon-option {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; border-radius: 6px;
+    border: 1px solid transparent; background: none;
+    cursor: pointer; transition: background 0.12s, border-color 0.12s, transform 0.1s;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+.scp-qp-icon-option:hover {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.15);
+    transform: scale(1.25);
+}
+.scp-qp-icon-option.active {
+    background: var(--scp-accent-bg, rgba(124,109,250,0.12));
+    border-color: var(--scp-accent-dim, rgba(124,109,250,0.45));
+}
+
+/* ── QP Settings UI ──────────────────────────────────────────── */
+
+.scp-qp-settings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.scp-qp-settings-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.18);
+    border: 1px solid rgba(255,255,255,0.05);
+    transition: border-color 0.15s;
+}
+.scp-qp-settings-row:hover { border-color: rgba(255,255,255,0.1); }
+
+.scp-qp-settings-row-top {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.scp-qp-settings-icon-btn {
+    flex-shrink: 0;
+    width: 32px; height: 32px;
+    border-radius: 7px; border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.05);
+    font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, border-color 0.15s, transform 0.12s;
+}
+.scp-qp-settings-icon-btn:hover {
+    background: rgba(255,255,255,0.1);
+    border-color: var(--scp-accent-dim);
+    transform: scale(1.1);
+}
+
+.scp-qp-settings-label-input {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 8px !important;
+    font-size: 12px !important;
+}
+
+.scp-qp-settings-controls {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.scp-qp-settings-move {
+    width: 24px; height: 24px;
+    background: none; border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 5px; color: var(--scp-text-muted);
+    cursor: pointer; font-size: 12px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    transition-property: var(--scp-tr-props); transition-duration: 0.15s; padding: 0;
+}
+.scp-qp-settings-move:hover:not(:disabled) {
+    color: var(--scp-accent);
+    background: var(--scp-accent-bg);
+    border-color: var(--scp-accent-dim);
+}
+.scp-qp-settings-move:disabled { opacity: 0.2; cursor: default; }
+
+.scp-qp-settings-del {
+    width: 24px; height: 24px;
+    background: none; border: 1px solid transparent;
+    border-radius: 5px; color: var(--scp-text-muted);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition-property: var(--scp-tr-props); transition-duration: 0.15s; padding: 0;
+}
+.scp-qp-settings-del:hover {
+    color: var(--scp-danger);
+    background: rgba(255,92,92,0.1);
+    border-color: rgba(255,92,92,0.3);
+}
+
+.scp-qp-settings-text {
+    font-size: 12px !important;
+    min-height: 52px !important;
+    resize: vertical;
+}
+
+@media screen and (max-width: 600px) {
+    .scp-qp-bar { padding: 5px 8px; gap: 4px; }
+    .scp-qp-chip { font-size: 12px; padding: 4px 10px 4px 7px; }
+    .scp-qp-icon-picker { grid-template-columns: repeat(8, 32px); gap: 4px; }
+    .scp-qp-icon-option { width: 32px; height: 32px; font-size: 18px; }
+}
+
+@media screen and (max-width: 900px) {
+    .scp-settings-overlay { padding: 0 8px; }
+    .scp-settings-panel {
+        width: calc(100vw - 16px);
+        height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 90px);
+        height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 90px);
+        border-radius: 12px;
+    }
+
+    .scp-sp-header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto auto;
+        gap: 10px 8px;
+        padding: 12px;
+    }
+
+    .scp-sp-header-left { grid-column: 1; grid-row: 1; flex: unset; }
+    
+    .scp-sp-header-right { 
+        grid-column: 2; grid-row: 1; 
+        justify-self: end; 
+        flex: unset; 
+    }
+
+    .scp-sp-tabs {
+        grid-column: 1 / -1; grid-row: 2;
+        width: 100%; display: flex; box-sizing: border-box;
+        position: relative; left: auto; transform: none;
+        overflow-x: auto; scrollbar-width: none;
+    }
+    .scp-sp-tabs::-webkit-scrollbar { display: none; }
+    .scp-sp-tab { flex-shrink: 0; padding: 5px 14px; }
+
+    .scp-sp-tab { flex: 1; text-align: center; }
+
+    .scp-sp-body { padding: 10px 12px; gap: 8px; }
+
+    .scp-sp-group { padding: 10px 12px; gap: 6px; }
+
+    .scp-sp-input, .scp-sp-select, .scp-sp-textarea { font-size: 13px; }
+
+    .scp-sp-check { font-size: 13px; }
+    .scp-sp-check input[type=checkbox] { width: 17px; height: 17px; }
+
+    .scp-sp-ov-clear { width: 28px; height: 28px; font-size: 14px; }
+
+    .scp-sp-session-banner { font-size: 12px; }
+}
+

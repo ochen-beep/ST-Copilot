@@ -1,0 +1,252 @@
+/* ── Preset Manager Bar ──────────────────────────────────────── */
+
+.scp-preset-mgr-bar {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(0,0,0,0.18);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 8px;
+    padding: 5px;
+}
+
+.scp-preset-mgr-trigger {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 5px 10px;
+    background: var(--scp-input-bg, rgba(0,0,0,0.3));
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    color: var(--scp-text-muted, #72728a);
+    font-family: var(--scp-font, system-ui);
+    font-size: 12px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    user-select: none;
+}
+.scp-preset-mgr-trigger:hover,
+.scp-preset-mgr-trigger.open {
+    border-color: var(--scp-accent-dim, rgba(124,109,250,0.45));
+    background: var(--scp-accent-bg, rgba(124,109,250,0.08));
+    color: var(--scp-text, #e2e2e6);
+}
+.scp-preset-mgr-trigger.scp-pmt--has-value {
+    color: var(--scp-text, #e2e2e6);
+}
+
+.scp-pmt-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scp-pmt-chevron {
+    flex-shrink: 0;
+    color: var(--scp-text-muted, #72728a);
+    transition: transform 0.2s;
+}
+.scp-preset-mgr-trigger.open .scp-pmt-chevron { transform: rotate(180deg); }
+
+.scp-preset-mgr-btn {
+    flex-shrink: 0;
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    color: var(--scp-text-muted, #72728a);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.scp-preset-mgr-btn:hover:not(:disabled) {
+    color: var(--scp-accent, #7c6dfa);
+    background: var(--scp-accent-bg, rgba(124,109,250,0.12));
+    border-color: var(--scp-accent-dim, rgba(124,109,250,0.45));
+}
+.scp-preset-mgr-btn.danger:hover:not(:disabled) {
+    color: var(--scp-danger, #ff5c5c);
+    background: rgba(255,92,92,0.1);
+    border-color: rgba(255,92,92,0.35);
+}
+
+/* ── Preset Dropdown Panel ───────────────────────────────────── */
+
+.scp-pdd-panel {
+    position: fixed;
+    z-index: 999999;
+    background: var(--scp-bg, rgba(18,18,22,0.97));
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    box-shadow:
+        0 24px 64px rgba(0,0,0,0.72),
+        0 6px 20px rgba(0,0,0,0.45),
+        0 0 0 1px rgba(255,255,255,0.04) inset;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: 380px;
+    max-width: calc(100vw - 16px);
+    animation: scp-panel-in 0.18s cubic-bezier(0.34,1.4,0.64,1);
+    font-family: var(--scp-font, system-ui, sans-serif);
+}
+
+.scp-pdd-search-wrap {
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    flex-shrink: 0;
+}
+
+.scp-pdd-search {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 7px;
+    color: var(--scp-text, #e2e2e6);
+    font-family: var(--scp-font, system-ui);
+    font-size: 12px;
+    padding: 6px 10px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.scp-pdd-search:focus {
+    border-color: var(--scp-accent-dim, rgba(124,109,250,0.45));
+    box-shadow: 0 0 0 2px rgba(124,109,250,0.1);
+}
+.scp-pdd-search::placeholder { color: var(--scp-text-muted); font-style: italic; }
+
+.scp-pdd-list {
+    overflow-y: auto;
+    padding: 5px;
+    flex: 1;
+}
+.scp-pdd-list::-webkit-scrollbar { width: 4px; }
+.scp-pdd-list::-webkit-scrollbar-track { background: transparent; }
+.scp-pdd-list::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.14);
+    border-radius: 2px;
+}
+
+.scp-pdd-group-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    color: var(--scp-text-muted, #72728a);
+    padding: 8px 10px 4px;
+    opacity: 0.7;
+}
+.scp-pdd-group-label:first-child { padding-top: 4px; }
+
+.scp-pdd-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.12s, border-color 0.12s, transform 0.1s;
+}
+.scp-pdd-item:hover {
+    background: var(--scp-accent-bg, rgba(124,109,250,0.12));
+    border-color: var(--scp-accent-dim, rgba(124,109,250,0.35));
+    transform: translateX(2px);
+}
+
+.scp-pdd-item-top {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.scp-pdd-item-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--scp-text, #e2e2e6);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scp-pdd-item-preview {
+    font-size: 11px;
+    color: var(--scp-text-muted, #72728a);
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.scp-pdd-empty {
+    padding: 24px 10px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--scp-text-muted, #72728a);
+    font-style: italic;
+}
+
+.scp-pdd-badge {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 10px;
+    border: 1px solid;
+}
+.scp-pdd-badge--profile {
+    background: var(--scp-accent-bg, rgba(124,109,250,0.12));
+    border-color: var(--scp-accent-dim, rgba(124,109,250,0.45));
+    color: var(--scp-accent, #7c6dfa);
+}
+.scp-pdd-badge--custom {
+    background: rgba(255,180,50,0.12);
+    border-color: rgba(255,180,50,0.35);
+    color: #ffb432;
+}
+.scp-pdd-badge--active {
+    background: rgba(76,175,125,0.12);
+    border-color: rgba(76,175,125,0.4);
+    color: var(--scp-success, #4caf7d);
+}
+
+/* ── Mobile / Tablet ─────────────────────────────────────────── */
+
+@media screen and (max-width: 900px) {
+    .scp-window {
+        min-width: unset !important;
+        max-width: calc(100vw - 10px) !important;
+        max-height: calc(100dvh - 10px) !important;
+    }
+    .scp-tbtn { width: 24px; height: 24px; }
+    .scp-sess-wrap { min-width: 110px; }
+    .scp-depth-slider { width: 40px; }
+
+    .scp-dialog-box {
+        width: min(90vw, 420px);
+        max-height: calc(90dvh - 40px);
+        max-height: calc(90vh - 40px);
+    }
+    .scp-modal { max-width: 100%; max-height: calc(90dvh); max-height: calc(90vh); }
+    .scp-rh-n  { height: 10px; }
+    .scp-rh-s  { height: 10px; }
+    .scp-rh-e  { width: 10px; }
+    .scp-rh-w  { width: 10px; }
+    .scp-rh-ne, .scp-rh-se, .scp-rh-sw, .scp-rh-nw { width: 20px; height: 20px; }
+}
+

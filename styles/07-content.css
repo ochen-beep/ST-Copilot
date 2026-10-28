@@ -1,0 +1,207 @@
+/* ── Lists ───────────────────────────────────────────────────── */
+
+.scp-list {
+    margin: 6px 0 6px 10px;
+    padding: 0;
+}
+ul.scp-list {
+    list-style: none;
+    position: relative;
+    padding-left: 0;
+}
+ul.scp-list::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 14px;
+    bottom: 14px;
+    width: 1px;
+    transform: translateX(-50%);
+    background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.12) 15%, rgba(255,255,255,0.12) 85%, transparent);
+    pointer-events: none;
+}
+ul.scp-list > li {
+    position: relative;
+    padding-left: 20px;
+}
+ul.scp-list > li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 11px;
+    transform: translateY(-50%);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--scp-accent);
+    border: 1px solid var(--scp-accent-dim);
+    box-shadow: 0 0 4px var(--scp-accent-dim);
+    z-index: 1;
+    box-sizing: border-box;
+}
+ol.scp-list { list-style: decimal; padding-left: 16px; }
+.scp-list li {
+    margin: 3px 0;
+    line-height: 1.6;
+    color: var(--scp-text);
+}
+.scp-list .scp-list {
+    margin-top: 4px;
+    margin-bottom: 0;
+}
+
+/* ── Markdown Extras ─────────────────────────────────────────── */
+
+.scp-hr {
+    border: none; border-top: 1px solid rgba(255, 255, 255, 0.21);
+    margin: 14px 0;
+}
+
+.scp-blockquote {
+    border-left: 3px solid var(--scp-accent);
+    margin: 8px 0; padding: 6px 12px;
+    color: var(--scp-text-muted);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 0 6px 6px 0;
+}
+
+.scp-table-wrap {
+    width: 100%; overflow-x: auto; margin: 10px 0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+}
+.scp-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 12px; text-align: left;
+}
+.scp-table th, .scp-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+.scp-table th:last-child, .scp-table td:last-child { border-right: none; }
+.scp-table tr:last-child td { border-bottom: none; }
+.scp-table th {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--scp-accent); font-weight: 600;
+}
+.scp-table tr:hover td { background: rgba(255, 255, 255, 0.03); }
+
+.scp-msg-content del {
+    text-decoration: line-through;
+    opacity: 0.8;
+}
+
+/* ── Reasoning Block ─────────────────────────────────────────── */
+
+.scp-reasoning-block {
+    margin-bottom: 8px;
+    border: 1px solid var(--scp-accent-dim);
+    border-radius: 6px;
+    overflow: hidden;
+    background: rgba(0,0,0,0.18);
+}
+.scp-reasoning-summary {
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--scp-accent);
+    opacity: 0.75;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    transition: opacity 0.15s;
+}
+.scp-reasoning-summary::-webkit-details-marker { display: none; }
+.scp-reasoning-summary::before {
+    content: '▶';
+    font-size: 7px;
+    display: inline-block;
+    transition: transform 0.18s;
+    flex-shrink: 0;
+}
+details.scp-reasoning-block[open] .scp-reasoning-summary::before { transform: rotate(90deg); }
+.scp-reasoning-summary:hover { opacity: 1; }
+.scp-reasoning-content {
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--scp-text-muted);
+    border-top: 1px solid var(--scp-accent-dim);
+    max-height: 260px;
+    overflow-y: auto;
+    line-height: 1.6;
+}
+
+/* ── HTML Block ──────────────────────────────────────────────── */
+
+.scp-html-block {
+    margin: 8px -5px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-left: none;
+    border-right: none;
+    border-radius: 5px;
+    overflow: hidden;
+    background: rgba(0,0,0,0.15);
+}
+.scp-html-block-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px;
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.scp-html-block-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--scp-text-muted);
+    flex: 1;
+}
+.scp-html-block-btn {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--scp-text-muted);
+    cursor: pointer;
+    font-size: 10px;
+    font-family: var(--scp-font);
+    padding: 2px 8px;
+    border-radius: 4px;
+    transition-property: var(--scp-tr-props); transition-duration: 0.15s;
+}
+.scp-html-block-btn:hover,
+.scp-html-block-btn.active {
+    color: var(--scp-accent);
+    background: var(--scp-accent-bg);
+    border-color: var(--scp-accent-dim);
+}
+.scp-html-block-iframe {
+    display: block;
+    width: 100%;
+    border: none;
+    min-height: 40px;
+    height: 40px;
+    max-height: 1200px;
+    background: transparent;
+    transition: height 0.2s ease;
+}
+.scp-html-block-code {
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    border-top: 1px solid rgba(255,255,255,0.06) !important;
+}
+.scp-html-block-error {
+    padding: 5px 10px;
+    font-size: 11px;
+    color: var(--scp-danger);
+    background: rgba(255,92,92,0.07);
+    border-bottom: 1px solid rgba(255,92,92,0.15);
+}
+
+

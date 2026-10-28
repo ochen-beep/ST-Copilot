@@ -1,0 +1,213 @@
+/* ── Settings Panel ──────────────────────────────────────────── */
+
+.st-copilot-settings small {
+    color: var(--SmartThemeBodyColorTextMuted, #888);
+    font-size: 11px; display: block;
+}
+
+.st-copilot-settings .menu_button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.st-copilot-settings .inline-drawer-toggle.inline-drawer-header {
+    border-left: 2px solid rgba(119, 119, 119, 0.5) !important;
+    border-radius: 4px !important;
+    padding-left: 10px !important;
+    background: linear-gradient(90deg, rgba(107, 107, 107, 0.185) 0%, transparent 100%) !important;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+
+.st-copilot-settings .inline-drawer-toggle.inline-drawer-header:hover {
+    background: linear-gradient(90deg, rgba(78, 78, 78, 0.493) 0%, transparent 100%) !important;
+    border-left-color: rgba(153, 153, 153, 0.75) !important;
+}
+
+.st-copilot-settings .inline-drawer-toggle.inline-drawer-header b {
+    letter-spacing: 0.02em;
+}
+
+
+.scp-profile-bar {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(0,0,0,0.2); border-radius: 7px;
+    padding: 4px; border: 1px solid rgba(255,255,255,0.08);
+}
+.scp-profile-bar select {
+    flex: 1; background: transparent; border: none;
+    color: var(--SmartThemeBodyColorText, #e2e2e6);
+    font-family: var(--primaryFontFamily, system-ui);
+    font-size: 12px; outline: none; cursor: pointer;
+    padding: 3px 6px;
+}
+.scp-profile-bar select option { background: #1a1a20; }
+
+.scp-profile-icon-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--SmartThemeBodyColorTextMuted, #72728a);
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 5px;
+    transition: color 0.15s, background 0.15s;
+    font-size: 12px;
+}
+.scp-profile-icon-btn:hover { color: var(--SmartThemeBodyColorText, #e2e2e6); background: rgba(255,255,255,0.08); }
+.scp-profile-icon-btn.danger:hover { color: #ff5c5c; background: rgba(255,92,92,0.1); }
+
+.scp-binding-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.03); border-radius: 6px;
+    margin-top: 6px; flex-wrap: wrap;
+}
+.scp-binding-label {
+    font-size: 11px; color: var(--SmartThemeBodyColorTextMuted, #888);
+    flex-shrink: 0;
+}
+.scp-bind-btn {
+    display: flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 5px;
+    font-size: 11px; cursor: pointer;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--SmartThemeBodyColorTextMuted, #888);
+    transition-property: var(--scp-tr-props); transition-duration: 0.15s; font-family: var(--primaryFontFamily, system-ui);
+}
+.scp-bind-btn:hover { background: rgba(255,255,255,0.1); color: var(--SmartThemeBodyColorText, #e2e2e6); }
+.scp-bind-btn.active {
+    background: rgba(124,109,250,0.15);
+    border-color: rgba(124,109,250,0.4);
+    color: #a99bfb;
+}
+
+/* ── Theme Editor ────────────────────────────────────────────── */
+
+
+.scp-profile-bar select optgroup {
+    background: #1a1a20;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: rgba(255,255,255,0.35);
+}
+.scp-profile-bar select option {
+    background: #1a1a20;
+    color: var(--SmartThemeBodyColorText, #e2e2e6);
+    padding: 3px 6px;
+}
+
+.scp-theme-var-grid {
+    display: grid; grid-template-columns: 1fr; gap: 5px;
+}
+.scp-theme-var-item { display: flex; flex-direction: column; gap: 3px; }
+.scp-theme-var-label { font-size: 10px; color: var(--SmartThemeBodyColorTextMuted, #888); text-transform: uppercase; letter-spacing: 0.04em; }
+.scp-theme-var-wrap { display: flex; align-items: center; gap: 7px; }
+.scp-theme-var-preview {
+    width: 20px; height: 20px; border-radius: 4px; flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.1); background: transparent;
+}
+.scp-theme-var-input {
+    flex: 1; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 5px; color: var(--SmartThemeBodyColorText, #e2e2e6);
+    font-size: 11px; font-family: var(--monospaceFontFamily, monospace);
+    padding: 4px 8px; outline: none; transition: border-color 0.15s;
+}
+.scp-theme-var-input:focus { border-color: rgba(124,109,250,0.5); }
+.scp-theme-var-reset {
+    background: none; border: 1px solid transparent; color: var(--SmartThemeBodyColorTextMuted, #72728a);
+    cursor: pointer; border-radius: 4px; width: 20px; height: 20px; padding: 0;
+    font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.scp-theme-var-reset:hover:not(:disabled) {
+    color: var(--SmartThemeBodyColorText, #e2e2e6);
+    background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12);
+}
+.scp-theme-var-reset:disabled { opacity: 0.18; cursor: default; }
+
+/* ── Color Picker Popup ───────────────────────────────────────── */
+
+.scp-color-pop {
+    background: var(--SmartThemeBlurTrans, rgba(14,14,18,0.98));
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    display: flex; flex-direction: column; gap: 10px;
+    width: 210px;
+    animation: scp-panel-in 0.15s ease;
+    font-family: var(--primaryFontFamily, system-ui, sans-serif);
+    color: var(--SmartThemeBodyColorText, #e2e2e6);
+}
+.scp-color-pop-row { display: flex; align-items: center; gap: 12px; }
+.scp-color-pop-wheel {
+    width: 54px; height: 54px; border: 2px solid rgba(255,255,255,0.12);
+    padding: 0; border-radius: 8px; cursor: pointer;
+    background: none; flex-shrink: 0; outline: none;
+    transition: border-color 0.15s;
+}
+.scp-color-pop-wheel:hover { border-color: rgba(255,255,255,0.25); }
+.scp-color-pop-wheel::-webkit-color-swatch-wrapper { padding: 0; border-radius: 6px; }
+.scp-color-pop-wheel::-webkit-color-swatch { border: none; border-radius: 6px; }
+.scp-color-pop-alpha-col { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.scp-color-pop-alpha-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--SmartThemeBodyColorTextMuted, #72728a);
+}
+.scp-color-pop-alpha-val {
+    font-size: 10px; color: var(--SmartThemeBodyColorText, #e2e2e6);
+    text-align: right;
+}
+.scp-color-pop-text {
+    font-size: 11px !important;
+    font-family: var(--monospaceFontFamily, monospace) !important;
+    padding: 5px 8px !important;
+    border-radius: 5px !important;
+    height: auto !important;
+    min-height: unset !important;
+}
+.scp-theme-var-preview.scp-color-clickable {
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    outline: 1px solid transparent;
+}
+.scp-theme-var-preview.scp-color-clickable:hover {
+    transform: scale(1.2);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    outline-color: rgba(255,255,255,0.25);
+}
+
+/* ── Settings Redesign ───────────────────────────────────────── */
+
+.scp-settings-flat-section {
+    background: rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+}
+.scp-settings-flat-title {
+    font-weight: 700; font-size: 13px; color: var(--SmartThemeBodyColorText, #e2e2e6);
+    margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+}
+.scp-settings-drawer {
+    background: rgba(0, 0, 0, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 6px !important;
+    margin-bottom: 6px;
+    overflow: hidden;
+}
+.scp-settings-drawer .inline-drawer-header {
+    background: rgba(255, 255, 255, 0.02) !important;
+    padding: 8px 12px !important;
+    border-bottom: none !important;
+}
+.scp-settings-drawer .inline-drawer-content {
+    padding: 12px !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.03) !important;
+}
+
+.scp-token-count { font-size: 10px; color: var(--scp-accent); opacity: 0.8; margin-right: 6px; }
+

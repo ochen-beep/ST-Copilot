@@ -1,0 +1,141 @@
+/* ── Launcher buttons ──────────────────────────────────────────── */
+/* v2.10.0: inline button in ST's quick-reply bar (#qr--bar), plus the optional
+   floating dock-icon FAB. Which launchers are shown is set by launcherMode
+   ('bar' | 'floating' | 'both'). */
+
+.scp-launcher {
+    display: inline-flex; align-items: center; justify-content: center;
+    /* #qr--bar is display:flex with flex-wrap:wrap. Be a fixed-size flex item so
+       the launcher never grows/shrinks or forces siblings to wrap on mobile. */
+    flex: 0 0 auto;
+    /* Icon-only square: padding:0 !important beats ST .menu_button's 3px 5px,
+       fixed width/height beats its width:min-content — otherwise the box drifts
+       to ~42x36 and stops being square. */
+    width: 36px; height: 36px; padding: 0 !important;
+    border-radius: 8px; cursor: pointer; user-select: none;
+    color: var(--SmartThemeBodyColor, var(--scp-text, rgba(255,255,255,0.82)));
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.10);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, filter 0.15s;
+    white-space: nowrap;
+    font-size: 16px; /* emoji sizing */
+}
+@media (hover: hover) {
+    .scp-launcher:hover { background: rgba(255,255,255,0.12); }
+}
+.scp-launcher.scp_launcher_active {
+    background: color-mix(in srgb, var(--scp-accent, #7c6dfa) 28%, rgba(255,255,255,0.06));
+    border-color: color-mix(in srgb, var(--scp-accent, #7c6dfa) 55%, transparent);
+    color: var(--scp-accent, #7c6dfa);
+}
+.scp-launcher.scp_generating {
+    animation: scp-launcher-pulse 1.4s ease-in-out infinite;
+    will-change: transform;
+}
+@keyframes scp-launcher-pulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .scp-launcher.scp_generating { animation: none; opacity: 0.8; will-change: auto; }
+}
+
+/* ── Floating dock icon (FAB) ─────────────────────────────────── */
+/* v2.10.0: restored as an optional launcher mode (launcherMode: 'floating' | 'both').
+   Position is set inline by JS (persisted in localStorage); bottom/right below are
+   the default placement until a saved position is restored. */
+
+.scp-dock-icon {
+    position: fixed;
+    bottom: 80px;
+    right: 20px;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: var(--scp-accent-bg, rgba(124,109,250,0.15));
+    border: 1px solid var(--scp-accent-dim, rgba(124,109,250,0.5));
+    color: var(--scp-accent, #7c6dfa);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    transition: transform 0.2s, background 0.2s, color 0.2s;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    animation: scp-dock-appear 0.25s cubic-bezier(0.34,1.56,0.64,1);
+}
+.scp-dock-icon:hover {
+    background: var(--scp-accent, #7c6dfa);
+    color: #fff;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 20px var(--scp-accent-dim, rgba(124,109,250,0.5));
+    transform: scale(1.08);
+}
+.scp-dock-icon.scp-icon-dragging {
+    transition: none !important;
+    cursor: grabbing !important;
+    will-change: left, top;
+    transform: scale(1.0) !important;
+}
+.scp-dock-icon.scp_generating {
+    animation: scp-dock-pulse 1.4s ease-in-out infinite;
+    will-change: transform;
+}
+@keyframes scp-dock-pulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.12); }
+}
+.scp-dock-pulse {
+    position: absolute; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--scp-success, #43d17c); top: 2px; right: 2px;
+    border: 2px solid rgba(0,0,0,0.5);
+}
+@keyframes scp-dock-appear {
+    from { transform: scale(0.4); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .scp-dock-icon.scp_generating { animation: none; opacity: 0.8; will-change: auto; }
+    .scp-dock-icon { animation: none; }
+}
+
+/* ── Mobile fullscreen window mode ────────────────────────────── */
+/* v2.10.0: window fills viewport, avoids ST chrome (top-bar + send_form). */
+
+@media screen and (max-width: 900px) {
+    #scp-window.scp_mobile {
+        position: fixed !important;
+        top: var(--scp-st-top, 0px) !important;
+        left: 0 !important; right: 0 !important;
+        width: 100% !important; max-width: 100% !important;
+        height: calc(100dvh - var(--scp-st-top, 0px) - var(--scp-st-bottom, 0px)) !important;
+        max-height: calc(100dvh - var(--scp-st-top, 0px) - var(--scp-st-bottom, 0px)) !important;
+        transform: none !important;
+        border: none !important; border-radius: 0 !important;
+        box-shadow: none !important;
+        padding-top: env(safe-area-inset-top, 0);
+        padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+    #scp-window.scp_mobile .scp-messages {
+        flex: 1 !important; min-height: 0 !important; max-height: none !important;
+        -webkit-overflow-scrolling: touch;
+    }
+    #scp-window.scp_mobile .scp-header { cursor: default !important; touch-action: pan-y !important; }
+    #scp-window.scp_mobile .scp-rh { display: none !important; }
+    .scp-dock-icon {
+        bottom: 120px;
+        right: 16px;
+    }
+}
+/* dvh fallback for older browsers */
+@supports not (height: 100dvh) {
+    @media screen and (max-width: 900px) {
+        #scp-window.scp_mobile {
+            height: calc(100vh - var(--scp-st-top, 0px) - var(--scp-st-bottom, 0px)) !important;
+            max-height: calc(100vh - var(--scp-st-top, 0px) - var(--scp-st-bottom, 0px)) !important;
+        }
+    }
+}
+

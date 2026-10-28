@@ -1,0 +1,108 @@
+/* ── Chat Search Bar ─────────────────────────────────────────── */
+
+.scp-search-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 8px;
+    background: var(--scp-toolbar-bg);
+    border-bottom: var(--scp-border);
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: max-height 0.22s cubic-bezier(0.4,0,0.2,1),
+                opacity 0.18s ease,
+                padding 0.22s cubic-bezier(0.4,0,0.2,1);
+}
+.scp-search-bar.scp-search-open {
+    max-height: 44px;
+    opacity: 1;
+    pointer-events: auto;
+    padding: 5px 8px;
+}
+.scp-search-bar-icon {
+    color: var(--scp-text-muted);
+    display: flex;
+    flex-shrink: 0;
+    opacity: 0.6;
+}
+.scp-search-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--scp-input-bg);
+    border: var(--scp-border);
+    border-radius: 6px;
+    color: var(--scp-text);
+    font-family: var(--scp-font);
+    font-size: 12px;
+    padding: 5px 9px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    box-sizing: border-box;
+}
+.scp-search-input:focus {
+    border-color: var(--scp-accent-dim);
+    box-shadow: 0 0 0 2px rgba(124,109,250,0.1);
+}
+.scp-search-count {
+    font-size: 10px;
+    color: var(--scp-text-muted);
+    white-space: nowrap;
+    min-width: 34px;
+    text-align: center;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+.scp-search-nav,
+.scp-search-close-btn {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--scp-text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
+    font-size: 13px;
+    flex-shrink: 0;
+    padding: 0;
+    line-height: 1;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.scp-search-nav:hover {
+    color: var(--scp-accent);
+    background: var(--scp-accent-bg);
+    border-color: var(--scp-accent-dim);
+}
+.scp-search-nav.active {
+    color: var(--scp-accent);
+    background: var(--scp-accent-bg);
+    border-color: var(--scp-accent-dim);
+}
+.scp-search-nav.active:hover {
+    background: var(--scp-accent);
+    color: #fff;
+}
+.scp-search-close-btn:hover {
+    color: var(--scp-danger);
+    background: rgba(255,92,92,0.1);
+}
+
+mark.scp-search-hl {
+    background: rgba(255, 200, 50, 0.32);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+    transition: background 0.15s, box-shadow 0.15s;
+}
+mark.scp-search-hl.scp-search-current {
+    background: rgba(255, 150, 0, 0.72);
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(255,150,0,0.35);
+    border-radius: 2px;
+}
+
