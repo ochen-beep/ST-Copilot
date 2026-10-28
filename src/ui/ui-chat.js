@@ -10,7 +10,6 @@ export {
     extractToolCallPlaceholders,
     _renderMsgBodyContent,
     _updateMsgTokenCount,
-    createMsgEl,
 } from './render-msg.js';
 
 export {
@@ -46,6 +45,7 @@ export {
     showGenerationError,
     onChatChanged,
     setupDepthClickEdit,
+    createMsgEl,
 } from './session-view.js';
 
 export {

@@ -1,4 +1,5 @@
 export { CHANGELOG } from './changelog.js';
+export { QP_ICON_POOL } from './constants-emoji.js';
 
 export const EXT_NAME = 'st_copilot';
 export const EXT_DISPLAY = 'ST-Copilot';
@@ -707,12 +708,3 @@ export const I = {
         menu: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`,
         lock: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
     };
-
-export const QP_ICON_POOL = [
-        '🔍','💡','📋','✨','🎭','📖','🗺️','⚔️','🧠','💬',
-        '🎯','🔮','📝','🌍','❓','🎨','💭','🔥','⚡','🎲',
-        '👁️','🧩','📚','🗣️','💫','🌟','🎬','🧪','🏆','🎵',
-        '🌙','☀️','🌊','🍃','💎','🛡️','🗡️','🏰','🐉','🦋',
-        '🎪','🌀','🔑','💀','🌹','🍷','🎩','🧿','🔔','⭐',
-        '🐺','🦊','🐦','🌸','🍄','🔴','🟣','🔵','🟡','🟢',
-    ];

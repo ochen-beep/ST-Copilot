@@ -1,252 +1,252 @@
-# ST-Copilot — User Guide
+# ST-Copilot — Руководство пользователя
 
 > Подробный справочник по возможностям расширения. Краткая инструкция — в README.md.
 
-## 📸 Visual Tour & Features
+## 📸 Визуальный обзор и возможности
 
-Let's take a look under the hood. Here is what ST-Copilot brings to your SillyTavern experience:
+Заглянем под капот. Вот что ST-Copilot добавляет к вашему опыту работы с SillyTavern:
 
-### 1. The Command Center
+### 1. Командный центр
 ![Copilot Chat Interface](Assets/Github/CopilotPaint.png)
 
-This is your main hub. It functions completely independently of your main chat, packed with tools to control exactly how the AI sees your story.
+Это ваш главный пульт управления. Он работает полностью независимо от основного чата и наполнен инструментами, позволяющими точно контролировать то, как ИИ видит вашу историю.
 
-**Top Bar Controls:**
-*   **Search:** Instantly find past brainstorming ideas or lore discussions with `Ctrl+F`.
-*   **Ghost Mode:** Toggle window transparency and click-through functionality on the fly so it never blocks your view.
-*   **Settings:** Quick access to deep configuration, themes, and API routing.
+**Кнопки верхней панели:**
+*   **Поиск:** мгновенно находите прошлые идеи для брейншторма или обсуждения лора с помощью `Ctrl+F`.
+*   **Ghost Mode:** переключайте прозрачность окна и режим «клика насквозь» на лету, чтобы окно никогда не загораживало обзор.
+*   **Настройки:** быстрый доступ к глубокой конфигурации, темам и маршрутизации API.
 
-**Chat & Context Tools:**
-*   **Sessions Control:** Seamlessly switch between different brainstorming sessions, rename them, or create auto-deleting temporary ones to keep things organized.
-*   **ST Messages Slider (CTX):** Dynamically adjust exactly how many recent messages from your main RP are sent to Copilot's memory.
-*   **Lorebooks:** One-click access to the dedicated Lorebook Manager to tweak world info or review AI-proposed changes.
-*   **Payload (Message Picker):** Don't want to use the slider? Hand-pick specific messages from your chat history to feed into the Copilot's context payload, ignoring everything else.
+**Инструменты чата и контекста:**
+*   **Управление сессиями:** без усилий переключайтесь между сессиями брейншторма, переименовывайте их или создавайте временные сессии с автоудалением, чтобы поддерживать порядок.
+*   **Слайдер сообщений ST (CTX):** динамически настраивайте, сколько последних сообщений из вашего основного ролеплея отправляется в память Copilot.
+*   **Лорбуки:** доступ в один клик к отдельному менеджеру лорбуков — правьте world info или просматривайте предложенные ИИ изменения.
+*   **Payload (выбор сообщений):** не хотите пользоваться слайдером? Отбирайте конкретные сообщения из истории чата вручную, чтобы передать Copilot именно их, игнорируя всё остальное.
 
-**Bottom Action Bar:**
-*   **Raw Context:** A transparent inspector that shows you the exact raw text and JSON payload being sent to the API. Perfect for prompt engineers.
-*   **Msg Regen:** Quickly force the AI to regenerate its last response if you didn't like the ideas it gave you.
-*   **Quick Prompts:** Click the lightning bolt to reveal your custom shortcut buttons (like "Analyze", "Ideas", or "Summary") and speed up your workflow.
+**Нижняя панель действий:**
+*   **Сырой контекст (Raw Context):** прозрачный инспектор, показывающий точный сырой текст и JSON-payload, отправляемые в API. Идеально для промпт-инженеров.
+*   **Перегенерация сообщения (Msg Regen):** быстро заставьте ИИ заново сгенерировать последний ответ, если предложенные идеи вам не понравились.
+*   **Быстрые промпты:** нажмите на молнию, чтобы открыть свои пользовательские кнопки быстрого запуска (вроде «Анализ», «Идеи» или «Резюме») и ускорить рабочий процесс.
 
-> **Wait, does it just write the story for me?**
-> Not at all! ST-Copilot is strictly Out-Of-Character (OOC). Its system prompt explicitly forbids it from generating dialogue or actions for you or the main character. It's your sounding board, not your replacement.
+> **Стоп, она что, пишет историю за меня?**
+> Вовсе нет! ST-Copilot строго вне роли (OOC). Её системный промпт прямо запрещает генерировать диалоги или действия за вас или основного персонажа. Это ваш партнёр для обсуждения идей, а не ваша замена.
 
-### 2. Deep Configuration & Profiles
+### 2. Глубокая конфигурация и профили
 ![Global Settings](Assets/Github/SettingsGlobal.png)
 
-You have total control over how Copilot behaves. 
-*   **Connection Routing:** Don't want to waste expensive API tokens on brainstorming? Route ST-Copilot to a completely different API profile (e.g., a cheaper local model) while your main RP uses your premium API.
-*   **Context Inclusions:** Choose exactly what Copilot sees: System Prompts, Author's Notes, Character Cards, or User Personas.
-*   **Profiles:** Bind specific Copilot configurations to specific Characters or Chats.
+Вы полностью контролируете поведение Copilot.
+*   **Маршрутизация подключений:** не хотите тратить дорогие токены платного API на брейншторм? Направьте ST-Copilot на совершенно другой API-профиль (например, дешёвую локальную модель), пока основной ролеплей работает через ваш премиальный API.
+*   **Состав контекста:** выбирайте, что именно видит Copilot: системные промпты, заметки автора, карточки персонажей или User Persona.
+*   **Профили:** привязывайте конкретные конфигурации Copilot к конкретным персонажам или чатам.
 
-> **What if I only want specific settings for one specific chat?**
-> We've got you covered. The **Session Overrides** tab allows you to temporarily alter settings (like context depth or max tokens) just for the active Copilot session without touching your global defaults.
+> **А если мне нужны особые настройки только для одного конкретного чата?**
+> Всё предусмотрено. Вкладка **Переопределения сессии** позволяет временно менять настройки (глубину контекста, лимит токенов и т.д.) только для активной сессии Copilot, не трогая глобальные значения по умолчанию.
 
-### 3. Worldbuilding on Autopilot (Lorebook Manager)
+### 3. Ворлдбилдинг на автопилоте (менеджер лорбуков)
 ![Lorebook Manager - Editor](Assets/Github/LB.png)
 
-The crown jewel of ST-Copilot. A dedicated UI for managing your World Info.
-*   View all active lorebooks (Global, Character, or Chat-specific).
-*   Edit entries, triggers, and content on the fly.
-*   **AI-Edits:** Ask Copilot to "Create a lorebook entry about the city we just entered." It will generate a Proposal Card in the chat. You can review the diff, edit the text inline, and apply it directly to your ST Lorebook with one click!
+Жемчужина ST-Copilot. Отдельный интерфейс для управления вашим World Info.
+*   Просматривайте все активные лорбуки (глобальные, персонажа или чата).
+*   Редактируйте записи, триггеры и содержимое на лету.
+*   **AI-правки:** попросите Copilot: «Создай запись лорбука о городе, в который мы только что вошли». Он сгенерирует карточку предложения (Proposal Card) прямо в чате. Вы просматриваете дифф, при необходимости правите текст на месте и применяете изменения к своему лорбуку SillyTavern одним кликом!
 
-Stop guessing if the AI knows about a lorebook entry.
-*   **Visual Indicators:** See exactly which entries were injected into Copilot's last API request (marked with an "in context" badge).
-*   **Manual Overrides:** Force an entry to ALWAYS be included in Copilot's context, or NEVER be included, overriding SillyTavern's default keyword triggers.
+Хватит гадать, знает ли ИИ о записи лорбука.
+*   **Визуальные индикаторы:** видно, какие именно записи были внедрены в последний API-запрос Copilot (они помечены бейджем «в контексте»).
+*   **Ручные переопределения:** принудительно включайте запись в контекст Copilot ВСЕГДА или НИКОГДА, перекрывая стандартные ключевые триггеры SillyTavern.
 
-> **Does Copilot automatically know my lore?**
-> Yes! By default, "Auto-keywords" is ON. Copilot will scan your recent chat history and automatically inject relevant lorebook entries into its own memory, just like the main ST chat does.
+> **Copilot автоматически знает мой лор?**
+> Да! По умолчанию опция «Авто-ключевые слова» включена. Copilot сканирует недавнюю историю чата и сам внедряет подходящие записи лорбука в свою память — точно так же, как это делает основной чат ST.
 
-### 4. Lightning-Fast Quick Prompts
+### 4. Молниеносные быстрые промпты
 ![Quick Prompts](Assets/Github/Settings_QuickPrompts.png)
 
-Tired of typing *"Summarize everything that has happened so far"*? 
-Create your own **Quick Prompts**. Pick an icon, write the prompt (macros like `{{char}}` and `{{user}}` are supported!), and reorder them to your liking. They will appear as clickable chips right above your chat input.
+Надоело набирать *«Суммируй всё, что произошло до сих пор»*?
+Создайте собственные **быстрые промпты**. Выберите иконку, напишите промпт (поддерживаются макросы вроде `{{char}}` и `{{user}}`!) и расставьте их в удобном порядке. Они появятся в виде кликабельных кнопок прямо над полем ввода чата.
 
-### 5. Surgical Context Picking
+### 5. Хирургически точный выбор контекста
 ![Pick Context Messages](Assets/Github/MsgsPayload.png)
 
-Sometimes a slider isn't enough. If you want Copilot to focus on a specific past event, use the **Pick Context Messages** feature. 
-Select exact messages from your RP history. ST-Copilot will completely ignore the rest of the chat and build its context *only* from the messages you checked.
+Иногда слайдера недостаточно. Если нужно, чтобы Copilot сосредоточился на конкретном событии из прошлого, используйте функцию **выбора сообщений контекста**.
+Отметьте точные сообщения из истории ролеплея — ST-Copilot полностью проигнорирует остальной чат и соберёт свой контекст *только* из отмеченных вами сообщений.
 
-### 6. Usage Statistics
+### 6. Статистика использования
 ![Statistics](Assets/Github/Settings_Stats.png)
 
-For the data nerds out there. ST-Copilot tracks your usage across all sessions.
-*   Track Messages, Regenerations, Active Sessions, and Lorebook Edits.
-*   View beautifully rendered, interactive SVG graphs of your Token Input and Output.
-*   Filter stats Globally, by Character, or by specific Chat over 30 days, 12 weeks, or even years.
+Для любителей цифр. ST-Copilot учитывает использование расширения по всем сессиям.
+*   Отслеживайте сообщения, перегенерации, активные сессии и правки лорбуков.
+*   Смотрите красиво отрисованные интерактивные SVG-графики входящих и исходящих токенов.
+*   Фильтруйте статистику глобально, по персонажу или по конкретному чату за 30 дней, 12 недель или даже годы.
 
-### 7. Transparent Payload Inspector
+### 7. Прозрачный инспектор payload
 ![Raw Context Payload](Assets/Github/RawContextPayload.png)
 
-Ever wonder exactly what is being sent to the API? Click the payload button to see the raw text (Formatted) or JSON structure being sent to the AI. Total transparency for prompt engineers.
+Хотите знать, что именно уходит в API? Нажмите кнопку payload — и увидите сырой текст (Format) или JSON-структуру запроса к ИИ. Полная прозрачность для промпт-инженеров.
 
-### 8. Make It Yours (Theme Engine)
+### 8. Настройте под себя (движок тем)
 ![Theme Settings](Assets/Github/Settings-InterfaceTheme.png)
 
-A fully integrated, highly detailed theme editor.
-*   Choose from gorgeous presets like *Dark Sky*, *Glass*, *Hacker*, or *Native ST*.
-*   Use the integrated interactive color picker (with alpha/transparency support) to tweak every single background, border, and accent color.
-*   Export your themes to JSON and share them, or import themes from the community.
+Полностью интегрированный, детально проработанный редактор тем.
+*   Выбирайте из красивых пресетов: *Dark Sky*, *Glass*, *Hacker* или *Native ST*.
+*   Используйте встроенный интерактивный выбор цвета (с поддержкой альфа-канала/прозрачности), чтобы настроить каждый цвет фона, границ и акцентов.
+*   Экспортируйте свои темы в JSON и делитесь ими или импортируйте темы от сообщества.
 
 ---
 
-## Installation (details)
+## Установка (подробности)
 
-1. Open SillyTavern and navigate to the **Extensions** menu (the plug icon).
-2. Click **Install Extension** and paste the link to this repository.
-3. Refresh SillyTavern.
-4. Click the new **ST-Copilot** button (robot icon) in your extensions menu, or use the default hotkey (`Alt+Shift+C`) to open the interface!
+1. Откройте SillyTavern и перейдите в меню **Extensions** (иконка вилки).
+2. Нажмите **Install Extension** и вставьте ссылку на этот репозиторий.
+3. Перезагрузите SillyTavern.
+4. Нажмите новую кнопку **ST-Copilot** (иконка робота) в меню расширений или используйте горячую клавишу по умолчанию (`Alt+Shift+C`), чтобы открыть интерфейс!
 
 ---
 
-## 📜 Changelog History
+## 📜 История изменений
 ### V2.9.0
-*   **Character Manager:** Introduced a comprehensive manager to edit character fields and define granular context inclusion rules for each character.
-*   **Group Chat Intelligence:** Copilot can now target and modify individual character data within group chats.
-*   **Navigation Overhaul:** Integrated a new burger menu in the tools panel for quick access to Lorebook and Character managers.
-*   **Local UI Persistence:** Window size and position are now saved locally in the browser, ensuring your layout persists across sessions.
-*   **UI & UX Refinement:** Fixed "New Session" modal layering issues, resolved chat auto-scroll glitches, and patched "Proposed Changes" visual bugs.
-*   **Stability:** Implemented various API and UI fixes for a more robust experience.
+*   **Менеджер персонажей:** представлен полноценный менеджер для редактирования полей персонажа и настройки детальных правил включения в контекст для каждого персонажа.
+*   **Интеллект в групповых чатах:** Copilot теперь может адресовать и изменять данные отдельных персонажей в групповых чатах.
+*   **Переработанная навигация:** в панель инструментов встроено бургер-меню для быстрого доступа к менеджерам лорбуков и персонажей.
+*   **Локальное сохранение интерфейса:** размер и положение окна теперь сохраняются локально в браузере — раскладка не сбрасывается между сессиями.
+*   **Улучшения UI и UX:** исправлены проблемы наложения модального окна «Новая сессия», сбои автоскролла чата и визуальные баги «предложенных изменений».
+*   **Стабильность:** различные исправления API и интерфейса для более надёжной работы.
 
 <details>
-<summary><b>Previous Updates (v1.7.0 - v2.8.3)</b></summary>
+<summary><b>Предыдущие обновления (v1.7.0 - v2.8.3)</b></summary>
 
 ### V2.8.3
-*   **Multi-Query Search:** Enhanced search tools to support multiple queries at once, improving the efficiency of information gathering.
-*   **Session & Lorebook Stability:** Fixed critical session deletion bugs and resolved an issue where proposed lorebook changes would persist after being applied.
-*   **World Info Drawer:** Patched several bugs in the extension (Special thanks to @Haruny for their time and effort in debugging).
-*   **UI/UX Improvements:** Restored missing lorebook source icons and fixed various display/layout issues for a cleaner experience.
+*   **Поиск по нескольким запросам:** инструменты поиска расширены поддержкой нескольких запросов одновременно — сбор информации стал эффективнее.
+*   **Стабильность сессий и лорбуков:** исправлены критические баги удаления сессий, а также проблема, из-за которой предложенные изменения лорбука сохранялись после применения.
+*   **Панель World Info:** исправлено несколько багов расширения (отдельная благодарность @Haruny за время и усилия, потраченные на отладку).
+*   **Улучшения UI/UX:** возвращены пропавшие иконки источников лорбуков, исправлены различные проблемы отображения и вёрстки — интерфейс стал аккуратнее.
 
 ### V2.8.2
-*   **Character Management:** Expanded AI capabilities to read and modify Character Name, Main Prompt Override, and Post-History Instructions.
-*   **Lorebook Tools:** Introduced `get_lorebooks` and enhanced `search_lorebook_entries` with `is_constant` and `is_outlet` parameters.
-*   **Autonomous Outlets:** The LLM can now manage Lorebook Outlets (Reset Lorebook Prompt to default to provide necessary context).
-*   **Chat & Sessions:** Added chat renaming support and resolved critical session deletion/overwrite bugs.
-*   **Maintenance:** Improved token tracking accuracy and optimized internal save logic.
+*   **Управление персонажами:** возможности ИИ расширены: теперь он может читать и изменять имя персонажа, переопределение основного промпта (Main Prompt Override) и пост-исторические инструкции (Post-History Instructions).
+*   **Инструменты лорбуков:** добавлен `get_lorebooks`, а `search_lorebook_entries` получил параметры `is_constant` и `is_outlet`.
+*   **Автономные аутлеты:** LLM теперь может управлять аутлетами лорбука (сбросьте промпт лорбука до значения по умолчанию, чтобы обеспечить необходимый контекст).
+*   **Чаты и сессии:** добавлено переименование чатов, исправлены критические баги удаления и перезаписи сессий.
+*   **Сопровождение:** повышена точность подсчёта токенов, оптимизирована внутренняя логика сохранения.
 
 ### V2.8.1
-*   **World Info Outlets:** Added full support for the `{{outlet::name}}` macro syntax, enabling dynamic content injection directly from World Info entries.
-*   **UI/UX Refinement:** Optimized the layout of the settings menu by repositioning tab navigation buttons for a more intuitive user experience.
-*   **Bug Fixes:** Resolved several minor stability issues and addressed UI regressions found in the previous version.
+*   **Аутлеты World Info:** добавлена полная поддержка синтаксиса макроса `{{outlet::name}}`, позволяющего динамически внедрять содержимое прямо из записей World Info.
+*   **Улучшения UI/UX:** меню настроек оптимизировано: кнопки навигации по вкладкам переставлены для более интуитивного использования.
+*   **Исправления багов:** устранены отдельные проблемы стабильности и регрессии интерфейса, обнаруженные в предыдущей версии.
 
 ### V2.8.0
-*   **Tools & Agency:** Copilot is now agentic! It can independently gather and process information to provide more accurate and context-aware responses.
-*   **Persistent Memory:** Introduced long-term memory that persists across sessions. You can scope memory to **Global**, **Character-specific**, **Chat-specific**, or **Session-only**.
-*   **Smart Anchor Detection:** Implemented a new *Tokenized Sliding Window Levenshtein* algorithm. This ensures "Proposed Changes" are applied accurately even if the LLM makes minor formatting errors.
-*   **UI/UX Overhaul:** 
-    *   Redesigned **Stats Window** with smoother animations and better optimization.
-    *   Refreshed the **Settings UI** within SillyTavern.
-    *   Added **Font Size** adjustment and a toggle for **Hidden Messages**.
-*   **Context Enhancements:** Added support for including all swipes of the last message in the context.
-*   **Extension Support:** Full compatibility for `summaryception` and `aspect:evolutia`.
-*   **Optimization & Fixes:** 
-    *   Refined all internal prompts to be more token-efficient.
-    *   Added **Custom Endpoint** support in connection profiles.
-    *   Fixed UI displacement when opening DevTools.
-    *   Resolved the bug where system messages disappeared after applying proposed changes.
+*   **Инструменты и агентность:** Copilot теперь агентный! Он может самостоятельно собирать и обрабатывать информацию, чтобы давать более точные ответы с учётом контекста.
+*   **Долговременная память:** представлена память, сохраняющаяся между сессиями. Область действия памяти: **глобальная**, **по персонажу**, **по чату** или **только для сессии**.
+*   **Умное определение якорей:** реализован новый алгоритм — *токенизированное скользящее окно Левенштейна*. Благодаря ему «предложенные изменения» применяются точно, даже если LLM допускает мелкие ошибки форматирования.
+*   **Переработка UI/UX:**
+    *   Окно **статистики** переработано: плавнее анимации, лучше оптимизация.
+    *   Обновлён **интерфейс настроек** внутри SillyTavern.
+    *   Добавлены настройка **размера шрифта** и переключатель **скрытых сообщений**.
+*   **Улучшения контекста:** добавлена поддержка включения в контекст всех свайпов последнего сообщения.
+*   **Поддержка расширений:** полная совместимость с `summaryception` и `aspect:evolutia`.
+*   **Оптимизация и исправления:**
+    *   Все внутренние промпты переработаны для экономии токенов.
+    *   Добавлена поддержка **пользовательского эндпоинта** (Custom Endpoint) в профилях подключения.
+    *   Исправлено смещение интерфейса при открытии DevTools.
+    *   Исправлен баг, из-за которого системные сообщения исчезали после применения предложенных изменений.
 
 ### V2.7.2
-*   **Shortcuts Overlay:** Added a dedicated "Shortcuts" configuration window in the settings panel for better accessibility.
-*   **Context-Aware Search:** Improved the search shortcut logic; it now triggers exclusively when the Copilot window is focused to prevent global key conflicts.
-*   **Character Factory Fixes:** Fixed critical bugs related to character creation and data integrity.
-*   **Asset Optimization:** Optimized background storage and handling for faster load times and reduced memory usage.
+*   **Окно горячих клавиш:** в панель настроек добавлено отдельное окно конфигурации «Горячие клавиши» для большего удобства.
+*   **Поиск с учётом контекста:** улучшена логика горячей клавиши поиска: теперь она срабатывает только когда окно Copilot в фокусе, чтобы не конфликтовать с глобальными сочетаниями.
+*   **Исправления фабрики персонажей:** исправлены критические баги создания персонажей и целостности данных.
+*   **Оптимизация ресурсов:** оптимизированы хранение и обработка фонов — быстрее загрузка и меньше потребление памяти.
 
 ### V2.7.1
-*   **Character Tagging:** Added the ability to modify the "tags" field for already existing characters.
-*   **Low Performance Mode:** Introduced a new toggle to optimize resource usage on lower-end hardware.
-*   **Session Stability:** Completely overhauled the session saving system to prevent spontaneous session loss and data corruption.
-*   **General Optimization:** Improved core logic for better performance and overall stability. Fixed AI Generation errors.
+*   **Теги персонажей:** добавлена возможность изменять поле «теги» у уже существующих персонажей.
+*   **Режим низкой производительности:** представлен новый переключатель для экономии ресурсов на слабом железе.
+*   **Стабильность сессий:** полностью переработана система сохранения сессий — исключены спонтанная потеря сессий и порча данных.
+*   **Общая оптимизация:** улучшена ключевая логика: выше производительность и общая стабильность. Исправлены ошибки генерации ИИ.
 
 ### V2.7.0
-*   **Proposed Chat Edits:** A powerful new way to bulk-modify, delete, or hide message ranges. Just ask Copilot to "change the name Elara to Sarah in the last 10 messages" or "hide all mentions of the tavern."
-*   **File Attachments & Vision:** Directly upload text files and images to Copilot. Features an internal viewer and supports both direct vision models and the Image Captioning extension.
-*   **Message Swiping:** Copilot responses now support regeneration and swipes, allowing you to navigate through different iterations of a reply.
-*   **Multimedia Backgrounds:** Customize the Copilot interface with image or video backgrounds (local or URL) including adjustable dimming for better readability.
-*   **Character AI Enhancements:** Added support for the **tags** field during character creation and significantly improved generation prompts (credits to @realevernever).
-*   **Advanced Overrides & Sync:** Lorebook, Character, and Chat AI settings are now fully synced with Configuration Profiles and accessible via Session Overrides.
-*   **UX Improvements:** Added an "Always Off" state for Lorebooks, sender-based group selection in the Context Picker, and focus-aware completion sounds.
-*   **Refinements:** Optimized connection profile switching and fixed theme compatibility for list markers and hidden messages.
+*   **Предлагаемые правки чата:** мощный новый способ массово изменять, удалять или скрывать диапазоны сообщений. Просто попросите Copilot: «замени имя Элара на Сара в последних 10 сообщениях» или «скрой все упоминания таверны».
+*   **Вложения и зрение:** загружайте текстовые файлы и изображения прямо в Copilot. Есть встроенный просмотрщик, поддержка моделей с прямым зрением и расширения Image Captioning.
+*   **Свайпы сообщений:** ответы Copilot поддерживают перегенерацию и свайпы — можно переключаться между разными вариантами ответа.
+*   **Мультимедийные фоны:** настройте интерфейс Copilot с помощью фонов-изображений или видео (локальные файлы или URL) с регулируемым затемнением для лучшей читаемости.
+*   **Улучшения работы с персонажами:** добавлена поддержка поля **tags** при создании персонажа и заметно улучшены промпты генерации (спасибо @realevernever).
+*   **Расширенные переопределения и синхронизация:** настройки ИИ для лорбуков, персонажей и чата полностью синхронизируются с профилями конфигурации и доступны через переопределения сессии.
+*   **Улучшения UX:** добавлено состояние «всегда выключено» для лорбуков, выбор групп по отправителю в пикере контекста и звуки завершения с учётом фокуса окна.
+*   **Доработки:** оптимизировано переключение профилей подключения, исправлена совместимость тем с маркерами списков и скрытыми сообщениями.
 
 ### V2.5.1
-*   **Continue Button:** Added a dedicated button to continue the last Copilot message.
-*   **Debug File Support:** You can now save a full debug log from the settings menu to help with troubleshooting. *Note: Export the log before refreshing the page, as it clears on reload.*
-*   **Streaming Scroll Fix:** Users can now scroll up to read previous messages without being snapped back to the bottom while the AI is streaming.
-*   **Fixes:** Implemented a potential fix for the "profile not found" error.
+*   **Кнопка «Продолжить»:** добавлена отдельная кнопка для продолжения последнего сообщения Copilot.
+*   **Сохранение отладочного лога:** из меню настроек теперь можно сохранить полный лог отладки для поиска проблем. *Примечание: экспортируйте лог до перезагрузки страницы — при перезагрузке он очищается.*
+*   **Исправление скролла при стриминге:** теперь можно скроллить вверх, чтобы перечитывать предыдущие сообщения, не отбрасываясь вниз, пока ИИ стримит ответ.
+*   **Исправления:** реализовано возможное исправление ошибки «профиль не найден».
 
 ### V2.5.0
-*   **Massive Token Optimization:** Completely overhauled the "Proposed Changes" system. Instead of rewriting entire text blocks, it now uses a smart search-and-replace method, reducing token consumption by over 80%! *(Huge thanks to @Steel-skull on GitHub!)*
-*   **Character Card Creator & Editor:** You can now create characters entirely from scratch or edit existing card fields (Description, Personality, Scenario, First Message, Alternate Greetings, and more) directly inside the extension.
-*   **Robust Parsing:** Significantly improved parsing logic for "proposed changes" blocks to successfully apply edits even if the AI makes formatting mistakes.
-*   **Session Export & Import:** Easily back up, share, or transfer your sessions. Under-the-hood session saving has also been rewritten to be much more efficient.
-*   **UI, Sounds & Polish:** Added a generation-complete sound notification, a soothing "wobble" physics effect when dragging windows, smooth interactive chart animations in Stats, and new Streaming modes (Auto, Force On, Force Off).
-*   **Lorebook Updates:** Added a "constant" parameter for proposed changes, and reorganized settings by moving the AI Edit and Keytrigger toggles to the main Settings window.
-*   **Mobile & Bug Fixes:** The Enter key on mobile keyboards now correctly inserts line breaks instead of sending messages. Fixed mobile UI headers, resolved user message duplication bugs, and redesigned system message outputs.
-*   *Note: The default Lorebook AI Edit prompt has been updated. Please reset your prompt to default in the settings to ensure compatibility!*
+*   **Масштабная оптимизация токенов:** система «предложенных изменений» полностью переработана: вместо перезаписи целых текстовых блоков используется умный метод поиска-и-замены, снижающий расход токенов более чем на 80%! *(Огромное спасибо @Steel-skull на GitHub!)*
+*   **Создание и редактирование карточек персонажей:** теперь можно создавать персонажей с нуля или редактировать поля существующих карточек (описание, личность, сценарий, первое сообщение, альтернативные приветствия и другое) прямо внутри расширения.
+*   **Надёжный парсинг:** заметно улучшена логика разбора блоков «предложенных изменений» — правки успешно применяются, даже если ИИ ошибается с форматированием.
+*   **Экспорт и импорт сессий:** легко создавайте резервные копии, делитесь сессиями или переносите их. Внутренний механизм сохранения сессий также переписан и стал гораздо эффективнее.
+*   **UI, звуки и полировка:** добавлены звук уведомления о завершении генерации, приятный эффект «покачивания» при перетаскивании окон, плавные анимации графиков в статистике и новые режимы стриминга (Авто, Принудительно включён, Принудительно выключен).
+*   **Обновления лорбуков:** добавлен параметр «constant» для предложенных изменений; настройки реорганизованы — переключатели AI Edit и авто-триггеров перенесены в главное окно настроек.
+*   **Мобильные исправления и багфиксы:** клавиша Enter на мобильных клавиатурах теперь корректно вставляет перенос строки вместо отправки сообщения. Исправлены заголовки мобильного интерфейса, баги дублирования сообщений пользователя, переработан вывод системных сообщений.
+*   *Примечание: дефолтный промпт AI-правок лорбуков был обновлён. Сбросьте промпт до значения по умолчанию в настройках, чтобы обеспечить совместимость!*
 
 ### V2.3.0
-*   **Stream Support:** Added streaming support so you can see generations in real-time.
-*   **Reasoning Blocks:** Added native display support for Reasoning blocks.
-*   **Regex Support:** Clean up formatting and fluff from chat messages included in the context using regex.
-*   **Preset Customization:** Added the ability to modify QuickPrompts and SystemPrompts (SystemPrompts are now handled via session overrides).
-*   **Favorite Messages:** You can now mark specific messages as Favorites.
-*   **In-App Changelog:** A new window to easily keep track of updates and features directly within the UI.
-*   Improved and fixed the default prompt used for Lorebook editing.
-*   Fixed a bug where Lorebook entries would incorrectly remain in the context after being disconnected from the chat or character.
-*   Fixed message numbering in the Chat Context Picker (now 0 to N) to properly match ST's native numbering.
+*   **Поддержка стриминга:** добавлен стриминг — генерации видны в реальном времени.
+*   **Блоки размышлений:** добавлена нативная поддержка отображения reasoning-блоков.
+*   **Поддержка regex:** очищайте форматирование и «шум» в сообщениях чата, попадающих в контекст, с помощью регулярных выражений.
+*   **Кастомизация пресетов:** добавлена возможность изменять QuickPrompts и SystemPrompts (SystemPrompts теперь обрабатываются через переопределения сессии).
+*   **Избранные сообщения:** теперь можно помечать отдельные сообщения как избранные.
+*   **Чейнджлог внутри приложения:** новое окно, где удобно следить за обновлениями и возможностями прямо из интерфейса.
+*   Улучшен и исправлен дефолтный промпт, используемый для редактирования лорбуков.
+*   Исправлен баг, из-за которого записи лорбука ошибочно оставались в контексте после отвязки от чата или персонажа.
+*   Исправлена нумерация сообщений в пикере контекста чата (теперь от 0 до N) — она корректно совпадает с нативной нумерацией ST.
 
-###  V2.0.0: Massive Update
-The **V2.0.0** update is now live. While this update heavily improves how Copilot handles your lore and context, it also brings a massive wave of highly requested QoL improvements.
+### V2.0.0: масштабное обновление
+Обновление **V2.0.0** вышло в свет. Оно не только серьёзно улучшает работу Copilot с вашим лором и контекстом, но и приносит огромную волну давно запрошенных улучшений удобства.
 
-**Major Features**
-- **Messages Payload:** Handpick specific messages from the chat history and feed them directly to the AI.
-- **Quick Prompts:** Fully customizable prompt buttons with emoji icons.
-- **Ghost Mode:** Copilot can now become semi-transparent and completely click-through.
-- **Expanded Context Awareness:** Context now includes the *Character's Note* and *Example of Dialogue*, and respects *Character Settings Overrides*.
-- **Temporary Sessions:** Create sessions that automatically delete themselves when you switch.
+**Крупные возможности**
+- **Payload сообщений:** отбирайте конкретные сообщения из истории чата и передавайте их ИИ напрямую.
+- **Быстрые промпты:** полностью настраиваемые кнопки промптов с эмодзи-иконками.
+- **Ghost Mode:** Copilot теперь может становиться полупрозрачным и полностью пропускать клики насквозь.
+- **Расширенная осведомлённость о контексте:** контекст теперь включает *заметку персонажа* и *пример диалога*, а также учитывает *переопределения настроек персонажа*.
+- **Временные сессии:** создавайте сессии, которые автоматически удаляются при переключении.
 
-**UI & Polish**
-- **Save Without Generating:** Edit a user message and "Save" without forcing a regeneration.
-- **Mobile Improvements:** Responsive window resizing tailored for mobile devices.
-- **Usage Stats:** A new interactive Statistics window.
-- **HTML & Formatting:** Added HTML support, and introduced clean connecting lines for bulleted lists.
-- The Floating Icon dynamically adapts to your UI theme.
-- Dismiss System Notifications after handling proposed Lorebook changes.
+**Интерфейс и полировка**
+- **Сохранение без генерации:** отредактируйте сообщение пользователя и нажмите «Сохранить» без принудительной перегенерации.
+- **Улучшения для мобильных:** адаптивное изменение размера окна, ориентированное на мобильные устройства.
+- **Статистика использования:** новое интерактивное окно статистики.
+- **HTML и форматирование:** добавлена поддержка HTML, а также аккуратные соединительные линии для маркированных списков.
+- Плавающая иконка динамически подстраивается под вашу тему интерфейса.
+- Системные уведомления скрываются после обработки предложенных изменений лорбука.
 
-**Bug Fixes**
-- Reworked text formatting (especially nested bulleted lists).
-- Fixed a logic bug where dismissed Lorebook proposals would incorrectly append to the end of the chat.
-- Fixed dialog windows disappearing if the mouse was released outside the window.
-- Fixed the floating icon randomly disappearing on mobile.
+**Исправления багов**
+- Переработано текстовое форматирование (особенно вложенные маркированные списки).
+- Исправлен логический баг, из-за которого отклонённые предложения лорбука ошибочно добавлялись в конец чата.
+- Исправлено исчезновение диалоговых окон, если мышь отпускалась за пределами окна.
+- Исправлено случайное исчезновение плавающей иконки на мобильных устройствах.
 
 ### V1.9.0
-*   **Integrated Settings Window:** Dedicated settings UI for seamless adjustments.
-*   **Session-Specific Configuration:** Override global settings for individual sessions.
-*   **Dynamic Context Scaling:** The CTX slider dynamically adjusts its range based on chat length.
-*   **Advanced In-Chat Search:** Quickly locate specific information (`Ctrl + F`).
-*   **Theme Portability:** Import and Export custom themes as JSON.
-*   **New Theme:** Added the "Dark Sky" preset.
+*   **Интегрированное окно настроек:** отдельный интерфейс настроек для бесшовной подстройки.
+*   **Настройки по сессиям:** переопределяйте глобальные настройки для отдельных сессий.
+*   **Динамическое масштабирование контекста:** слайдер CTX динамически меняет свой диапазон в зависимости от длины чата.
+*   **Продвинутый поиск по чату:** быстро находите нужную информацию (`Ctrl + F`).
+*   **Переносимость тем:** импортируйте и экспортируйте свои темы в формате JSON.
+*   **Новая тема:** добавлен пресет «Dark Sky».
 
 ### V1.7.2
-*   **Comfortable Color Picker:** Choose colors natively without leaving the app.
-*   **Default Colors:** Individually reset specific colors to the original theme defaults.
-*   **Resizable edit window:** You can now manually resize the "content" window in the Lorebook Manager.
-*   Fixed mobile lorebook manager scaling.
+*   **Удобный выбор цвета:** выбирайте цвета нативно, не покидая приложение.
+*   **Цвета по умолчанию:** сбрасывайте отдельные цвета к исходным значениям темы по отдельности.
+*   **Окно редактирования с изменяемым размером:** окно «содержимого» в менеджере лорбуков теперь можно вручную менять в размере.
+*   Исправлено масштабирование менеджера лорбуков на мобильных устройствах.
 
 ### V1.7.1
-*   **Expandable Entry Descriptions:** Click to expand chat entry descriptions.
-*   **Data Protection:** Unsaved changes warnings when switching profiles.
-*   **Lorebook Dropdowns:** Individual Lorebook selection dropdowns for each entry proposal.
-*   **New Macro:** Added `{{active_lorebooks}}` support.
-*   Context tracks when you accept/reject entries.
+*   **Раскрывающиеся описания записей:** описания записей чата разворачиваются по клику.
+*   **Защита данных:** предупреждения о несохранённых изменениях при переключении профилей.
+*   **Выпадающие списки лорбуков:** отдельный выпадающий список выбора лорбука для каждого предложения записей.
+*   **Новый макрос:** добавлена поддержка `{{active_lorebooks}}`.
+*   Контекст учитывает, когда вы принимаете или отклоняете записи.
 
 ### V1.7.0
-*   **The AI Lorebook Management (AI-Edit):** Copilot AI now actively assists in world-building.
-*   **Interactive Proposals:** AI generates Proposal Cards to review, edit, or reject changes via a Diff View modal.
-*   **Lorebook Manager UI:** Manual overrides, Auto-Keywords, and Active Indicators.
-*   **String Trimming:** Automatically remove specific tags (like `<think>` blocks) from AI responses.
-*   **Persistent Icon:** Keep the floating dock icon visible at all times.
+*   **AI-управление лорбуками (AI-Edit):** ИИ Copilot теперь активно помогает в ворлдбилдинге.
+*   **Интерактивные предложения:** ИИ генерирует карточки предложений, чтобы вы могли просмотреть, отредактировать или отклонить изменения через модальное окно с диффом.
+*   **Интерфейс менеджера лорбуков:** ручные переопределения, авто-ключевые слова и индикаторы активности.
+*   **Обрезка строк:** автоматическое удаление заданных тегов (например, блоков `<think>`) из ответов ИИ.
+*   **Постоянная иконка:** плавающая иконка в доке всегда остаётся видимой.
 </details>
 
 ---
-*Built with ❤️ for the SillyTavern community by Quren.*
+*Сделано с ❤️ для сообщества SillyTavern автором Quren.*

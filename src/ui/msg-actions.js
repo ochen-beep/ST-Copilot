@@ -23,7 +23,7 @@ import { recordStat, SM } from '../features/feature-stats.js';
 import { _openImageLightbox, _openTextLightbox } from '../features/feature-attachments.js';
 
 import { apiMod, uiWinMod, uiWdgMod, uiSetMod, featCharUiMod } from './chat-shared.js';
-import { renderMarkdown, postProcessHTMLBlocks, getDisplayContent, extractToolCallPlaceholders, _renderMsgBodyContent, _updateMsgTokenCount, createMsgEl } from './render-msg.js';
+import { renderMarkdown, postProcessHTMLBlocks, getDisplayContent, extractToolCallPlaceholders, _renderMsgBodyContent, _updateMsgTokenCount } from './render-msg.js';
 import { renderSession, removeMsgEl, removeMsgElAndBelow, removeMsgElAfter, updateMsgCount, setGeneratingState, showGenerationError, appendMsgEl } from './session-view.js';
 export function getLastAssistantMsgId(session) {
     for (let i = session.messages.length - 1; i >= 0; i--) {

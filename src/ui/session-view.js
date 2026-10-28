@@ -23,8 +23,8 @@ import { recordStat, SM } from '../features/feature-stats.js';
 import { _openImageLightbox, _openTextLightbox } from '../features/feature-attachments.js';
 
 import { apiMod, uiWinMod, uiWdgMod, uiSetMod, featCharUiMod } from './chat-shared.js';
-import { createMsgEl, _updateMsgTokenCount } from './render-msg.js';
-import { _runSwipeRegen, _refreshSwipeBars, _refreshContinueBtns, scrollToBottom, handleCopy, handleEdit, handleMessageRegen, handleDelete } from './msg-actions.js';
+import { _renderMsgBodyContent, _updateMsgTokenCount } from './render-msg.js';
+import { getSwipesForMsg, navigateSwipe, updateSwipeBar, _runSwipeRegen, _refreshSwipeBars, _refreshContinueBtns, scrollToBottom, handleCopy, handleEdit, handleMessageRegen, handleDelete } from './msg-actions.js';
 import { clearSearchHighlights, updateSearchCount, performSearch } from './search.js';
 import { closeChatPicker, updatePickBtnState } from './chat-picker.js';
 export function renderSession(session, opts = {}) {
@@ -443,4 +443,196 @@ export function setupDepthClickEdit() {
             if (e.key === 'Escape') { e.preventDefault(); commit(); } 
         });
     });
+}
+
+// ─── Message element ─────────────────────────────────────────────────────────
+
+export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
+    const isUser = msg.role === 'user';
+    const wrap = document.createElement('div');
+    wrap.className = `scp-msg ${isUser ? 'scp-msg-user' : 'scp-msg-assistant'}`;
+    wrap.dataset.id = msg.id;
+
+    const header = document.createElement('div');
+    header.className = 'scp-msg-header';
+
+    const avatar = document.createElement('div');
+    avatar.className = 'scp-msg-avatar';
+    avatar.innerHTML = isUser ? I.user : I.bot;
+
+    const meta = document.createElement('div');
+    meta.className = 'scp-msg-meta';
+    const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    meta.textContent = msg.genStamp ? `${timeStr} · ${msg.genStamp}` : timeStr;
+    if (msg.genStamp) meta.title = msg.genStamp;
+
+    const tokenCountEl = document.createElement('div');
+    tokenCountEl.className = 'scp-msg-token-count';
+    tokenCountEl.textContent = '…';
+    _updateMsgTokenCount({ querySelector: () => tokenCountEl, isConnected: true }, msg.content);
+
+    const headerRight = document.createElement('div');
+    headerRight.className = 'scp-msg-header-right';
+    headerRight.appendChild(meta);
+    headerRight.appendChild(tokenCountEl);
+
+    header.appendChild(avatar);
+    header.appendChild(headerRight);
+
+    const body = document.createElement('div');
+    body.className = 'scp-msg-body';
+
+    const content = document.createElement('div');
+    content.className = 'scp-msg-content';
+    body.appendChild(content);
+
+    const actions = document.createElement('div');
+    actions.className = 'scp-msg-actions';
+
+    const makeBtn = (icon, label, cls, cb) => {
+        const b = document.createElement('button');
+        b.className = `scp-msg-btn${cls ? ' ' + cls : ''}`;
+        b.innerHTML = icon; b.title = label;
+        b.addEventListener('click', cb);
+        return b;
+    };
+
+    actions.appendChild(makeBtn(I.copy, 'Копировать', '', () => onCopy(msg)));
+    actions.appendChild(makeBtn(I.edit, 'Изменить', '', () => onEdit(wrap, msg)));
+    actions.appendChild(makeBtn(I.refresh, 'Перегенерировать', '', () => onRegen(wrap, msg)));
+    actions.appendChild(makeBtn(I.trash, 'Удалить', 'scp-msg-btn-danger', () => onDelete(wrap, msg)));
+
+    const isStarred = isMessageStarred(msg.id);
+    const starBtn = makeBtn(isStarred ? I.starFill : I.star, isStarred ? 'Убрать из избранного' : 'В избранное', `scp-msg-btn-star${isStarred ? ' starred' : ''}`, () => {
+        const nowStarred = toggleStarMessage(msg.id);
+        starBtn.innerHTML = nowStarred ? I.starFill : I.star;
+        starBtn.title = nowStarred ? 'Убрать из избранного' : 'В избранное';
+        starBtn.classList.toggle('starred', nowStarred);
+        wrap.classList.toggle('scp-msg-starred', nowStarred);
+        if (document.getElementById('scp-fav-panel')?.style.display !== 'none' && uiWdgMod) {
+            uiWdgMod.renderFavoritesPanel();
+        }
+    });
+    actions.appendChild(starBtn);
+    if (isStarred) wrap.classList.add('scp-msg-starred');
+
+    if (!isUser) {
+        const continueBtn = makeBtn(I.continueArrow, 'Продолжить ответ', 'scp-msg-btn-continue', () => {
+            if (apiMod) apiMod.runContinue(getCurrentSession(), msg.id);
+        });
+        actions.appendChild(continueBtn);
+    }
+
+    body.appendChild(actions);
+
+    if (!isUser) {
+        const swipeBar = document.createElement('div');
+        swipeBar.className = 'scp-swipe-bar';
+        swipeBar.style.display = 'none';
+
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'scp-swipe-btn scp-swipe-prev';
+        prevBtn.innerHTML = I.chevronLeft;
+        prevBtn.title = 'Предыдущий вариант';
+        prevBtn.disabled = true;
+
+        const counter = document.createElement('span');
+        counter.className = 'scp-swipe-counter';
+
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'scp-swipe-btn scp-swipe-next';
+        nextBtn.innerHTML = I.chevronRight;
+        nextBtn.title = 'Новый вариант (перегенерировать)';
+
+        prevBtn.addEventListener('click', async () => {
+            if (prevBtn.disabled || state.generating) return;
+            if (wrap.classList.contains('is-editing')) { toastr.info('Сначала завершите редактирование сообщения.', EXT_DISPLAY); return; }
+            const session = getCurrentSession();
+            if (!getSwipesForMsg(session, msg.id)) return;
+            
+            const bdy = wrap.querySelector('.scp-msg-body');
+            if (bdy) {
+                bdy.classList.remove('scp-swipe-anim-right', 'scp-swipe-anim-left');
+                bdy.classList.add('scp-swipe-anim-out-right'); 
+                await new Promise(r => setTimeout(r, 150));
+            }
+            
+            if (navigateSwipe(session, msg.id, -1)) {
+                if (bdy) {
+                    bdy.classList.remove('scp-swipe-anim-out-right');
+                    void bdy.offsetWidth;
+                    bdy.classList.add('scp-swipe-anim-left'); 
+                }
+                _renderMsgBodyContent(wrap, session.messages.find(m => m.id === msg.id));
+                updateSwipeBar(wrap, session, msg.id);
+            }
+        });
+
+        nextBtn.addEventListener('click', async () => {
+            if (nextBtn.disabled || state.generating) return;
+            if (wrap.classList.contains('is-editing')) { toastr.info('Сначала завершите редактирование сообщения.', EXT_DISPLAY); return; }
+            const session = getCurrentSession();
+            const msgData = session.messages.find(m => m.id === msg.id);
+            if (!msgData) return;
+            
+            if (msgData.swipeIndex !== undefined && msgData.swipeIndex < (msgData.swipes?.length || 1) - 1) {
+                const bdy = wrap.querySelector('.scp-msg-body');
+                if (bdy) {
+                    bdy.classList.remove('scp-swipe-anim-right', 'scp-swipe-anim-left');
+                    bdy.classList.add('scp-swipe-anim-out-left'); 
+                    await new Promise(r => setTimeout(r, 150));
+                }
+
+                if (navigateSwipe(session, msg.id, 1)) {
+                    if (bdy) {
+                        bdy.classList.remove('scp-swipe-anim-out-left');
+                        void bdy.offsetWidth;
+                        bdy.classList.add('scp-swipe-anim-right'); 
+                    }
+                    _renderMsgBodyContent(wrap, session.messages.find(m => m.id === msg.id));
+                    updateSwipeBar(wrap, session, msg.id);
+                }
+            } else {
+                _dbgAdd('SWIPE_REGEN_TRIGGERED', { msgId: msg.id });
+                _runSwipeRegen(session, msg.id, wrap);
+            }
+        });
+
+        swipeBar.appendChild(prevBtn);
+        swipeBar.appendChild(counter);
+        swipeBar.appendChild(nextBtn);
+
+        const delSwipeBtn = document.createElement('button');
+        delSwipeBtn.className = 'scp-swipe-btn scp-swipe-del';
+        delSwipeBtn.innerHTML = I.x;
+        delSwipeBtn.title = 'Удалить текущий вариант ответа';
+        delSwipeBtn.addEventListener('click', async () => {
+            if (state.generating) return;
+            if (wrap.classList.contains('is-editing')) { toastr.info('Сначала завершите редактирование сообщения.', EXT_DISPLAY); return; }
+            const session = getCurrentSession();
+            const msgData = session.messages.find(m => m.id === msg.id);
+            if (!msgData || (msgData.swipes?.length || 1) < 2) return;
+            const ok = await showCustomDialog({
+                type: 'confirm',
+                title: 'Удалить вариант',
+                message: 'Удалить текущий вариант ответа? Остальные варианты сохранятся.'
+            });
+            if (!ok) return;
+            msgData.swipes.splice(msgData.swipeIndex ?? 0, 1);
+            msgData.swipeIndex = Math.min(msgData.swipeIndex ?? 0, msgData.swipes.length - 1);
+            msgData.content = msgData.swipes[msgData.swipeIndex].content;
+            msgData.reasoning = msgData.swipes[msgData.swipeIndex].reasoning || null;
+            saveSessionsToMetadata();
+            updateMsgCount(session);
+            _renderMsgBodyContent(wrap, msgData);
+            updateSwipeBar(wrap, session, msg.id);
+        });
+        swipeBar.appendChild(delSwipeBtn);
+        body.appendChild(swipeBar);
+    }
+
+    wrap.appendChild(header); wrap.appendChild(body);
+    _renderMsgBodyContent(wrap, msg);
+    
+    return wrap;
 }
