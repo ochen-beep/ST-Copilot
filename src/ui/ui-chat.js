@@ -1,4 +1,4 @@
-import { I, THEME_PRESETS } from '../constants.js';
+import { EXT_DISPLAY, I, THEME_PRESETS } from '../constants.js';
 import { state } from '../state.js';
 import { getSettings, saveSettings, getCurrentSession, saveSessionsToMetadata, deleteMsg, truncateAfter, truncateFrom, expandMacros, getEffectiveSettings, getBindingKey, initChatBucket, isMessageStarred, toggleStarMessage } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';

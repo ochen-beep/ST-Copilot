@@ -2,7 +2,7 @@ var STCopilot = (function (exports) {
   'use strict';
 
   const EXT_NAME = 'st_copilot';
-  const EXT_DISPLAY$1 = 'ST-Copilot';
+  const EXT_DISPLAY = 'ST-Copilot';
   const WIN_ID = 'scp-window';
   const ICON_ID = 'scp-dock-icon';
   const MODAL_ID = 'scp-ctx-modal';
@@ -1188,7 +1188,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       a.download = `st-copilot-debug-${Date.now()}.txt`;
       a.click();
       URL.revokeObjectURL(url);
-      toastr.success('Журнал отладки скачан.', EXT_DISPLAY$1);
+      toastr.success('Журнал отладки скачан.', EXT_DISPLAY);
   }
 
   var utilDebug = /*#__PURE__*/Object.freeze({
@@ -1431,15 +1431,15 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;width:1px;height:1px;';
       document.body.appendChild(ta);
       ta.focus(); ta.select();
-      try { document.execCommand('copy'); toastr.success('Скопировано', EXT_DISPLAY$1); }
-      catch (e) { toastr.error('Не удалось скопировать', EXT_DISPLAY$1); }
+      try { document.execCommand('copy'); toastr.success('Скопировано', EXT_DISPLAY); }
+      catch (e) { toastr.error('Не удалось скопировать', EXT_DISPLAY); }
       ta.remove();
   }
 
   function copyText(text) {
       if (navigator.clipboard && window.isSecureContext) {
           navigator.clipboard.writeText(text)
-              .then(() => toastr.success('Скопировано', EXT_DISPLAY$1))
+              .then(() => toastr.success('Скопировано', EXT_DISPLAY))
               .catch(() => fallbackCopy(text));
       } else { fallbackCopy(text); }
   }
@@ -1805,7 +1805,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           return res.ok;
       } catch (e) {
           _dbgAdd('STORAGE_WRITE_FAILED', { file_id, error: e.message });
-          console.error(`[${EXT_DISPLAY$1}] saveSessionFile error:`, e);
+          console.error(`[${EXT_DISPLAY}] saveSessionFile error:`, e);
           return false;
       }
   }
@@ -1874,7 +1874,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           if (typeof toastr !== 'undefined') {
               toastr.warning(
                   `Файл сессий «${file_id}» повреждён и не читается. Начата чистая сессия; исходное содержимое сохранено в «${backupName}».`,
-                  EXT_DISPLAY$1, { timeOut: 15000 });
+                  EXT_DISPLAY, { timeOut: 15000 });
           }
           return res.ok;
       } catch (e) {
@@ -1954,7 +1954,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           if (!transportError) return false;
           _dbgAdd('STORAGE_INIT_TRANSPORT_ABORT', { chatId, error: transportError.message });
           if (typeof toastr !== 'undefined') {
-              toastr.warning('Хранилище сессий недоступно (сервер не ответил). Сессии не изменялись — повторите открытие чата, когда сервер ответит.', EXT_DISPLAY$1, { timeOut: 12000 });
+              toastr.warning('Хранилище сессий недоступно (сервер не ответил). Сессии не изменялись — повторите открытие чата, когда сервер ответит.', EXT_DISPLAY, { timeOut: 12000 });
           }
           return true;
       };
@@ -2049,7 +2049,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           _currentSessionFileId = targetFileId;
           await commitBucketChanges(true);
 
-          toastr.error('Файл сессии Copilot был повреждён и не подлежит восстановлению. Создано новое хранилище сессий для этого чата; повреждённый файл сохранён на диске для ручного восстановления.', EXT_DISPLAY$1, { timeOut: 15000 });
+          toastr.error('Файл сессии Copilot был повреждён и не подлежит восстановлению. Создано новое хранилище сессий для этого чата; повреждённый файл сохранён на диске для ручного восстановления.', EXT_DISPLAY, { timeOut: 15000 });
           return;
       }
 
@@ -2221,7 +2221,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               return window.substituteParams(text, ctx.name1, ctx.name2);
           }
       } catch (e) {
-          console.warn(`[${EXT_DISPLAY$1}] Macro expansion error:`, e);
+          console.warn(`[${EXT_DISPLAY}] Macro expansion error:`, e);
       }
       try {
           const ctx = SillyTavern.getContext();
@@ -2283,9 +2283,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           a.download = `st-copilot-session-${safeName}.json`;
           a.click();
           URL.revokeObjectURL(url);
-          toastr.success('Сессия экспортирована.', EXT_DISPLAY$1);
+          toastr.success('Сессия экспортирована.', EXT_DISPLAY);
       } catch (e) {
-          toastr.error(`Ошибка экспорта: ${e.message}`, EXT_DISPLAY$1);
+          toastr.error(`Ошибка экспорта: ${e.message}`, EXT_DISPLAY);
       }
   }
 
@@ -2298,7 +2298,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               const text = await file.text();
               const data = JSON.parse(text);
               if (!data.session || !data.session.id || !Array.isArray(data.session.messages)) {
-                  toastr.error('Недействительный файл сессии.', EXT_DISPLAY$1); return;
+                  toastr.error('Недействительный файл сессии.', EXT_DISPLAY); return;
               }
               const ok = await showCustomDialog({
                   type: 'confirm',
@@ -2313,10 +2313,10 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               bucket.activeSessionId = imported.id;
               invalidateSystemPromptCache('importSession');
               saveSessionsToMetadata();
-              toastr.success(`Сессия «${escHtml(imported.name)}» импортирована.`, EXT_DISPLAY$1);
+              toastr.success(`Сессия «${escHtml(imported.name)}» импортирована.`, EXT_DISPLAY);
               if (onSuccessCallback) onSuccessCallback();
           } catch (e) {
-              toastr.error(`Ошибка импорта: ${e.message}`, EXT_DISPLAY$1);
+              toastr.error(`Ошибка импорта: ${e.message}`, EXT_DISPLAY);
           }
       };
       inp.click();
@@ -2484,7 +2484,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               return data;
           } catch (e) {
               _dbgAdd('LB_LOAD_FILE_FAILED', { bookName: name, error: e.message });
-              console.error(`[${EXT_DISPLAY$1}] WI load failed for "${name}":`, e);
+              console.error(`[${EXT_DISPLAY}] WI load failed for "${name}":`, e);
               return null;
           } finally {
               delete wiPromises[name];
@@ -2558,7 +2558,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
   }
 
   async function saveWorldInfoBook(name, data) {
-      if (data._embedded) { toastr.warning('Нельзя напрямую сохранять встроенные лорбуки персонажа.', EXT_DISPLAY$1); return; }
+      if (data._embedded) { toastr.warning('Нельзя напрямую сохранять встроенные лорбуки персонажа.', EXT_DISPLAY); return; }
       const ctx = SillyTavern.getContext();
       // Глубокая копия: в payload не должно быть живых ссылок на кэш — иначе
       // неудачный сейв оставляет кэш мутированным относительно диска.
@@ -2581,7 +2581,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           }
       } catch (e) {
           _dbgAdd('LB_SAVE_FILE_FAILED', { bookName: name, error: e.message });
-          console.error(`[${EXT_DISPLAY$1}] saveWorldInfoBook failed for "${name}":`, e);
+          console.error(`[${EXT_DISPLAY}] saveWorldInfoBook failed for "${name}":`, e);
           throw e;
       }
       delete wiCache[name];
@@ -2946,7 +2946,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                   if (typeof ctx.updateWorldInfoList === 'function') await ctx.updateWorldInfoList();
                   else if (typeof window.loadWorldInfoList === 'function') await window.loadWorldInfoList();
               }
-              toastr.success(`Лорбук «${bookName}» успешно создан.`, EXT_DISPLAY$1);
+              toastr.success(`Лорбук «${bookName}» успешно создан.`, EXT_DISPLAY);
           }
 
           delete wiCache[bookName];
@@ -3050,11 +3050,11 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       }
 
       if (!data) {
-          console.warn(`[${EXT_DISPLAY$1}] resolveLBChangeTarget: no book data found`, {
+          console.warn(`[${EXT_DISPLAY}] resolveLBChangeTarget: no book data found`, {
               change, resolvedBookName: bookName, activeBooks: getActiveLorebookNames(), cacheKeys: Object.keys(wiCache)
           });
       } else if (!origEntry && change.action !== 'add') {
-          console.warn(`[${EXT_DISPLAY$1}] resolveLBChangeTarget: entry not found (uid/name must be exact and unambiguous)`, {
+          console.warn(`[${EXT_DISPLAY}] resolveLBChangeTarget: entry not found (uid/name must be exact and unambiguous)`, {
               targetName, targetUid, bookName,
               entries: Object.values(data.entries || {}).map(e => ({ uid: e.uid, comment: e.comment, key: e.key?.slice(0, 3) }))
           });
@@ -3653,7 +3653,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           getSettings().stats = { g:{}, c:{}, ch:{} };
           saveSettings$1();
           renderStatsPane(container);
-          toastr.success('Статистика очищена.', EXT_DISPLAY$1);
+          toastr.success('Статистика очищена.', EXT_DISPLAY);
       });
       danger.appendChild(resetBtn);
       container.appendChild(danger);
@@ -4073,7 +4073,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
   }
 
   async function applyLBChanges(changes, afterMsgId = null) {
-      console.log(`[${EXT_DISPLAY$1}] applyLBChanges: processing ${changes.length} change(s)`, JSON.parse(JSON.stringify(changes)));
+      console.log(`[${EXT_DISPLAY}] applyLBChanges: processing ${changes.length} change(s)`, JSON.parse(JSON.stringify(changes)));
       const bookCache = {};      // bookName -> рабочая копия книги (клонируется при первом касании)
       const origBooks = {};      // bookName -> исходный объект из wiCache (для отката при сбое сейва)
       const successfulChanges =[];
@@ -4096,12 +4096,12 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
           if (!data) {
               const msg = `Лорбук не найден: «${change.worldName || '(пусто)'}» — активен ли он в этом чате?`;
-              toastr.error(`[ЛБ] ${msg}`, EXT_DISPLAY$1, { timeOut: 10000 });
-              console.error(`[${EXT_DISPLAY$1}] applyLBChanges: ${msg}`, change);
+              toastr.error(`[ЛБ] ${msg}`, EXT_DISPLAY, { timeOut: 10000 });
+              console.error(`[${EXT_DISPLAY}] applyLBChanges: ${msg}`, change);
               continue;
           }
           if (!bookName) {
-              toastr.error(`[ЛБ] Не удалось определить имя книги для изменения: «${change.name || change.uid || '?'}»`, EXT_DISPLAY$1, { timeOut: 10000 });
+              toastr.error(`[ЛБ] Не удалось определить имя книги для изменения: «${change.name || change.uid || '?'}»`, EXT_DISPLAY, { timeOut: 10000 });
               continue;
           }
 
@@ -4157,7 +4157,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               successfulChanges.push(change);
           } else if (change.action === 'edit') {
               if (!origEntry) {
-                  toastr.error(`[ЛБ] Запись для редактирования не найдена: «${change.name || change.uid || '?'}» в «${bookName}»`, EXT_DISPLAY$1, { timeOut: 10000 });
+                  toastr.error(`[ЛБ] Запись для редактирования не найдена: «${change.name || change.uid || '?'}» в «${bookName}»`, EXT_DISPLAY, { timeOut: 10000 });
                   continue;
               }
               if (change.name !== undefined) origEntry.comment = change.name;
@@ -4188,7 +4188,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               successfulChanges.push(change);
           } else if (change.action === 'patch') {
               if (!origEntry) {
-                  toastr.error(`[ЛБ] Запись для исправления не найдена: «${change.name || change.uid || '?'}» в «${bookName}»`, EXT_DISPLAY$1, { timeOut: 10000 });
+                  toastr.error(`[ЛБ] Запись для исправления не найдена: «${change.name || change.uid || '?'}» в «${bookName}»`, EXT_DISPLAY, { timeOut: 10000 });
                   continue;
               }
               let current = origEntry.content || '';
@@ -4196,7 +4196,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               for (const patch of (change.patches || [])) {
                   const { result, matched } = applyPatchToField(current, patch);
                   if (!matched) {
-                      toastr.warning(`[ЛБ] SEARCH не найдено в «${origEntry.comment}»: «${(patch.search || '').slice(0, 60)}»`, EXT_DISPLAY$1, { timeOut: 8000 });
+                      toastr.warning(`[ЛБ] SEARCH не найдено в «${origEntry.comment}»: «${(patch.search || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 });
                       allMatched = false;
                       break;
                   }
@@ -4230,7 +4230,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       }
 
       if (changes.length > 0 && !Object.keys(bookCache).length) {
-          toastr.warning('[ЛБ] Изменения не применены — подробности см. в консоли браузера (F12)', EXT_DISPLAY$1, { timeOut: 10000 });
+          toastr.warning('[ЛБ] Изменения не применены — подробности см. в консоли браузера (F12)', EXT_DISPLAY, { timeOut: 10000 });
           return [];
       }
 
@@ -4244,7 +4244,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           } catch (e) {
               failedBooks.add(name);
               wiCache[name] = origBooks[name];
-              toastr.error(`[ЛБ] Ошибка сохранения для «${name}»: ${e.message}`, EXT_DISPLAY$1, { timeOut: 12000 });
+              toastr.error(`[ЛБ] Ошибка сохранения для «${name}»: ${e.message}`, EXT_DISPLAY, { timeOut: 12000 });
           }
       }
 
@@ -4436,7 +4436,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                   _selectedBook = resolved.bookName;
                   worldPanel.querySelectorAll('.scp-lb-proposal-world-item').forEach(el => el.classList.toggle('active', el.dataset.value === resolved.bookName));
                   worldTriggerText.textContent = `в ${getDisplayName(resolved.bookName)}`;
-                  toastr.info(`Запись найдена в «<b>${escHtml(getDisplayName(resolved.bookName))}</b>» — лорбук переключён автоматически.`, EXT_DISPLAY$1, { escapeHtml: false });
+                  toastr.info(`Запись найдена в «<b>${escHtml(getDisplayName(resolved.bookName))}</b>» — лорбук переключён автоматически.`, EXT_DISPLAY, { escapeHtml: false });
               } else {
                   worldTriggerText.textContent = found ? `в ${getDisplayName(bookName)}` : `в ${getDisplayName(bookName)} ⚠`;
               }
@@ -4526,7 +4526,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                   e.stopPropagation();
                   const change = editableChanges[ci];
                   const { origEntry } = await resolveLBChangeTarget(change);
-                  if (!origEntry) { toastr.warning('Не удалось найти исходную запись для сравнения.', EXT_DISPLAY$1); return; }
+                  if (!origEntry) { toastr.warning('Не удалось найти исходную запись для сравнения.', EXT_DISPLAY); return; }
                   openDiffModal(change, origEntry);
               });
               itemBtns.appendChild(diffBtn);
@@ -4559,9 +4559,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                   itemStates[ci] = 'applied'; item.classList.add('scp-lb-item-applied');
                   itemBtns.querySelectorAll('button').forEach(b => { b.disabled = true; });
                   updateCountBadge(); updateFooterBtns(); syncBlockToMessage(); checkAllResolved();
-                  toastr.success('[ЛБ] Изменение применено.', EXT_DISPLAY$1);
+                  toastr.success('[ЛБ] Изменение применено.', EXT_DISPLAY);
               } catch (err) {
-                  toastr.error(`Ошибка: ${err.message}`, EXT_DISPLAY$1);
+                  toastr.error(`Ошибка: ${err.message}`, EXT_DISPLAY);
                   applyItemBtn.disabled = false; applyItemBtn.textContent = '✓';
               }
           });
@@ -4744,12 +4744,12 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                   }
               });
               updateCountBadge(); updateFooterBtns(); checkAllResolved();
-              if (applied.length) toastr.success(`[ЛБ] ${applied.length} изменений применено.`, EXT_DISPLAY$1);
+              if (applied.length) toastr.success(`[ЛБ] ${applied.length} изменений применено.`, EXT_DISPLAY);
               if (applied.length < pending.length) {
                   applyAllBtn.disabled = false; applyAllBtn.textContent = 'Применить всё';
               }
           } catch (e) {
-              toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY$1);
+              toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
               applyAllBtn.disabled = false; applyAllBtn.textContent = 'Применить всё';
           }
       });
@@ -4789,7 +4789,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       Object.keys(wiCache).forEach(k => delete wiCache[k]);
       
       await buildLorebookContextBlock(s).catch(() => {});
-      await refreshLorebookList().catch(e => console.error(`[${EXT_DISPLAY$1}] LB list:`, e));
+      await refreshLorebookList().catch(e => console.error(`[${EXT_DISPLAY}] LB list:`, e));
       if (state.lbActiveBook) await renderEntryList(state.lbActiveBook, state.lbSearchQuery).catch(() => {});
   }
 
@@ -5074,7 +5074,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               if (data?.entries[entry.uid] !== undefined) {
                   data.entries[entry.uid].disable = entry.disable;
                   await saveWorldInfoBook(bookName, data);
-                  toastr.success('Статус обновлён', EXT_DISPLAY$1);
+                  toastr.success('Статус обновлён', EXT_DISPLAY);
                   renderEntryList(bookName, state.lbSearchQuery);
               }
           };
@@ -5090,7 +5090,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
   async function saveEntryDetail() {
       if (!state.lbEntryDetailEntry || !state.lbEntryDetailBook) return;
-      if (state.lbEntryDetailBook === EMBEDDED_BOOK_KEY) { toastr.warning('Нельзя сохранять записи встроенного лорбука персонажа.', EXT_DISPLAY$1); return; }
+      if (state.lbEntryDetailBook === EMBEDDED_BOOK_KEY) { toastr.warning('Нельзя сохранять записи встроенного лорбука персонажа.', EXT_DISPLAY); return; }
       const data = await fetchWorldInfoBook(state.lbEntryDetailBook);
       if (!data) return;
       const entry = data.entries[state.lbEntryDetailEntry.uid];
@@ -5100,7 +5100,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       Object.assign(state.lbEntryDetailEntry, entry);
       await saveWorldInfoBook(state.lbEntryDetailBook, data);
 
-      toastr.success('Запись сохранена', EXT_DISPLAY$1);
+      toastr.success('Запись сохранена', EXT_DISPLAY);
       document.getElementById('scp-lb-detail-title').textContent = entry.comment || `Запись #${entry.uid}`;
       renderEntryList(state.lbEntryDetailBook, state.lbSearchQuery);
       updateMsgCount(getCurrentSession());
@@ -5115,7 +5115,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       delete data.entries[state.lbEntryDetailEntry.uid];
       await saveWorldInfoBook(state.lbEntryDetailBook, data);
 
-      toastr.success('Запись удалена', EXT_DISPLAY$1);
+      toastr.success('Запись удалена', EXT_DISPLAY);
       document.getElementById('scp-lb-entry-detail').style.display = 'none';
       document.getElementById('scp-lb-entries').style.display = '';
       renderEntryList(state.lbEntryDetailBook, state.lbSearchQuery);
@@ -5123,8 +5123,8 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
   }
 
   async function addNewEntry() {
-      if (!state.lbActiveBook) { toastr.warning('Сначала выберите лорбук', EXT_DISPLAY$1); return; }
-      if (state.lbActiveBook === EMBEDDED_BOOK_KEY) { toastr.warning('Нельзя добавлять записи во встроенные лорбуки персонажа.', EXT_DISPLAY$1); return; }
+      if (!state.lbActiveBook) { toastr.warning('Сначала выберите лорбук', EXT_DISPLAY); return; }
+      if (state.lbActiveBook === EMBEDDED_BOOK_KEY) { toastr.warning('Нельзя добавлять записи во встроенные лорбуки персонажа.', EXT_DISPLAY); return; }
       const name = await showCustomDialog({ type: 'prompt', title: 'Новая запись', message: 'Имя записи:', placeholder: 'Новая запись' });
       if (name === null) return;
       const data = await fetchWorldInfoBook(state.lbActiveBook);
@@ -5139,7 +5139,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
       data.entries[newUid] = newEntry;
       await saveWorldInfoBook(state.lbActiveBook, data);
-      toastr.success('Запись создана', EXT_DISPLAY$1);
+      toastr.success('Запись создана', EXT_DISPLAY);
       await renderEntryList(state.lbActiveBook, state.lbSearchQuery);
       showEntryDetail(newEntry, state.lbActiveBook);
       updateMsgCount(getCurrentSession());
@@ -5520,7 +5520,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               // назвать персонажа точно; правка без адресата отклоняется.
               _dbgAdd('CHAR_EDIT_UNRESOLVED', { changeChar: change.char || null, field: change.field });
               if (typeof toastr !== 'undefined') {
-                  toastr.warning(`[Карточки] Правка поля «${change.field}» пропущена: персонаж «${change.char}» не найден в группе. Назовите персонажа точно.`, EXT_DISPLAY$1, { timeOut: 8000 });
+                  toastr.warning(`[Карточки] Правка поля «${change.field}» пропущена: персонаж «${change.char}» не найден в группе. Назовите персонажа точно.`, EXT_DISPLAY, { timeOut: 8000 });
               }
               continue;
           }
@@ -6278,7 +6278,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
   }
 
   async function applyCharChanges(changes, char, afterMsgId = null) {
-      if (!char) { toastr.error('[Редактор персонажа] Нет активного персонажа.', EXT_DISPLAY$1); return; }
+      if (!char) { toastr.error('[Редактор персонажа] Нет активного персонажа.', EXT_DISPLAY); return; }
       const successLog = [];
 
       for (const change of changes) {
@@ -6293,7 +6293,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                       successLog.push(change);
                   } else {
                       const idx = (change.index || 1) - 1;
-                      if (idx < 0 || idx >= greetings.length) { toastr.warning(`[Редактор персонажа] Индекс приветствия ${change.index} вне диапазона.`, EXT_DISPLAY$1); continue; }
+                      if (idx < 0 || idx >= greetings.length) { toastr.warning(`[Редактор персонажа] Индекс приветствия ${change.index} вне диапазона.`, EXT_DISPLAY); continue; }
 
                       if (action === 'overwrite') {
                           greetings[idx] = change.value || '';
@@ -6306,7 +6306,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                           let allMatched = true;
                           for (const patch of (change.patches || [])) {
                               const { result, matched } = applyPatchToField(current, patch);
-                              if (!matched) { toastr.warning(`[Редактор персонажа] SEARCH не найдено в приветствии #${change.index}.`, EXT_DISPLAY$1); allMatched = false; break; }
+                              if (!matched) { toastr.warning(`[Редактор персонажа] SEARCH не найдено в приветствии #${change.index}.`, EXT_DISPLAY); allMatched = false; break; }
                               current = result;
                           }
                           if (!allMatched) continue;
@@ -6332,7 +6332,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                   let allMatched = true;
                   for (const patch of (change.patches || [])) {
                       const { result, matched } = applyPatchToField(current, patch);
-                      if (!matched) { toastr.warning(`[Редактор персонажа] SEARCH не найдено в поле «${field}»: «${(patch.search || '').slice(0, 60)}…»`, EXT_DISPLAY$1, { timeOut: 8000 }); allMatched = false; break; }
+                      if (!matched) { toastr.warning(`[Редактор персонажа] SEARCH не найдено в поле «${field}»: «${(patch.search || '').slice(0, 60)}…»`, EXT_DISPLAY, { timeOut: 8000 }); allMatched = false; break; }
                       current = result;
                   }
                   if (!allMatched) continue;
@@ -6341,13 +6341,13 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               }
           } catch (e) {
               console.error(`[ST-Copilot-Debug] Failed on char field "${field}":`, e);
-              toastr.error(`[Редактор персонажа] Ошибка в поле «${field}»: ${e.message}`, EXT_DISPLAY$1, { timeOut: 10000 });
+              toastr.error(`[Редактор персонажа] Ошибка в поле «${field}»: ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
           }
       }
 
       if (successLog.length > 0) {
           logCharEditHistory(successLog, 'Applied', afterMsgId, char.name);
-          toastr.success(`[Редактор персонажа] Применено изменений: ${successLog.length} к «${char.name}».`, EXT_DISPLAY$1);
+          toastr.success(`[Редактор персонажа] Применено изменений: ${successLog.length} к «${char.name}».`, EXT_DISPLAY);
       }
   }
 
@@ -6516,7 +6516,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
       createBtn.addEventListener('click', async () => {
           if (!editableData.name?.trim()) {
-              toastr.warning('Имя персонажа обязательно.', EXT_DISPLAY$1);
+              toastr.warning('Имя персонажа обязательно.', EXT_DISPLAY);
               inputs.name.focus();
               return;
           }
@@ -6532,11 +6532,11 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           try {
               await createCharacterAPI(editableData);
               logCharCreationHistory(editableData, 'Applied', card.dataset.for);
-              toastr.success(`Персонаж «${escHtml(editableData.name)}» создан!`, EXT_DISPLAY$1);
+              toastr.success(`Персонаж «${escHtml(editableData.name)}» создан!`, EXT_DISPLAY);
               card.remove();
           } catch (e) {
               console.error('[ST-Copilot-Debug] Character creation UI error:', e);
-              toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY$1, { timeOut: 10000 });
+              toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
               createBtn.disabled = false;
               createBtn.innerHTML = '<i class="fa-solid fa-user-plus"></i> Создать персонажа';
           }
@@ -6760,7 +6760,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                   countBadge.textContent = `${getPending()} ожидает`; updateFooter();
                   checkAllResolved();
               } catch (err) {
-                  toastr.error(`Ошибка: ${err.message}`, EXT_DISPLAY$1);
+                  toastr.error(`Ошибка: ${err.message}`, EXT_DISPLAY);
                   applyBtn.disabled = false; applyBtn.textContent = '\u2713';
                   if (isNameField) { itemStates[ci] = 'pending'; _syncAllCardsToMessage(msgId); }
               }
@@ -6928,7 +6928,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               countBadge.textContent = `${getPending()} ожидает`; updateFooter();
               checkAllResolved();
           } catch (e) {
-              toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY$1);
+              toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
               applyAllBtn.disabled = false; applyAllBtn.textContent = 'Применить всё';
               if (hasNameField) { pendingIndices.forEach(i => { itemStates[i] = 'pending'; }); _syncAllCardsToMessage(msgId); }
           }
@@ -7582,7 +7582,7 @@ ${scopeHtml}
               saveSettings$1();
               const el = document.getElementById('scp-sp-memory-prompt'); if (el) el.value = DEFAULT_MEMORY_PROMPT;
               const stEl = document.getElementById('scp-memory-prompt'); if (stEl) stEl.value = DEFAULT_MEMORY_PROMPT;
-              toastr.success('Промпт сброшен.', EXT_DISPLAY$1);
+              toastr.success('Промпт сброшен.', EXT_DISPLAY);
           });
       }
 
@@ -7601,12 +7601,12 @@ ${scopeHtml}
           clearBtn.parentNode.replaceChild(newClearBtn, clearBtn);
           newClearBtn.addEventListener('click', async () => {
               const count = Object.keys(getMemories()).length;
-              if (!count) { toastr.info('Нет памяток для очистки.', EXT_DISPLAY$1); return; }
+              if (!count) { toastr.info('Нет памяток для очистки.', EXT_DISPLAY); return; }
               const ok = await showCustomDialog({ type: 'confirm', title: 'Очистить всю память', message: `Удалить все ${count} сохранённых памяток? Это действие нельзя отменить.`, delayConfirm: 2 });
               if (!ok) return;
               clearAllMemories();
               renderMemoryList();
-              toastr.success('Вся память очищена.', EXT_DISPLAY$1);
+              toastr.success('Вся память очищена.', EXT_DISPLAY);
           });
       }
 
@@ -8151,7 +8151,7 @@ ${scopeHtml}
   async function applyChatChanges(changes, afterMsgId = null) {
       const ctx = SillyTavern.getContext();
       const msgs = ctx.chat;
-      if (!msgs) { toastr.error('[Редактор чата] Нет активного чата.', EXT_DISPLAY$1); return; }
+      if (!msgs) { toastr.error('[Редактор чата] Нет активного чата.', EXT_DISPLAY); return; }
       const successLog = [];
 
       for (const change of changes) {
@@ -8262,7 +8262,7 @@ ${scopeHtml}
                                   content = content.replace(re, change.replace || '');
                                   changed = true;
                               }
-                          } catch(e) { toastr.error(`[Редактор чата] Неверное регулярное выражение: ${change.regex}`, EXT_DISPLAY$1); }
+                          } catch(e) { toastr.error(`[Редактор чата] Неверное регулярное выражение: ${change.regex}`, EXT_DISPLAY); }
                       }
 
                       if (changed) {
@@ -8282,7 +8282,7 @@ ${scopeHtml}
                   );
                   for (const idx of sortedIndices) {
                       if (idx < 0 || idx >= msgs.length) {
-                          toastr.warning(`[Редактор чата] Сообщение #${idx} не найдено`, EXT_DISPLAY$1, { timeOut: 6000 });
+                          toastr.warning(`[Редактор чата] Сообщение #${idx} не найдено`, EXT_DISPLAY, { timeOut: 6000 });
                           allSuccess = false; continue;
                       }
                       const msg = msgs[idx];
@@ -8302,7 +8302,7 @@ ${scopeHtml}
                           let matched = true;
                           for (const patch of (change.patches || [])) {
                               const { result, matched: m } = applyPatchToField(content, patch);
-                              if (!m) { toastr.warning(`[Редактор чата] ANCHOR не найден в #${idx}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY$1, { timeOut: 8000 }); matched = false; break; }
+                              if (!m) { toastr.warning(`[Редактор чата] ANCHOR не найден в #${idx}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 }); matched = false; break; }
                               content = result;
                           }
                           if (!matched) { allSuccess = false; continue; }
@@ -8316,7 +8316,7 @@ ${scopeHtml}
 
               const resolved = _resolveStMsgByIndexOrId(change);
               if (!resolved) {
-                  toastr.warning(`[Редактор чата] Сообщение не найдено: Индекс ${change.msg_index ?? change.msg_id}`, EXT_DISPLAY$1, { timeOut: 6000 });
+                  toastr.warning(`[Редактор чата] Сообщение не найдено: Индекс ${change.msg_index ?? change.msg_id}`, EXT_DISPLAY, { timeOut: 6000 });
                   continue;
               }
               const { idx, msg } = resolved;
@@ -8344,7 +8344,7 @@ ${scopeHtml}
                   for (const patch of (change.patches || [])) {
                       const { result, matched } = applyPatchToField(content, patch);
                       if (!matched) {
-                          toastr.warning(`[Редактор чата] ANCHOR не найден в сообщении ${change.msg_index ?? change.msg_id}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY$1, { timeOut: 8000 });
+                          toastr.warning(`[Редактор чата] ANCHOR не найден в сообщении ${change.msg_index ?? change.msg_id}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 });
                           allMatched = false; break;
                       }
                       content = result;
@@ -8356,7 +8356,7 @@ ${scopeHtml}
               successLog.push(change);
           } catch (e) {
               console.error(`[ST-Copilot-Debug] ChatEdit Failed:`, e);
-              toastr.error(`[Редактор чата] Ошибка изменения: ${e.message}`, EXT_DISPLAY$1, { timeOut: 10000 });
+              toastr.error(`[Редактор чата] Ошибка изменения: ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
           }
       }
 
@@ -8364,7 +8364,7 @@ ${scopeHtml}
           await _persistChat(ctx);
           setTimeout(() => _refreshSTChatDOM(ctx), 100);
           await logChatEditHistory$1(successLog, 'Applied', afterMsgId);
-          toastr.success(`[Редактор чата] Применено изменений: ${successLog.length}.`, EXT_DISPLAY$1);
+          toastr.success(`[Редактор чата] Применено изменений: ${successLog.length}.`, EXT_DISPLAY);
       }
       // Возвращаем фактически применённые изменения: UI сверяется с ними,
       // чтобы не помечать «применено» правки, у которых не совпал якорь.
@@ -8693,11 +8693,11 @@ ${scopeHtml}
                   } else {
                       let startIdx = change.msg_index !== undefined ? change.msg_index : (change.msg_range ? change.msg_range[0] : null);
                       let endIdx = change.msg_index !== undefined ? change.msg_index : (change.msg_range ? change.msg_range[1] : null);
-                      if (startIdx === null || endIdx === null) { toastr.warning('Индекс сообщения не указан.', EXT_DISPLAY$1); return; }
+                      if (startIdx === null || endIdx === null) { toastr.warning('Индекс сообщения не указан.', EXT_DISPLAY); return; }
                       for (let i = Math.max(0, startIdx); i <= Math.min(stMsgs.length - 1, endIdx); i++) { if (stMsgs[i]) targetIdxList.push(i); }
                   }
 
-                  if (!targetIdxList.length) { toastr.warning(`Сообщения не найдены — возможно, чат изменился с момента создания предложения.`, EXT_DISPLAY$1, { timeOut: 7000 }); return; }
+                  if (!targetIdxList.length) { toastr.warning(`Сообщения не найдены — возможно, чат изменился с момента создания предложения.`, EXT_DISPLAY, { timeOut: 7000 }); return; }
                   
                   let origCombined = [];
                   let newCombined = [];
@@ -8716,7 +8716,7 @@ ${scopeHtml}
                   }
 
                   if (changesFound === 0) {
-                      toastr.info('Для этих сообщений не будет внесено никаких изменений.', EXT_DISPLAY$1);
+                      toastr.info('Для этих сообщений не будет внесено никаких изменений.', EXT_DISPLAY);
                       return;
                   }
 
@@ -8800,7 +8800,7 @@ ${scopeHtml}
                       updateFooterBtns(); 
                       syncBlockToMessage(); 
 
-                      toastr.error(`Ошибка: ${err.message}`, EXT_DISPLAY$1);
+                      toastr.error(`Ошибка: ${err.message}`, EXT_DISPLAY);
                       applyBtn.disabled = false; 
                       applyBtn.textContent = '✓';
                   }
@@ -9073,7 +9073,7 @@ ${scopeHtml}
                       applyAllBtn.textContent = 'Применить всё';
                   }
               } catch(e) {
-                  toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY$1);
+                  toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
                   applyAllBtn.disabled = false;
                   applyAllBtn.textContent = 'Применить всё';
               }
@@ -9951,7 +9951,7 @@ ${scopeHtml}
           // hard error на каждой генерации. Откат на текущий API ST с уведомлением.
           if (s.connectionSource === 'profile') s.connectionSource = 'default';
           saveSettings$1(); currentVal = '';
-          toastr.warning('Сохранённый профиль подключения не найден — Copilot переключён на текущий API SillyTavern.', EXT_DISPLAY$1);
+          toastr.warning('Сохранённый профиль подключения не найден — Copilot переключён на текущий API SillyTavern.', EXT_DISPLAY);
       }
       if (service?.handleDropdown) { service.handleDropdown(profSel); if (currentVal && Array.from(profSel.options).some(o => o.value === currentVal)) profSel.value = currentVal; return; }
       profSel.innerHTML = '<option value="">-- Выберите профиль --</option>';
@@ -10084,15 +10084,15 @@ ${scopeHtml}
           if (val.startsWith('__preset__')) {
               const name = await showCustomDialog({ type: 'prompt', title: 'Сохранить как пользовательскую тему', message: 'Название для вашей пользовательской темы:', placeholder: 'Моя тема' });
               if (!name?.trim()) return;
-              const s2 = getSettings(); s2.savedThemes[name.trim()] = { ...s2.customTheme }; s2.activeThemeProfile = name.trim(); saveSettings$1(); buildThemeEditor(containerOverride); toastr.success(`Тема "${name.trim()}" сохранена`, EXT_DISPLAY$1); _clearDirty('theme');
+              const s2 = getSettings(); s2.savedThemes[name.trim()] = { ...s2.customTheme }; s2.activeThemeProfile = name.trim(); saveSettings$1(); buildThemeEditor(containerOverride); toastr.success(`Тема "${name.trim()}" сохранена`, EXT_DISPLAY); _clearDirty('theme');
           } else if (val) {
-              const s2 = getSettings(); s2.savedThemes[val] = { ...s2.customTheme }; saveSettings$1(); toastr.success(`Тема "${val}" обновлена`, EXT_DISPLAY$1); _clearDirty('theme');
+              const s2 = getSettings(); s2.savedThemes[val] = { ...s2.customTheme }; saveSettings$1(); toastr.success(`Тема "${val}" обновлена`, EXT_DISPLAY); _clearDirty('theme');
           }
       });
       profileRow.querySelector('#scp-theme-create').addEventListener('click', async () => {
           const name = await showCustomDialog({ type: 'prompt', title: 'Новая тема', message: 'Введите название новой темы:', placeholder: 'Моя новая тема' });
           if (!name?.trim()) return;
-          const s2 = getSettings(); s2.savedThemes[name.trim()] = { ...s2.customTheme }; s2.activeThemeProfile = name.trim(); saveSettings$1(); buildThemeEditor(containerOverride); toastr.success(`Создана тема "${name.trim()}"`, EXT_DISPLAY$1);
+          const s2 = getSettings(); s2.savedThemes[name.trim()] = { ...s2.customTheme }; s2.activeThemeProfile = name.trim(); saveSettings$1(); buildThemeEditor(containerOverride); toastr.success(`Создана тема "${name.trim()}"`, EXT_DISPLAY);
       });
       profileRow.querySelector('#scp-theme-duplicate').addEventListener('click', async () => {
           const val = sel.value; if (!val) return;
@@ -10101,20 +10101,20 @@ ${scopeHtml}
           const name = await showCustomDialog({ type: 'prompt', title: 'Дублировать тему', message: 'Название для дублированной темы:', defaultValue: defaultName });
           if (!name?.trim()) return;
           const s2 = getSettings(); s2.savedThemes[name.trim()] = JSON.parse(JSON.stringify(baseTheme)); s2.activeThemeProfile = name.trim(); s2.customTheme = { ...s2.savedThemes[name.trim()] };
-          saveSettings$1(); applyCustomTheme(s2.customTheme); buildThemeEditor(containerOverride); toastr.success(`Тема дублирована как "${name.trim()}"`, EXT_DISPLAY$1);
+          saveSettings$1(); applyCustomTheme(s2.customTheme); buildThemeEditor(containerOverride); toastr.success(`Тема дублирована как "${name.trim()}"`, EXT_DISPLAY);
       });
       profileRow.querySelector('#scp-theme-rename').addEventListener('click', async () => {
-          const val = sel.value; if (!val || val.startsWith('__preset__')) { toastr.info('Выберите пользовательскую тему для переименования.', EXT_DISPLAY$1); return; }
+          const val = sel.value; if (!val || val.startsWith('__preset__')) { toastr.info('Выберите пользовательскую тему для переименования.', EXT_DISPLAY); return; }
           const newName = await showCustomDialog({ type: 'prompt', title: 'Переименовать тему', message: 'Введите новое название:', defaultValue: val });
           if (!newName?.trim() || newName.trim() === val) return;
-          const s2 = getSettings(); s2.savedThemes[newName.trim()] = s2.savedThemes[val]; delete s2.savedThemes[val]; s2.activeThemeProfile = newName.trim(); saveSettings$1(); buildThemeEditor(containerOverride); toastr.success('Тема переименована.', EXT_DISPLAY$1);
+          const s2 = getSettings(); s2.savedThemes[newName.trim()] = s2.savedThemes[val]; delete s2.savedThemes[val]; s2.activeThemeProfile = newName.trim(); saveSettings$1(); buildThemeEditor(containerOverride); toastr.success('Тема переименована.', EXT_DISPLAY);
       });
       profileRow.querySelector('#scp-theme-delete').addEventListener('click', async () => {
-          const val = sel.value; if (!val || val.startsWith('__preset__')) { toastr.info('Выберите пользовательскую тему для удаления.', EXT_DISPLAY$1); return; }
+          const val = sel.value; if (!val || val.startsWith('__preset__')) { toastr.info('Выберите пользовательскую тему для удаления.', EXT_DISPLAY); return; }
           const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить тему', message: `Удалить "${val}"?` }); if (!ok) return;
           const s2 = getSettings(); delete s2.savedThemes[val]; s2.activeThemeProfile = Object.keys(s2.savedThemes)[0] || '';
           s2.customTheme = s2.activeThemeProfile ? { ...s2.savedThemes[s2.activeThemeProfile] } : { ...THEME_PRESETS.default };
-          saveSettings$1(); applyCustomTheme(s2.customTheme); buildThemeEditor(containerOverride); toastr.success('Удалено.', EXT_DISPLAY$1);
+          saveSettings$1(); applyCustomTheme(s2.customTheme); buildThemeEditor(containerOverride); toastr.success('Удалено.', EXT_DISPLAY);
       });
       profileRow.querySelector('#scp-theme-export').addEventListener('click', () => {
           const s2 = getSettings(); const val = sel.value;
@@ -10131,8 +10131,8 @@ ${scopeHtml}
                   if (typeof imported !== 'object' || Array.isArray(imported)) throw new Error('Invalid format');
                   const themeName = (data.name && typeof data.name === 'string') ? data.name : file.name.replace(/\.json$/i, '');
                   const s2 = getSettings(); s2.savedThemes[themeName] = { ...THEME_PRESETS.default, ...imported }; s2.activeThemeProfile = themeName; s2.customTheme = { ...s2.savedThemes[themeName] };
-                  saveSettings$1(); applyCustomTheme(s2.customTheme); buildThemeEditor(containerOverride); toastr.success(`Тема "${escHtml(themeName)}" импортирована.`, EXT_DISPLAY$1);
-              } catch (e) { toastr.error('Неверный файл темы.', EXT_DISPLAY$1); }
+                  saveSettings$1(); applyCustomTheme(s2.customTheme); buildThemeEditor(containerOverride); toastr.success(`Тема "${escHtml(themeName)}" импортирована.`, EXT_DISPLAY);
+              } catch (e) { toastr.error('Неверный файл темы.', EXT_DISPLAY); }
           };
           inp.click();
       });
@@ -10552,26 +10552,26 @@ ${scopeHtml}
           const displayVal = defaultVal;
           [stId, spId].forEach(id => { const el = document.getElementById(id); if (el) el.value = displayVal; });
           Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession()));
-          toastr.success(`${label} сброшен.`, EXT_DISPLAY$1);
+          toastr.success(`${label} сброшен.`, EXT_DISPLAY);
       };
       document.getElementById('scp-reset-prompt')?.addEventListener('click', () => _resetPrompt('systemPrompt', DEFAULT_SYSTEM_PROMPT, 'scp-sysprompt', 'scp-sp-sysprompt', 'Системный промпт'));
       document.getElementById('scp-reset-char-edit-prompt')?.addEventListener('click', async () => {
           const ok = await showCustomDialog({ type: 'confirm', title: 'Сбросить промпт редактирования персонажа', message: 'Сбросить к встроенному значению по умолчанию?' }); if (!ok) return;
           getSettings().charEditPrompt = ''; saveSettings$1(); _markDirty('config');
           ['scp-char-edit-prompt', 'scp-sp-char-edit-prompt'].forEach(id => { const el = document.getElementById(id); if (el) el.value = DEFAULT_CHAR_EDIT_DIRECTIVE.trim(); });
-          Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession())); toastr.success('Промпт редактирования персонажа сброшен.', EXT_DISPLAY$1);
+          Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession())); toastr.success('Промпт редактирования персонажа сброшен.', EXT_DISPLAY);
       });
       document.getElementById('scp-reset-lb-prompt')?.addEventListener('click', async () => {
           const ok = await showCustomDialog({ type: 'confirm', title: 'Сбросить промпт лорбука', message: 'Сбросить к значению по умолчанию?' }); if (!ok) return;
           getSettings().lorebookManagePrompt = DEFAULT_LB_MANAGE_PROMPT; saveSettings$1();
           ['scp-lb-manage-prompt', 'scp-sp-lb-manage-prompt'].forEach(id => { const el = document.getElementById(id); if (el) el.value = DEFAULT_LB_MANAGE_PROMPT; });
-          toastr.success('Промпт лорбука сброшен.', EXT_DISPLAY$1);
+          toastr.success('Промпт лорбука сброшен.', EXT_DISPLAY);
       });
       document.getElementById('scp-reset-memory-prompt')?.addEventListener('click', async () => {
           const ok = await showCustomDialog({ type: 'confirm', title: 'Сбросить промпт', message: 'Сбросить промпт памяти к значению по умолчанию?' }); if (!ok) return;
           getSettings().memoryManagePrompt = DEFAULT_MEMORY_PROMPT; saveSettings$1();
           ['scp-memory-prompt', 'scp-sp-memory-prompt'].forEach(id => { const el = document.getElementById(id); if (el) el.value = DEFAULT_MEMORY_PROMPT; });
-          Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession())); toastr.success('Промпт сброшен.', EXT_DISPLAY$1);
+          Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession())); toastr.success('Промпт сброшен.', EXT_DISPLAY);
       });
 
       // ── Profile management (ST drawer) ──
@@ -10587,7 +10587,7 @@ ${scopeHtml}
           const sel = document.getElementById('scp-profile-select'); let name = sel?.value;
           if (!name) { name = await showCustomDialog({ type: 'prompt', title: 'Сохранить конфигурацию', message: 'Введите название для этой конфигурации:', placeholder: 'Моя конфигурация' }); if (!name?.trim()) return; name = name.trim(); }
           saveProfile(name); refreshProfilesDropdown(); if (sel) sel.value = name;
-          updateBindingSection(); toastr.success(`Сохранено "${name}"`, EXT_DISPLAY$1); _clearDirty('config');
+          updateBindingSection(); toastr.success(`Сохранено "${name}"`, EXT_DISPLAY); _clearDirty('config');
       });
       document.getElementById('scp-profile-create-new')?.addEventListener('click', async () => {
           const name = await showCustomDialog({ type: 'prompt', title: 'Новая конфигурация', message: 'Введите название для нового профиля по умолчанию:', placeholder: 'Новая конфигурация' }); if (!name?.trim()) return;
@@ -10595,18 +10595,18 @@ ${scopeHtml}
           s.profiles[n] = { systemPrompt: DEFAULT_SYSTEM_PROMPT, includeSystemPrompt: true, includeAuthorsNote: true, includeCharacterCard: true, includeUserPersonality: true, contextDepth: 15, localHistoryLimit: 50, connectionSource: 'default', connectionProfileId: '', maxTokens: 8200 };
           saveSettings$1(); refreshProfilesDropdown(); loadProfile(n);
           const sel = document.getElementById('scp-profile-select'); if (sel) sel.value = n;
-          updateBindingSection(); toastr.success(`Создано "${n}"`, EXT_DISPLAY$1);
+          updateBindingSection(); toastr.success(`Создано "${n}"`, EXT_DISPLAY);
       });
       document.getElementById('scp-profile-duplicate')?.addEventListener('click', async () => {
-          const sel = document.getElementById('scp-profile-select'); if (!sel?.value) return toastr.info('Конфигурация не выбрана.', EXT_DISPLAY$1);
+          const sel = document.getElementById('scp-profile-select'); if (!sel?.value) return toastr.info('Конфигурация не выбрана.', EXT_DISPLAY);
           const newName = await showCustomDialog({ type: 'prompt', title: 'Дублировать конфигурацию', message: 'Название для нового профиля:', defaultValue: sel.value + ' (Копия)' }); if (!newName?.trim()) return;
           const n = newName.trim(); const s = getSettings(); const p = s.profiles[sel.value]; if (!p) return;
           s.profiles[n] = JSON.parse(JSON.stringify(p)); saveSettings$1(); refreshProfilesDropdown(); refreshSPProfilesDropdown(); loadProfile(n);
           const newSel = document.getElementById('scp-profile-select'); if (newSel) newSel.value = n;
-          updateBindingSection(); toastr.success(`Дублировано как "${n}"`, EXT_DISPLAY$1);
+          updateBindingSection(); toastr.success(`Дублировано как "${n}"`, EXT_DISPLAY);
       });
       document.getElementById('scp-profile-rename')?.addEventListener('click', async () => {
-          const sel = document.getElementById('scp-profile-select'); if (!sel?.value) return toastr.info('Конфигурация не выбрана.', EXT_DISPLAY$1);
+          const sel = document.getElementById('scp-profile-select'); if (!sel?.value) return toastr.info('Конфигурация не выбрана.', EXT_DISPLAY);
           const newName = await showCustomDialog({ type: 'prompt', title: 'Переименовать конфигурацию', message: 'Новое название:', defaultValue: sel.value }); if (!newName?.trim() || newName.trim() === sel.value) return;
           const s = getSettings(); const p = s.profiles[sel.value]; if (!p) return;
           s.profiles[newName.trim()] = p; delete s.profiles[sel.value];
@@ -10614,13 +10614,13 @@ ${scopeHtml}
           for (const k in s.profileBindings) { if (s.profileBindings[k] === sel.value) s.profileBindings[k] = newName.trim(); }
           saveSettings$1(); refreshProfilesDropdown();
           const newSel = document.getElementById('scp-profile-select'); if (newSel) newSel.value = newName.trim();
-          updateBindingSection(); toastr.success('Переименовано.', EXT_DISPLAY$1);
+          updateBindingSection(); toastr.success('Переименовано.', EXT_DISPLAY);
       });
       document.getElementById('scp-profile-delete')?.addEventListener('click', async () => {
           const sel = document.getElementById('scp-profile-select'); if (!sel?.value) return;
-          const s = getSettings(); if (Object.keys(s.profiles).length <= 1) { toastr.warning('Невозможно удалить последний оставшийся профиль конфигурации.', EXT_DISPLAY$1); return; }
+          const s = getSettings(); if (Object.keys(s.profiles).length <= 1) { toastr.warning('Невозможно удалить последний оставшийся профиль конфигурации.', EXT_DISPLAY); return; }
           const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить конфигурацию', message: `Удалить "${sel.value}"?` }); if (!ok) return;
-          deleteProfile(sel.value); refreshProfilesDropdown(); updateBindingSection(); toastr.success('Удалено.', EXT_DISPLAY$1);
+          deleteProfile(sel.value); refreshProfilesDropdown(); updateBindingSection(); toastr.success('Удалено.', EXT_DISPLAY);
       });
       document.getElementById('scp-bind-char')?.addEventListener('click', () => {
           const sel = document.getElementById('scp-profile-select'); if (!sel?.value) return;
@@ -10652,11 +10652,11 @@ ${scopeHtml}
               _dbgAdd('SESSION_CLEAR_DONE', { source: 'st-drawer', charId, chatId });
           } catch (e) {
               _dbgAdd('SESSION_CLEAR_FAILED', { source: 'st-drawer', charId, chatId, error: e?.message || String(e), stack: e?.stack });
-              toastr.error(`Не удалось очистить сессии: ${e.message}`, EXT_DISPLAY$1);
+              toastr.error(`Не удалось очистить сессии: ${e.message}`, EXT_DISPLAY);
               return;
           }
           Promise.resolve().then(function () { return uiChat; }).then(m => m.onChatChanged());
-          toastr.success('Сессии очищены.', EXT_DISPLAY$1);
+          toastr.success('Сессии очищены.', EXT_DISPLAY);
       });
 
       refreshProfilesDropdown();
@@ -10703,7 +10703,7 @@ ${scopeHtml}
           const sel = document.getElementById('scp-sp-profile-select'); let name = sel?.value;
           if (!name) { name = await showCustomDialog({ type: 'prompt', title: 'Сохранить конфигурацию', message: 'Название профиля:', placeholder: 'Моя конфигурация' }); if (!name?.trim()) return; name = name.trim(); }
           saveProfile(name); refreshSPProfilesDropdown(); refreshProfilesDropdown(); if (sel) sel.value = name;
-          updateSPBindingSection(); toastr.success(`Сохранено "${name}"`, EXT_DISPLAY$1); _clearDirty('config');
+          updateSPBindingSection(); toastr.success(`Сохранено "${name}"`, EXT_DISPLAY); _clearDirty('config');
       });
       document.getElementById('scp-sp-profile-create')?.addEventListener('click', async () => {
           const name = await showCustomDialog({ type: 'prompt', title: 'Новая конфигурация', message: 'Название:', placeholder: 'Новая конфигурация' }); if (!name?.trim()) return;
@@ -10711,15 +10711,15 @@ ${scopeHtml}
           s.profiles[n] = { systemPrompt: DEFAULT_SYSTEM_PROMPT, includeSystemPrompt: true, includeAuthorsNote: true, includeCharacterCard: true, includeUserPersonality: true, contextDepth: 15, localHistoryLimit: 50, connectionSource: 'default', connectionProfileId: '', maxTokens: 8200, applyRegexToContext: true };
           saveSettings$1(); refreshSPProfilesDropdown(); refreshProfilesDropdown(); loadProfile(n); syncSPFromSettings(); updateSettingsUI();
           const sel = document.getElementById('scp-sp-profile-select'); if (sel) sel.value = n;
-          updateSPBindingSection(); toastr.success(`Создано "${n}"`, EXT_DISPLAY$1);
+          updateSPBindingSection(); toastr.success(`Создано "${n}"`, EXT_DISPLAY);
       });
       document.getElementById('scp-sp-profile-duplicate')?.addEventListener('click', async () => {
-          const sel = document.getElementById('scp-sp-profile-select'); if (!sel?.value) return toastr.info('Конфигурация не выбрана.', EXT_DISPLAY$1);
+          const sel = document.getElementById('scp-sp-profile-select'); if (!sel?.value) return toastr.info('Конфигурация не выбрана.', EXT_DISPLAY);
           const newName = await showCustomDialog({ type: 'prompt', title: 'Дублировать конфигурацию', message: 'Название для нового профиля:', defaultValue: sel.value + ' (Копия)' }); if (!newName?.trim()) return;
           const n = newName.trim(); const s = getSettings(); const p = s.profiles[sel.value]; if (!p) return;
           s.profiles[n] = JSON.parse(JSON.stringify(p)); saveSettings$1(); refreshSPProfilesDropdown(); refreshProfilesDropdown(); loadProfile(n); syncSPFromSettings(); updateSettingsUI();
           const newSel = document.getElementById('scp-sp-profile-select'); if (newSel) newSel.value = n;
-          updateSPBindingSection(); toastr.success(`Дублировано как "${n}"`, EXT_DISPLAY$1);
+          updateSPBindingSection(); toastr.success(`Дублировано как "${n}"`, EXT_DISPLAY);
       });
       document.getElementById('scp-sp-profile-rename')?.addEventListener('click', async () => {
           const sel = document.getElementById('scp-sp-profile-select'); if (!sel?.value) return;
@@ -10730,13 +10730,13 @@ ${scopeHtml}
           for (const k in s.profileBindings) { if (s.profileBindings[k] === sel.value) s.profileBindings[k] = newName.trim(); }
           saveSettings$1(); refreshSPProfilesDropdown(); refreshProfilesDropdown();
           const newSel = document.getElementById('scp-sp-profile-select'); if (newSel) newSel.value = newName.trim();
-          updateSPBindingSection(); toastr.success('Переименовано.', EXT_DISPLAY$1);
+          updateSPBindingSection(); toastr.success('Переименовано.', EXT_DISPLAY);
       });
       document.getElementById('scp-sp-profile-delete')?.addEventListener('click', async () => {
           const sel = document.getElementById('scp-sp-profile-select'); if (!sel?.value) return;
-          const s = getSettings(); if (Object.keys(s.profiles).length <= 1) { toastr.warning('Невозможно удалить последний профиль.', EXT_DISPLAY$1); return; }
+          const s = getSettings(); if (Object.keys(s.profiles).length <= 1) { toastr.warning('Невозможно удалить последний профиль.', EXT_DISPLAY); return; }
           const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить профиль', message: `Удалить "${sel.value}"?` }); if (!ok) return;
-          deleteProfile(sel.value); refreshSPProfilesDropdown(); refreshProfilesDropdown(); updateSPBindingSection(); toastr.success('Удалено.', EXT_DISPLAY$1);
+          deleteProfile(sel.value); refreshSPProfilesDropdown(); refreshProfilesDropdown(); updateSPBindingSection(); toastr.success('Удалено.', EXT_DISPLAY);
       });
       document.getElementById('scp-sp-bind-char')?.addEventListener('click', () => {
           const sel = document.getElementById('scp-sp-profile-select'); if (!sel?.value) return;
@@ -10761,37 +10761,37 @@ ${scopeHtml}
           const ok = await showCustomDialog({ type: 'confirm', title: 'Сбросить системный промпт', message: 'Сбросить к значению по умолчанию?' }); if (!ok) return;
           getSettings().systemPrompt = DEFAULT_SYSTEM_PROMPT; saveSettings$1();
           ['scp-sp-sysprompt', 'scp-sysprompt'].forEach(id => { const el = document.getElementById(id); if (el) el.value = DEFAULT_SYSTEM_PROMPT; });
-          Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession())); toastr.success('Системный промпт сброшен.', EXT_DISPLAY$1);
+          Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession())); toastr.success('Системный промпт сброшен.', EXT_DISPLAY);
       });
       document.getElementById('scp-sp-reset-lb-prompt')?.addEventListener('click', async () => {
           const ok = await showCustomDialog({ type: 'confirm', title: 'Сбросить промпт лорбука', message: 'Сбросить к значению по умолчанию?' }); if (!ok) return;
           getSettings().lorebookManagePrompt = DEFAULT_LB_MANAGE_PROMPT; saveSettings$1();
           ['scp-sp-lb-manage-prompt', 'scp-lb-manage-prompt'].forEach(id => { const el = document.getElementById(id); if (el) el.value = DEFAULT_LB_MANAGE_PROMPT; });
-          toastr.success('Промпт лорбука сброшен.', EXT_DISPLAY$1);
+          toastr.success('Промпт лорбука сброшен.', EXT_DISPLAY);
       });
       document.getElementById('scp-sp-reset-char-edit-prompt')?.addEventListener('click', async () => {
           const ok = await showCustomDialog({ type: 'confirm', title: 'Сбросить промпт редактирования персонажа', message: 'Сбросить к встроенному значению по умолчанию?' }); if (!ok) return;
           getSettings().charEditPrompt = ''; saveSettings$1(); _markDirty('config');
           ['scp-sp-char-edit-prompt', 'scp-char-edit-prompt'].forEach(id => { const el = document.getElementById(id); if (el) el.value = DEFAULT_CHAR_EDIT_DIRECTIVE.trim(); });
-          Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession())); toastr.success('Промпт редактирования персонажа сброшен.', EXT_DISPLAY$1);
+          Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession())); toastr.success('Промпт редактирования персонажа сброшен.', EXT_DISPLAY);
       });
       document.getElementById('scp-sp-reset-chat-edit-prompt')?.addEventListener('click', async () => {
           const ok = await showCustomDialog({ type: 'confirm', title: 'Сбросить промпт редактирования чата', message: 'Сбросить к значению по умолчанию?' }); if (!ok) return;
           getSettings().chatEditPrompt = ''; saveSettings$1(); _markDirty('config');
           ['scp-sp-chat-edit-prompt', 'scp-chat-edit-prompt-st'].forEach(id => { const el = document.getElementById(id); if (el) el.value = DEFAULT_CHAT_EDIT_DIRECTIVE.trim(); });
-          Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession())); toastr.success('Промпт редактирования чата сброшен.', EXT_DISPLAY$1);
+          Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession())); toastr.success('Промпт редактирования чата сброшен.', EXT_DISPLAY);
       });
       document.getElementById('scp-sp-reset-memory-prompt')?.addEventListener('click', async () => {
           const ok = await showCustomDialog({ type: 'confirm', title: 'Сбросить промпт', message: 'Сбросить промпт памяти к значению по умолчанию?' }); if (!ok) return;
           getSettings().memoryManagePrompt = DEFAULT_MEMORY_PROMPT; saveSettings$1();
           ['scp-sp-memory-prompt', 'scp-memory-prompt'].forEach(id => { const el = document.getElementById(id); if (el) el.value = DEFAULT_MEMORY_PROMPT; });
-          toastr.success('Промпт сброшен.', EXT_DISPLAY$1);
+          toastr.success('Промпт сброшен.', EXT_DISPLAY);
       });
       document.getElementById('scp-sp-tools-reset')?.addEventListener('click', async () => {
           const ok = await showCustomDialog({ type: 'confirm', title: 'Сбросить промпт', message: 'Сбросить промпт инструментов к значению по умолчанию?' }); if (!ok) return;
           getSettings().toolsSystemPrompt = DEFAULT_TOOLS_PROMPT; saveSettings$1();
           const ta = document.getElementById('scp-sp-tools-prompt'); if (ta) ta.value = DEFAULT_TOOLS_PROMPT;
-          toastr.success('Промпт инструментов сброшен.', EXT_DISPLAY$1);
+          toastr.success('Промпт инструментов сброшен.', EXT_DISPLAY);
       });
 
       // ── Misc SP ──
@@ -10808,17 +10808,17 @@ ${scopeHtml}
               if (oldFileId) await deleteSessionFile(oldFileId);
               _dbgAdd('SESSION_CLEAR_DONE', { source: 'settings-overlay', charId, chatId });
               Promise.resolve().then(function () { return uiChat; }).then(m => m.onChatChanged());
-              toastr.success('Сессии очищены.', EXT_DISPLAY$1);
+              toastr.success('Сессии очищены.', EXT_DISPLAY);
           } catch (e) {
               _dbgAdd('SESSION_CLEAR_FAILED', { source: 'settings-overlay', charId, chatId, error: e?.message || String(e), stack: e?.stack });
-              toastr.error(`Не удалось очистить сессии: ${e.message}`, EXT_DISPLAY$1);
+              toastr.error(`Не удалось очистить сессии: ${e.message}`, EXT_DISPLAY);
           }
       });
       document.getElementById('scp-sp-reset-all-overrides')?.addEventListener('click', async () => {
-          if (!hasSessionOverrides()) { toastr.info('Нет активных переопределений сессии.', EXT_DISPLAY$1); return; }
+          if (!hasSessionOverrides()) { toastr.info('Нет активных переопределений сессии.', EXT_DISPLAY); return; }
           const ok = await showCustomDialog({ type: 'confirm', title: 'Сбросить переопределения сессии', message: 'Очистить все переопределения сессии для этой сессии?' }); if (!ok) return;
           clearAllSessionOverrides(); syncSPFromSettings();
-          Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession())); toastr.success('Переопределения сессии очищены.', EXT_DISPLAY$1);
+          Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession())); toastr.success('Переопределения сессии очищены.', EXT_DISPLAY);
       });
 
       // ── Session Override bindings ──
@@ -11224,7 +11224,7 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
                       _dbgAdd('IMAGE_CAPTIONING_SERVICE_MISSING', { name: a.name });
                       return '';
                   });
-                  if (!cap) toastr.warning(`Не удалось создать подпись для ${a.name}`, EXT_DISPLAY$1);
+                  if (!cap) toastr.warning(`Не удалось создать подпись для ${a.name}`, EXT_DISPLAY);
                   processed.push({
                       ...a,
                       sendAsText: true,
@@ -11423,7 +11423,7 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
                   for (const file of files) {
                       if (file.size > MAX) {
                           _dbgAdd('ATTACHMENT_SIZE_EXCEEDED', { name: file.name, size: file.size });
-                          toastr.warning(`Файл «${file.name}» больше 25 МБ и не был прикреплён.`, EXT_DISPLAY$1);
+                          toastr.warning(`Файл «${file.name}» больше 25 МБ и не был прикреплён.`, EXT_DISPLAY);
                       } else {
                           accepted.push(file);
                       }
@@ -14117,7 +14117,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
   function showWindow() {
       const windowEl = document.getElementById(WIN_ID);
       const s = getSettings();
-      if (!s.enabled) { toastr.warning('ST-Copilot отключён.', EXT_DISPLAY$1); return; }
+      if (!s.enabled) { toastr.warning('ST-Copilot отключён.', EXT_DISPLAY); return; }
       s.windowVisible = true;
       s.minimized = false;
       if(windowEl) windowEl.style.display = 'flex';
@@ -14279,8 +14279,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                   btn.className = 'qr--button menu_button interactable scp-launcher';
                   btn.tabIndex = 0;
                   btn.setAttribute('role', 'button');
-                  btn.setAttribute('aria-label', EXT_DISPLAY$1);
-                  btn.title = EXT_DISPLAY$1;
+                  btn.setAttribute('aria-label', EXT_DISPLAY);
+                  btn.title = EXT_DISPLAY;
                   // Brain emoji — signals "AI assistant". Avoids the 💬 speech bubble, which
                   // DS Comments already uses for its own launcher in this same quick-reply bar.
                   btn.innerHTML = '<span aria-hidden="true">🧠</span>';
@@ -14436,7 +14436,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           icon.id = ICON_ID;
           icon.className = 'scp-dock-icon';
           icon.style.display = 'none';
-          icon.title = `${EXT_DISPLAY$1} — нажмите, чтобы открыть`;
+          icon.title = `${EXT_DISPLAY} — нажмите, чтобы открыть`;
           icon.setAttribute('role', 'button');
           icon.tabIndex = 0;
           icon.innerHTML = `${I.bot}<span class="scp-dock-pulse"></span>`;
@@ -14988,11 +14988,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                   delete dirty[key];
               }
               _currentIsDirty = false;
-              toastr.success('Сохранено.', EXT_DISPLAY$1);
+              toastr.success('Сохранено.', EXT_DISPLAY);
               _renderCharDetail(entity);
               return true;
           } catch (e) {
-              toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY$1);
+              toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
               saveBtn.innerHTML = origLabel;
               updateBtns();
               return false;
@@ -16039,7 +16039,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           }
       } catch (e) {
           if (useStream && !abort.signal.aborted && e?.name !== 'AbortError' && e?.message !== 'userStopped') {
-              console.warn(`[${EXT_DISPLAY$1}] Streaming failed, falling back to non-streaming:`, e);
+              console.warn(`[${EXT_DISPLAY}] Streaming failed, falling back to non-streaming:`, e);
               _dbgAdd('GEN_STREAM_FALLBACK', { error: e.message || String(e) });
               useStream = false;
               try {
@@ -16403,7 +16403,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           cleanupCursor();
 
           if (result && !result.text.trim() && !result.reasoning?.trim()) {
-              toastr.warning('⚠ Генерация не удалась: ИИ вернул пустой ответ.', EXT_DISPLAY$1, { timeOut: 10000 });
+              toastr.warning('⚠ Генерация не удалась: ИИ вернул пустой ответ.', EXT_DISPLAY, { timeOut: 10000 });
           }
 
           if (result !== null && settings.toolsEnabled && getEnabledTools().length > 0) {
@@ -16735,7 +16735,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           }
 
           _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack });
-          console.error(`[${EXT_DISPLAY$1}] Generation failed:`, err);
+          console.error(`[${EXT_DISPLAY}] Generation failed:`, err);
 
           showGenerationError(err);
       } finally {
@@ -16894,7 +16894,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           const combined = _joinContinuation(originalContent, continuation);
           
           if (isMaxTokens) {
-              toastr.warning('Генерация остановлена: достигнут лимит максимальных токенов ответа.', EXT_DISPLAY$1, { timeOut: 10000 });
+              toastr.warning('Генерация остановлена: достигнут лимит максимальных токенов ответа.', EXT_DISPLAY, { timeOut: 10000 });
           }
 
           targetMsg.content = combined;
@@ -16924,7 +16924,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               return;
           }
           _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack });
-          console.error(`[${EXT_DISPLAY$1}] Continuation failed:`, err);
+          console.error(`[${EXT_DISPLAY}] Continuation failed:`, err);
 
           showGenerationError(err);
       } finally {
@@ -17220,19 +17220,19 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           if (_activeName && _activeSource === 'custom') {
               s[dictKey][_activeName] = getTextFn();
               saveSettings$1();
-              toastr.success(`Пресет «${escHtml(_activeName)}» сохранён`, EXT_DISPLAY$1);
+              toastr.success(`Пресет «${escHtml(_activeName)}» сохранён`, EXT_DISPLAY);
           } else {
               const name = await showCustomDialog({ type: 'prompt', title: 'Сохранить пресет промпта', message: 'Имя пресета:', placeholder: 'Мой пресет' });
               if (!name?.trim()) return;
               s[dictKey][name.trim()] = getTextFn();
               saveSettings$1();
               setActive(name.trim(), 'custom');
-              toastr.success(`Пресет «${escHtml(name.trim())}» сохранён`, EXT_DISPLAY$1);
+              toastr.success(`Пресет «${escHtml(name.trim())}» сохранён`, EXT_DISPLAY);
           }
       });
 
       const renameBtn = mkBtn('pen', 'Переименовать выбранный пользовательский пресет', '', async () => {
-          if (!_activeName || _activeSource !== 'custom') { toastr.info('Сначала выберите пользовательский пресет.', EXT_DISPLAY$1); return; }
+          if (!_activeName || _activeSource !== 'custom') { toastr.info('Сначала выберите пользовательский пресет.', EXT_DISPLAY); return; }
           const newName = await showCustomDialog({ type: 'prompt', title: 'Переименовать пресет', message: 'Новое имя:', defaultValue: _activeName });
           if (!newName?.trim() || newName.trim() === _activeName) return;
           s[dictKey][newName.trim()] = s[dictKey][_activeName];
@@ -17242,7 +17242,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       });
 
       const deleteBtn = mkBtn('trash', 'Удалить выбранный пользовательский пресет', 'danger', async () => {
-          if (!_activeName || _activeSource !== 'custom') { toastr.info('Удалять можно только пользовательские пресеты.', EXT_DISPLAY$1); return; }
+          if (!_activeName || _activeSource !== 'custom') { toastr.info('Удалять можно только пользовательские пресеты.', EXT_DISPLAY); return; }
           const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить пресет', message: `Удалить «${_activeName}»?` });
           if (!ok) return;
           delete s[dictKey][_activeName];
@@ -17316,7 +17316,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               setActive(value);
               renderQuickPromptsBar();
               if (onSetLoaded) onSetLoaded();
-              toastr.success(`Набор «${escHtml(value)}» загружен`, EXT_DISPLAY$1);
+              toastr.success(`Набор «${escHtml(value)}» загружен`, EXT_DISPLAY);
           }, { placeholder: 'Поиск наборов…', width: 340, emptyText: 'Наборы ещё не сохранены. Сохраните один ниже.' });
       });
 
@@ -17341,7 +17341,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           s.activeQuickPromptSet = name;
           saveSettings$1();
           setActive(name);
-          toastr.success(`Набор «${escHtml(name)}» сохранён`, EXT_DISPLAY$1);
+          toastr.success(`Набор «${escHtml(name)}» сохранён`, EXT_DISPLAY);
       });
 
       const saveAsBtn = mkBtn('plus', 'Сохранить текущие промпты как новый набор', '', async () => {
@@ -17352,11 +17352,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           s.activeQuickPromptSet = n;
           saveSettings$1();
           setActive(n);
-          toastr.success(`Набор «${escHtml(n)}» создан`, EXT_DISPLAY$1);
+          toastr.success(`Набор «${escHtml(n)}» создан`, EXT_DISPLAY);
       });
 
       const renameBtn = mkBtn('pen', 'Переименовать выбранный набор', '', async () => {
-          if (!_activeName) { toastr.info('Сначала выберите набор.', EXT_DISPLAY$1); return; }
+          if (!_activeName) { toastr.info('Сначала выберите набор.', EXT_DISPLAY); return; }
           const newName = await showCustomDialog({ type: 'prompt', title: 'Переименовать набор', message: 'Новое имя:', defaultValue: _activeName });
           if (!newName?.trim() || newName.trim() === _activeName) return;
           const n = newName.trim();
@@ -17368,7 +17368,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       });
 
       const deleteBtn = mkBtn('trash', 'Удалить выбранный набор', 'danger', async () => {
-          if (!_activeName) { toastr.info('Сначала выберите набор.', EXT_DISPLAY$1); return; }
+          if (!_activeName) { toastr.info('Сначала выберите набор.', EXT_DISPLAY); return; }
           const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить набор', message: `Удалить набор «${_activeName}»?` });
           if (!ok) return;
           delete s.quickPromptSets[_activeName];
@@ -18086,11 +18086,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           inp.type = 'file'; inp.accept = 'audio/*';
           inp.onchange = async () => {
               const file = inp.files?.[0]; if (!file) return;
-              if (file.size > 5 * 1024 * 1024) { toastr.warning('Аудиофайл слишком большой (>5 МБ).', EXT_DISPLAY$1); return; }
+              if (file.size > 5 * 1024 * 1024) { toastr.warning('Аудиофайл слишком большой (>5 МБ).', EXT_DISPLAY); return; }
               
               const { _fileToDataUrl } = await Promise.resolve().then(function () { return utilDom; });
               const dataUrl = await _fileToDataUrl(file).catch(() => null);
-              if (!dataUrl) { toastr.error('Не удалось загрузить аудио', EXT_DISPLAY$1); return; }
+              if (!dataUrl) { toastr.error('Не удалось загрузить аудио', EXT_DISPLAY); return; }
               
               const s2 = getSettings();
               const id = 'snd_' + Date.now();
@@ -18258,7 +18258,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               wrapper.innerHTML = parseTemplate(html);
               while (wrapper.firstChild) document.body.appendChild(wrapper.firstChild);
           } else {
-              console.error(`[${EXT_DISPLAY$1}] Couldn't load HTML: ${templateName}.html`);
+              console.error(`[${EXT_DISPLAY}] Couldn't load HTML: ${templateName}.html`);
           }
       };
       const templates = ['window', 'lorebook_manager', 'character_manager', 'settings_overlay', 'chat_picker'];
@@ -18355,7 +18355,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       const btn = document.createElement('div');
       btn.id = 'scp-wand-btn';
       btn.classList.add('list-group-item', 'flex-container', 'flexGap5');
-      btn.innerHTML = `<div class="fa-solid fa-robot extensionsMenuExtensionButton"></div><span>${EXT_DISPLAY$1}</span>`;
+      btn.innerHTML = `<div class="fa-solid fa-robot extensionsMenuExtensionButton"></div><span>${EXT_DISPLAY}</span>`;
       btn.style.display = getSettings().enabled ? '' : 'none';
       btn.addEventListener('click', () => toggleVisibility());
       menu.appendChild(btn);
@@ -18419,7 +18419,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       // Session dropdown
       document.getElementById('scp-sess-trigger')?.addEventListener('click', e => {
           e.stopPropagation();
-          if (state.generating) { toastr.warning('Пожалуйста, дождитесь окончания генерации.', EXT_DISPLAY$1); return; }
+          if (state.generating) { toastr.warning('Пожалуйста, дождитесь окончания генерации.', EXT_DISPLAY); return; }
           const panel = document.getElementById('scp-sess-panel'); const trigger = document.getElementById('scp-sess-trigger');
           const isOpen = panel.classList.contains('open');
           panel.classList.toggle('open', !isOpen); trigger.classList.toggle('open', !isOpen);
@@ -18875,7 +18875,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           el.addEventListener('pointerdown', preventSpinBug);
       });
 
-      console.log(`[${EXT_DISPLAY$1}] Initialized.`);
+      console.log(`[${EXT_DISPLAY}] Initialized.`);
   }
 
   if (document.readyState === 'loading') {
