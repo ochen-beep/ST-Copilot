@@ -22,7 +22,7 @@ import { postProcessToolCalls } from '../features/feature-tools-ui.js';
 import { recordStat, SM } from '../features/feature-stats.js';
 import { _openImageLightbox, _openTextLightbox } from '../features/feature-attachments.js';
 
-import { apiMod, uiWinMod, uiWdgMod, uiSetMod, featCharUiMod } from './chat-shared.js';
+import { apiMod, uiWinMod, uiWdgMod, uiSetMod, featCharUiMod, _renderFromBySession } from './chat-shared.js';
 import { renderSession } from './session-view.js';
 export function openSearch() {
     _dbgAdd('SEARCH_TOGGLE', { state: 'open' });

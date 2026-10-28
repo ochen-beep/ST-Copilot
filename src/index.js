@@ -17,19 +17,16 @@ import { _setupAttachButton } from './features/feature-attachments.js';
 
 import * as apiMod from './api.js';
 
-export let ST_WorldInfo = null;
-export let ST_Utils = null;
-export let extVersion = '?';
-export let __extPath = 'third-party/ST-Copilot';
+import { __extPath, ST_WorldInfo, _setExtPath, _setExtVersion, _setSTModules } from './version.js';
 
 if (document.currentScript && document.currentScript.src) {
     const match = new URL(document.currentScript.src).pathname.match(/\/scripts\/extensions\/(.+)\/[^\/]+\.js$/);
-    if (match) __extPath = match[1];
+    if (match) _setExtPath(match[1]);
 } else {
     for (let s of document.getElementsByTagName('script')) {
         if (s.src && s.src.includes('index.js') && s.src.toLowerCase().includes('copilot')) {
             const match = new URL(s.src).pathname.match(/\/scripts\/extensions\/(.+)\/[^\/]+\.js$/);
-            if (match) { __extPath = match[1]; break; }
+            if (match) { _setExtPath(match[1]); break; }
         }
     }
 }
@@ -39,12 +36,12 @@ async function loadManifestVersion() {
         const res = await fetch(`/scripts/extensions/${__extPath}/manifest.json`);
         if (res.ok) {
             const manifest = await res.json();
-            extVersion = manifest.version || CHANGELOG[0]?.version || '?';
+            _setExtVersion(manifest.version || CHANGELOG[0]?.version || '?');
         } else {
-            extVersion = CHANGELOG[0]?.version || '?';
+            _setExtVersion(CHANGELOG[0]?.version || '?');
         }
     } catch (_) {
-        extVersion = CHANGELOG[0]?.version || '?';
+        _setExtVersion(CHANGELOG[0]?.version || '?');
     }
 }
 
@@ -520,8 +517,8 @@ async function init() {
 async function _initInner() {
     _dbgSetupGlobalErrorHandlers();
     
-    try { ST_WorldInfo = await import('/scripts/world-info.js'); } catch(e) { console.warn('ST-Copilot: Could not import world-info.js'); }
-    try { ST_Utils = await import('/scripts/utils.js'); } catch(e) { console.warn('ST-Copilot: Could not import utils.js'); }
+    try { _setSTModules(await import('/scripts/world-info.js'), null); } catch(e) { console.warn('ST-Copilot: Could not import world-info.js'); }
+    try { _setSTModules(ST_WorldInfo, await import('/scripts/utils.js')); } catch(e) { console.warn('ST-Copilot: Could not import utils.js'); }
     
     await loadManifestVersion();
     

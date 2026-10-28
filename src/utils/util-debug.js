@@ -1,7 +1,7 @@
 import { EXT_DISPLAY } from '../constants.js';
 import { DBG_STATE, DBG_SKIP } from '../state.js';
 import { getSettings, getCurrentSession, hasSessionOverrides } from '../session.js';
-import { extVersion } from '../index.js';
+import { extVersion } from '../version.js';
 
 let _lastDiffTs = 0;
 

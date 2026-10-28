@@ -698,4 +698,3 @@ export async function handleDelete(wrapEl, msg) {
 
 // Окно ленивого рендера: длинные сессии рендерятся последними N сообщениями,
 // старые подгружаются кнопкой. На payload это не влияет — только DOM.
-const MSG_RENDER_WINDOW = 80;

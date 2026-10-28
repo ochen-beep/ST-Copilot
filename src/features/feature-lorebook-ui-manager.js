@@ -66,7 +66,7 @@ export async function refreshLorebookList() {
     
     await Promise.all(activeNamesArray.map(name => fetchWorldInfoBook(name)));
     
-    const { ST_WorldInfo, ST_Utils } = await import('../index.js');
+    const { ST_WorldInfo, ST_Utils } = await import('../version.js');
     
     // (G)
     const globalBooks = ST_WorldInfo?.selected_world_info || (ctx.worldInfoSettings?.globalSelect || []);

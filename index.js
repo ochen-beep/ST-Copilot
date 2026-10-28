@@ -1035,6 +1035,35 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         'memories'
     ]);
 
+    // Extension-wide mutable identity/runtime refs. These live OUTSIDE index.js on
+    // purpose: util-debug, lorebook engine and other low-level modules need them,
+    // and a static import from index.js made index.js the root of every import
+    // cycle in the graph — under vite SSR those cycles materialized facade
+    // re-exports as undefined. Live `export let` bindings keep the value current
+    // for all importers after init assigns it.
+
+    let extVersion = '?';
+    let __extPath = 'third-party/ST-Copilot';
+
+    // ST runtime modules, filled by index.js init after dynamic import.
+    let ST_WorldInfo = null;
+    let ST_Utils = null;
+
+    function _setExtPath(p) { __extPath = p; }
+    function _setExtVersion(v) { extVersion = v; }
+    function _setSTModules(worldInfo, utils) { ST_WorldInfo = worldInfo; ST_Utils = utils; }
+
+    var version = /*#__PURE__*/Object.freeze({
+        __proto__: null,
+        get ST_Utils () { return ST_Utils; },
+        get ST_WorldInfo () { return ST_WorldInfo; },
+        get __extPath () { return __extPath; },
+        _setExtPath: _setExtPath,
+        _setExtVersion: _setExtVersion,
+        _setSTModules: _setSTModules,
+        get extVersion () { return extVersion; }
+    });
+
     let _lastDiffTs = 0;
 
     function _dbgStrip(s) {
@@ -1172,7 +1201,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
         const lines = [
             '=== ST-Copilot Debug Log ===',
-            `Version: ${exports.extVersion} | Session Start: ${DBG_STATE.sessionStart} | Downloaded: ${new Date().toISOString()}`,
+            `Version: ${extVersion} | Session Start: ${DBG_STATE.sessionStart} | Downloaded: ${new Date().toISOString()}`,
             `Entries: ${DBG_STATE.log.length} / ${DBG_STATE.MAX} max`,
             '='.repeat(70),
             '=== SillyTavern Global Environment ===',
@@ -2673,7 +2702,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         const ctx = SillyTavern.getContext();
         const names = new Set();
 
-        const globalBooks = exports.ST_WorldInfo?.selected_world_info || window.selected_world_info ||[];
+        const globalBooks = ST_WorldInfo?.selected_world_info || window.selected_world_info ||[];
         if (Array.isArray(globalBooks)) {
             globalBooks.forEach(n => n && names.add(n));
         }
@@ -2685,10 +2714,10 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             if (baseWorldName && typeof baseWorldName === 'string') names.add(baseWorldName);
 
             let fileName = character.avatar;
-            if (exports.ST_Utils && typeof exports.ST_Utils.getCharaFilename === 'function') {
-                fileName = exports.ST_Utils.getCharaFilename(charId);
+            if (ST_Utils && typeof ST_Utils.getCharaFilename === 'function') {
+                fileName = ST_Utils.getCharaFilename(charId);
             }
-            const charLoreList = exports.ST_WorldInfo?.world_info?.charLore || window.world_info?.charLore;
+            const charLoreList = ST_WorldInfo?.world_info?.charLore || window.world_info?.charLore;
             if (fileName && Array.isArray(charLoreList)) {
                 const extraCharLore = charLoreList.find(e => e.name === fileName);
                 if (extraCharLore && Array.isArray(extraCharLore.extraBooks)) {
@@ -2697,7 +2726,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             }
         }
 
-        const wiKey = exports.ST_WorldInfo?.METADATA_KEY || window.WI_METADATA_KEY || 'world_info';
+        const wiKey = ST_WorldInfo?.METADATA_KEY || window.WI_METADATA_KEY || 'world_info';
         const chatWorldName = ctx.chatMetadata?.[wiKey];
         if (chatWorldName && typeof chatWorldName === 'string') names.add(chatWorldName);
 
@@ -2994,13 +3023,13 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         try {
             const ctx = SillyTavern.getContext();
 
-            const allBooks = window.world_names || exports.ST_WorldInfo?.world_names || [];
+            const allBooks = window.world_names || ST_WorldInfo?.world_names || [];
             const isNew = !allBooks.includes(bookName);
 
             if (isNew) {
                 console.log('[ST-Copilot-Debug] Lorebook is new. Requesting ST to create...');
-                if (typeof exports.ST_WorldInfo?.createNewWorldInfo === 'function') {
-                    await exports.ST_WorldInfo.createNewWorldInfo(bookName);
+                if (typeof ST_WorldInfo?.createNewWorldInfo === 'function') {
+                    await ST_WorldInfo.createNewWorldInfo(bookName);
                 } else if (typeof window.createNewWorldInfo === 'function') {
                     await window.createNewWorldInfo(bookName);
                 } else {
@@ -3022,14 +3051,14 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             if (charId === undefined || charId === null) return;
 
             let fileName = ctx.characters?.[charId]?.avatar;
-            if (exports.ST_Utils && typeof exports.ST_Utils.getCharaFilename === 'function') {
-                fileName = exports.ST_Utils.getCharaFilename(charId);
+            if (ST_Utils && typeof ST_Utils.getCharaFilename === 'function') {
+                fileName = ST_Utils.getCharaFilename(charId);
             } else if (typeof window.getCharaFilename === 'function') {
                 fileName = window.getCharaFilename(charId);
             }
             if (!fileName) return;
 
-            let wiSettings = window.world_info || exports.ST_WorldInfo?.world_info;
+            let wiSettings = window.world_info || ST_WorldInfo?.world_info;
             if (!wiSettings) return;
 
             if (!Array.isArray(wiSettings.charLore)) wiSettings.charLore = [];
@@ -3046,13 +3075,13 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                 extraCharLore.extraBooks.push(bookName);
                 console.log(`[ST-Copilot-Debug] Added "${bookName}" to extraBooks.`);
 
-                if (typeof exports.ST_WorldInfo?.saveWorldInfoSettings === 'function') exports.ST_WorldInfo.saveWorldInfoSettings();
+                if (typeof ST_WorldInfo?.saveWorldInfoSettings === 'function') ST_WorldInfo.saveWorldInfoSettings();
                 else if (typeof window.saveWorldInfoSettings === 'function') window.saveWorldInfoSettings();
 
                 if (typeof window.saveSettingsDebounced === 'function') window.saveSettingsDebounced();
                 else if (typeof saveSettingsDebounced === 'function') saveSettingsDebounced();
 
-                if (typeof exports.ST_WorldInfo?.printWorldInfoCharacters === 'function') exports.ST_WorldInfo.printWorldInfoCharacters();
+                if (typeof ST_WorldInfo?.printWorldInfoCharacters === 'function') ST_WorldInfo.printWorldInfoCharacters();
                 else if (typeof window.printWorldInfoCharacters === 'function') window.printWorldInfoCharacters();
             }
         } catch (e) {
@@ -4940,7 +4969,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         
         await Promise.all(activeNamesArray.map(name => fetchWorldInfoBook(name)));
         
-        const { ST_WorldInfo, ST_Utils } = await Promise.resolve().then(function () { return index; });
+        const { ST_WorldInfo, ST_Utils } = await Promise.resolve().then(function () { return version; });
         
         // (G)
         const globalBooks = ST_WorldInfo?.selected_world_info || (ctx.worldInfoSettings?.globalSelect || []);
@@ -11732,6 +11761,13 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
     let featCharUiMod = null;
     Promise.resolve().then(function () { return featureCharacterUi; }).then(m => featCharUiMod = m);
 
+    // sessionId -> первый отрисованный индекс (окно ленивого рендера);
+    // пишется в renderSession, читается в performSearch.
+    const _renderFromBySession = new Map();
+
+    // Окно ленивого рендера (сообщений в DOM); порог подгрузки «Показать ещё».
+    const MSG_RENDER_WINDOW = 80;
+
     function openSearch() {
         _dbgAdd('SEARCH_TOGGLE', { state: 'open' });
         state.searchOpen = true;
@@ -13472,6 +13508,9 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
         updateMsgCount(session);
         if (!session.messages.length) renderSession(session);
     }
+
+    // Окно ленивого рендера: длинные сессии рендерятся последними N сообщениями,
+    // старые подгружаются кнопкой. На payload это не влияет — только DOM.
 
     // ─── Text Render and Markdown ────────────────────────────────────────────────
 
@@ -17391,6 +17430,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         });
     }
 
+    // Таймауты генерации в конфиг-объекте: фаззинг/соук-тесты сжимают их вместо
+    // трёхминутных ожиданий; дефолты = прежние константы (ask_user 5 мин, stall 3 мин).
+    const _genTimeouts = { askUserMs: 300000, stallMs: 180000 };
+
     async function awaitAskUserAnswer(askPromise) {
         return new Promise((resolve) => {
             let settled = false;
@@ -17401,7 +17444,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 clearInterval(poll);
                 resolve(v);
             };
-            const timer = setTimeout(() => finish({ __ask_timeout: true }), ASK_USER_TIMEOUT_MS);
+            const timer = setTimeout(() => finish({ __ask_timeout: true }), _genTimeouts.askUserMs);
             const poll = setInterval(() => {
                 if (state.generationStopped) finish({ __ask_cancelled: true });
             }, 500);
@@ -17838,7 +17881,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     // Watchdog тишины: открытое SSE-соединение без чанков раньше держало генерацию
     // бесконечно (снималась только ручным Stop). Таймер петится на каждом чанке;
     // срабатывание = abort + помеченная ошибка, чтобы UI показал её, а не молчал.
-    const STALL_TIMEOUT_MS = 180000;
+
 
     async function callGenerate(session, settings, pendingText, onChunk, nativeTools = false) {
         let stalled = false;
@@ -17847,9 +17890,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             clearTimeout(stallTimer);
             stallTimer = setTimeout(() => {
                 stalled = true;
-                _dbgAdd('GEN_STALL_TIMEOUT', { timeoutMs: STALL_TIMEOUT_MS });
+                _dbgAdd('GEN_STALL_TIMEOUT', { timeoutMs: _genTimeouts.stallMs });
                 try { state.abortController?.abort(); } catch (_) {}
-            }, STALL_TIMEOUT_MS);
+            }, _genTimeouts.stallMs);
         };
         pet();
         try {
@@ -17857,7 +17900,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 typeof onChunk === 'function' ? (...a) => { pet(); onChunk(...a); } : onChunk,
                 nativeTools);
             if (result === null && stalled && !state.generationStopped) {
-                const err = new Error(`Генерация зависла: провайдер не присылал данные ${Math.round(STALL_TIMEOUT_MS / 1000)} с подряд. Запрос прерван — проверьте соединение и повторите.`);
+                const err = new Error(`Генерация зависла: провайдер не присылал данные ${Math.round(_genTimeouts.stallMs / 1000)} с подряд. Запрос прерван — проверьте соединение и повторите.`);
                 err._stalled = true;
                 throw err;
             }
@@ -18590,8 +18633,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         __proto__: null,
         _buildAiContextForHistoryMsg: _buildAiContextForHistoryMsg,
         _computeSystemPromptSignature: _computeSystemPromptSignature,
+        _genTimeouts: _genTimeouts,
         _joinContinuation: _joinContinuation,
         assembleMessages: assembleMessages,
+        awaitAskUserAnswer: awaitAskUserAnswer,
         buildSystemContent: buildSystemContent,
         callGenerate: callGenerate,
         estimateTokens: estimateTokens,
@@ -18603,34 +18648,29 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         runGenerate: runGenerate
     });
 
-    exports.ST_WorldInfo = null;
-    exports.ST_Utils = null;
-    exports.extVersion = '?';
-    exports.__extPath = 'third-party/ST-Copilot';
-
     if (document.currentScript && document.currentScript.src) {
         const match = new URL(document.currentScript.src).pathname.match(/\/scripts\/extensions\/(.+)\/[^\/]+\.js$/);
-        if (match) exports.__extPath = match[1];
+        if (match) _setExtPath(match[1]);
     } else {
         for (let s of document.getElementsByTagName('script')) {
             if (s.src && s.src.includes('index.js') && s.src.toLowerCase().includes('copilot')) {
                 const match = new URL(s.src).pathname.match(/\/scripts\/extensions\/(.+)\/[^\/]+\.js$/);
-                if (match) { exports.__extPath = match[1]; break; }
+                if (match) { _setExtPath(match[1]); break; }
             }
         }
     }
 
     async function loadManifestVersion() {
         try {
-            const res = await fetch(`/scripts/extensions/${exports.__extPath}/manifest.json`);
+            const res = await fetch(`/scripts/extensions/${__extPath}/manifest.json`);
             if (res.ok) {
                 const manifest = await res.json();
-                exports.extVersion = manifest.version || CHANGELOG[0]?.version || '?';
+                _setExtVersion(manifest.version || CHANGELOG[0]?.version || '?');
             } else {
-                exports.extVersion = CHANGELOG[0]?.version || '?';
+                _setExtVersion(CHANGELOG[0]?.version || '?');
             }
         } catch (_) {
-            exports.extVersion = CHANGELOG[0]?.version || '?';
+            _setExtVersion(CHANGELOG[0]?.version || '?');
         }
     }
 
@@ -18641,7 +18681,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             return html.replace(/\$\{I\.([a-zA-Z0-9_]+)\}/g, (_, iconName) => I[iconName] || '');
         };
         const loadAndInject = async (templateName) => {
-            const html = await ctx.renderExtensionTemplateAsync(exports.__extPath, templateName);
+            const html = await ctx.renderExtensionTemplateAsync(__extPath, templateName);
             if (html) {
                 const wrapper = document.createElement('div');
                 wrapper.innerHTML = parseTemplate(html);
@@ -19106,8 +19146,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     async function _initInner() {
         _dbgSetupGlobalErrorHandlers();
         
-        try { exports.ST_WorldInfo = await import('/scripts/world-info.js'); } catch(e) { console.warn('ST-Copilot: Could not import world-info.js'); }
-        try { exports.ST_Utils = await import('/scripts/utils.js'); } catch(e) { console.warn('ST-Copilot: Could not import utils.js'); }
+        try { _setSTModules(await import('/scripts/world-info.js'), null); } catch(e) { console.warn('ST-Copilot: Could not import world-info.js'); }
+        try { _setSTModules(ST_WorldInfo, await import('/scripts/utils.js')); } catch(e) { console.warn('ST-Copilot: Could not import utils.js'); }
         
         await loadManifestVersion();
         
@@ -19119,7 +19159,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const container = document.getElementById('extensions_settings') || document.getElementById('extensions_settings2');
         if (container) {
             try {
-                const html = await ctx.renderExtensionTemplateAsync(exports.__extPath, 'settings');
+                const html = await ctx.renderExtensionTemplateAsync(__extPath, 'settings');
                 if (html) container.insertAdjacentHTML('beforeend', html);
             } catch (e) {}
         }
@@ -19283,15 +19323,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     } else {
         setTimeout(init, 0);
     }
-
-    var index = /*#__PURE__*/Object.freeze({
-        __proto__: null,
-        get ST_Utils () { return exports.ST_Utils; },
-        get ST_WorldInfo () { return exports.ST_WorldInfo; },
-        get __extPath () { return exports.__extPath; },
-        get extVersion () { return exports.extVersion; },
-        refreshSessionDropdown: refreshSessionDropdown
-    });
 
     exports.refreshSessionDropdown = refreshSessionDropdown;
 

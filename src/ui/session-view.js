@@ -22,7 +22,7 @@ import { postProcessToolCalls } from '../features/feature-tools-ui.js';
 import { recordStat, SM } from '../features/feature-stats.js';
 import { _openImageLightbox, _openTextLightbox } from '../features/feature-attachments.js';
 
-import { apiMod, uiWinMod, uiWdgMod, uiSetMod, featCharUiMod } from './chat-shared.js';
+import { apiMod, uiWinMod, uiWdgMod, uiSetMod, featCharUiMod, _renderFromBySession, MSG_RENDER_WINDOW } from './chat-shared.js';
 import { _renderMsgBodyContent, _updateMsgTokenCount } from './render-msg.js';
 import { getSwipesForMsg, navigateSwipe, updateSwipeBar, _runSwipeRegen, _refreshSwipeBars, _refreshContinueBtns, scrollToBottom, handleCopy, handleEdit, handleMessageRegen, handleDelete } from './msg-actions.js';
 import { clearSearchHighlights, updateSearchCount, performSearch } from './search.js';

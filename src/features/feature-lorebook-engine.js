@@ -1,7 +1,7 @@
 import { EXT_DISPLAY, EMBEDDED_BOOK_KEY, DEFAULT_LB_MANAGE_PROMPT, LB_FORMAT_BLOCK } from '../constants.js';
 import { getCurrentSession, saveSettings, expandMacros } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
-import { ST_WorldInfo, ST_Utils } from '../index.js';
+import { ST_WorldInfo, ST_Utils } from '../version.js';
 import { _repairJSON } from '../utils/util-text.js';
 import { invalidateSystemPromptCache } from '../state.js';
 

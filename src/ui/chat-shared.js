@@ -15,3 +15,6 @@ import('../features/feature-character-ui.js').then(m => featCharUiMod = m);
 // sessionId -> первый отрисованный индекс (окно ленивого рендера);
 // пишется в renderSession, читается в performSearch.
 export const _renderFromBySession = new Map();
+
+// Окно ленивого рендера (сообщений в DOM); порог подгрузки «Показать ещё».
+export const MSG_RENDER_WINDOW = 80;
