@@ -214,6 +214,17 @@ var STCopilot = (function (exports) {
         }
     ];
 
+    // Пул эмодзи-иконок для панели быстрых промптов (см. ui/ui-widgets.js).
+    // Вынесен из constants.js ради размера файла; ре-экспортируется оттуда.
+    const QP_ICON_POOL = [
+            '🔍','💡','📋','✨','🎭','📖','🗺️','⚔️','🧠','💬',
+            '🎯','🔮','📝','🌍','❓','🎨','💭','🔥','⚡','🎲',
+            '👁️','🧩','📚','🗣️','💫','🌟','🎬','🧪','🏆','🎵',
+            '🌙','☀️','🌊','🍃','💎','🛡️','🗡️','🏰','🐉','🦋',
+            '🎪','🌀','🔑','💀','🌹','🍷','🎩','🧿','🔔','⭐',
+            '🐺','🦊','🐦','🌸','🍄','🔴','🟣','🔵','🟡','🟢',
+        ];
+
     const EXT_NAME = 'st_copilot';
     const EXT_DISPLAY = 'ST-Copilot';
     const WIN_ID = 'scp-window';
@@ -922,15 +933,6 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             lock: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
         };
 
-    const QP_ICON_POOL = [
-            '🔍','💡','📋','✨','🎭','📖','🗺️','⚔️','🧠','💬',
-            '🎯','🔮','📝','🌍','❓','🎨','💭','🔥','⚡','🎲',
-            '👁️','🧩','📚','🗣️','💫','🌟','🎬','🧪','🏆','🎵',
-            '🌙','☀️','🌊','🍃','💎','🛡️','🗡️','🏰','🐉','🦋',
-            '🎪','🌀','🔑','💀','🌹','🍷','🎩','🧿','🔔','⭐',
-            '🐺','🦊','🐦','🌸','🍄','🔴','🟣','🔵','🟡','🟢',
-        ];
-
     const state = {
         generating: false,
         copilotActive: false,
@@ -1204,6 +1206,273 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         dbgDownload: dbgDownload
     });
 
+    // ─── Settings ───────────────────────────────────────────────────────────────
+    // Дефолты hoist'нуты на уровень модуля: getSettings() вызывается очень часто
+    // (каждый кадр физики лаунчера, каждый getEffectiveSettings, каждый recordStat),
+    // пересоздавать литерал из ~100 ключей на вызов — чистый churn.
+    const DEFAULT_SETTINGS = {
+        enabled: true,
+        performanceMode: true,
+        windowVisible: false,
+        minimized: false,
+        windowX: null, windowY: null,
+        windowW: 440, windowH: 600,
+        opacity: 95,
+        hotkey: 'Alt+Shift+C',
+        hotkeyEnabled: true,
+        searchHotkey: 'Ctrl+F',
+        searchHotkeyEnabled: true,
+        contextDepth: 15,
+        localHistoryLimit: 50,
+        connectionSource: 'default',
+        connectionProfileId: '',
+        customUrl: 'http://localhost:5000/v1',
+        customKey: '',
+        customModel: '',
+        maxTokens: 8048,
+        includeSystemPrompt: false,
+        includeAuthorsNote: true,
+        includeCharacterCard: true,
+        includeUserPersonality: true,
+        includeAlternateSwipes: false,
+        systemPrompt: DEFAULT_SYSTEM_PROMPT,
+        memoryManagePrompt: DEFAULT_MEMORY_PROMPT,
+        profiles: {},
+        activeProfile: '',
+        profileBindings: {},
+        customTheme: { ...THEME_PRESETS.default },
+        savedThemes: {},
+        activeThemeProfile: '',
+        sessions: {},
+        lorebookEnabled: true,
+        lorebookAutoKeyword: true,
+        lorebookSelectedBooks: [],
+        lorebookEntryOverrides: {},
+        lorebookAIManageEnabled: true,
+        lorebookManagePrompt: DEFAULT_LB_MANAGE_PROMPT,
+        lorebookSTScanDepth: 5,
+        lorebookCopilotScanDepth: 6,
+        floatingIconPersistent: false,
+        reasoningTrimStrings: '',
+        ghostModeOpacity: 15,
+        ghostModeHotkey: 'Alt+Shift+G',
+        ghostModeHotkeyEnabled: true,
+        quickPromptsVisible: false,
+        quickPrompts: [
+            { id: 'qp_d1', label: 'Анализ', icon: '🔍', text: 'Analyze the current scene and character motivations in detail.' },
+            { id: 'qp_d2', label: 'Идеи', icon: '💡', text: 'Give me 3 creative plot twist ideas for the current scene.' },
+            { id: 'qp_d3', label: 'Сводка', icon: '📋', text: 'Summarize everything that has happened in the roleplay so far.' },
+            { id: 'qp_d4', label: 'Чувства', icon: '💭', text: 'What is {{char}} likely feeling right now and why?' },
+            { id: 'qp_d5', label: 'Дальше?', icon: '🎯', text: 'What are the most interesting directions the story could go next?' },
+        ],
+        quickPromptSets: {},
+        activeQuickPromptSet: '',
+        promptPresets: {},
+        stats: { g:{}, c:{}, ch:{} },
+        changelogAutoShow: true,
+        lastSeenVersion: '',
+        starredMessages: {},
+        forceStreaming: 'auto',
+        applyRegexToContext: true,
+        charEditAIEnabled: true,
+        charEditPrompt: '',
+        charEditFields: {
+            tags: true, description: true, personality: true,
+            scenario: true, first_mes: true, mes_example: true,
+            alternate_greetings: false, authors_note: true,
+            system_prompt: true, post_history_instructions: true, name: false,
+        },
+        completionSound: 'none',
+        completionSoundVolume: 80,
+        completionSoundOnlyWhenUnfocused: false,
+        wobbleWindow: false,
+        altGreetingIndices: [],
+        chatEditAIEnabled: true,
+        chatEditPrompt: '',
+        lorebookExcludedBooks: [],
+        pickerPreviewLines: 1,
+        pickerPreviewLastLines: 0,
+        imageAnalysisMode: 'direct',
+        attachedFiles: [],
+        memoryEnabled: true,
+        memoryInject: true,
+        memoryScope: 'global',
+        memoryTag: 'memory-update',
+        memoryNotify: true,
+        memories: {},
+        toolsEnabled: true,
+        toolsThinking: false,
+        toolsMaxRounds: 5,
+        toolsProtocol: 'text',
+        toolsEnabled_search_chat: true,
+        toolsEnabled_search_lorebook: true,
+        toolsEnabled_get_lorebooks: true,
+        toolsEnabled_ask_user: true,
+        toolsEnabled_get_char_info: true,
+        toolsEnabled_get_chat_stats: true,
+        toolsEnabled_get_recent_messages: true,
+        toolsEnabled_read_url: true,
+        toolsEnabled_search_web: true,
+        toolsEnabled_todo_write: true,
+        includeSummaryception: true,
+        useAspectEvolutia: true,
+        autoExpandMacros: false,
+        includeHiddenMessages: false,
+    };
+    // Ключи с объектными/массивными значениями: при первом сидинге отдаём копию,
+    // чтобы последующие мутации settings не протекали в общий DEFAULT_SETTINGS.
+    const CLONED_DEFAULT_KEYS = new Set([
+        'customTheme', 'profiles', 'profileBindings', 'sessions', 'lorebookSelectedBooks',
+        'lorebookEntryOverrides', 'quickPrompts', 'quickPromptSets', 'promptPresets',
+        'stats', 'starredMessages', 'charEditFields', 'altGreetingIndices',
+        'attachedFiles', 'memories',
+    ]);
+
+    function getSettings() {
+        const { extensionSettings } = SillyTavern.getContext();
+        if (!extensionSettings[EXT_NAME]) extensionSettings[EXT_NAME] = {};
+        const s = extensionSettings[EXT_NAME];
+        for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
+            if (s[k] === undefined) s[k] = CLONED_DEFAULT_KEYS.has(k) ? JSON.parse(JSON.stringify(v)) : v;
+        }
+        // v2.10.0+: launcherMode replaces the removed floating FAB setting.
+        // Users who had the persistent floating icon get the floating launcher by default.
+        if (s.launcherMode === undefined) {
+            s.launcherMode = s.floatingIconPersistent ? 'floating' : 'bar';
+        }
+        return s;
+    }
+
+    function saveSettings$1(opts = {}) {
+        SillyTavern.getContext().saveSettingsDebounced();
+        // quiet: для сохранений, которые не меняют ничего, влияющего на системный
+        // промпт (статистика и т.п.) — не сбрасываем кэш промпта и не считаем diff.
+        if (!opts.quiet) {
+            _dbgDiffSettings();
+            invalidateSystemPromptCache('saveSettings');
+        }
+    }
+
+    // ─── ST Context Helpers ─────────────────────────────────────────────────────
+    function getBindingKey() {
+        const ctx = SillyTavern.getContext();
+        let charId = 'global';
+        if (ctx.characterId !== undefined && ctx.characterId !== null) {
+            charId = String(ctx.characterId);
+        } else if (typeof window.this_chid !== 'undefined' && window.this_chid !== null) {
+            charId = String(window.this_chid);
+        }
+
+        let chatId = 'default';
+        try {
+            if (typeof window.chat_file_name === 'string' && window.chat_file_name) {
+                chatId = String(window.chat_file_name);
+            } else if (typeof ctx.getCurrentChatId === 'function') {
+                const r = ctx.getCurrentChatId(); if (r) chatId = String(r);
+            }
+
+            if (chatId === 'default' || !chatId) {
+                if (ctx.chatId) chatId = String(ctx.chatId);
+                else if (typeof window.chat_id !== 'undefined' && window.chat_id !== null) chatId = String(window.chat_id);
+            }
+        } catch (_) {}
+
+        return { charId, chatId };
+    }
+
+    // Stable per-character key for persisted data (memories, stats): the roster
+    // index shifts on delete/reorder, the avatar file name does not.
+    function getStableCharId() {
+        const ctx = SillyTavern.getContext();
+        const char = ctx.characters?.[ctx.characterId];
+        return char?.avatar || String(ctx.characterId ?? '');
+    }
+
+    // ─── Macro Expansion Helper ────────────────────────────────────────────────
+
+    function expandMacros(text) {
+        if (!text) return text;
+        try {
+            const ctx = SillyTavern.getContext();
+            if (typeof ctx.substituteParams === 'function') {
+                return ctx.substituteParams(text);
+            }
+            if (typeof window.substituteParams === 'function') {
+                return window.substituteParams(text, ctx.name1, ctx.name2);
+            }
+        } catch (e) {
+            console.warn(`[${EXT_DISPLAY}] Macro expansion error:`, e);
+        }
+        try {
+            const ctx = SillyTavern.getContext();
+            const char = ctx.characters?.[ctx.characterId];
+            const d = char?.data || {};
+            const now = new Date();
+            return text
+                .replace(/\{\{user\}\}/gi, ctx.name1 || 'User')
+                .replace(/\{\{char\}\}/gi, char?.name || ctx.name2 || 'Character')
+                .replace(/\{\{time\}\}/gi, now.toLocaleTimeString())
+                .replace(/\{\{date\}\}/gi, now.toLocaleDateString())
+                .replace(/\{\{isodate\}\}/gi, now.toISOString().split('T')[0])
+                .replace(/\{\{isotime\}\}/gi, now.toTimeString().slice(0, 5))
+                .replace(/\{\{lastMessage\}\}/gi, () => {
+                    const msgs = ctx.chat;
+                    return msgs?.[msgs.length - 1]?.mes || '';
+                })
+                .replace(/\{\{lastUserMessage\}\}/gi, () => {
+                    const msgs = ctx.chat;
+                    if (!msgs) return '';
+                    for (let i = msgs.length - 1; i >= 0; i--) {
+                        if (msgs[i].is_user) return msgs[i].mes || '';
+                    }
+                    return '';
+                })
+                .replace(/\{\{lastCharMessage\}\}/gi, () => {
+                    const msgs = ctx.chat;
+                    if (!msgs) return '';
+                    for (let i = msgs.length - 1; i >= 0; i--) {
+                        if (!msgs[i].is_user) return msgs[i].mes || '';
+                    }
+                    return '';
+                })
+                .replace(/\{\{description\}\}/gi, d.description || char?.description || '')
+                .replace(/\{\{personality\}\}/gi, d.personality || char?.personality || '')
+                .replace(/\{\{scenario\}\}/gi, d.scenario || char?.scenario || '');
+        } catch (_) {
+            return text;
+        }
+    }
+
+    // ─── Starred Messages ───────────────────────────────────────────────────────
+
+    function getSessionFavKey() {
+        const { charId, chatId } = getBindingKey();
+        return `${charId} ${chatId}`;
+    }
+
+    function getStarredMessages() {
+        const s = getSettings();
+        const key = getSessionFavKey();
+        if (!s.starredMessages[key]) s.starredMessages[key] = [];
+        return s.starredMessages[key];
+    }
+
+    function isMessageStarred(msgId) {
+        return getStarredMessages().includes(msgId);
+    }
+
+    function toggleStarMessage(msgId) {
+        const s = getSettings();
+        const key = getSessionFavKey();
+        if (!s.starredMessages[key]) s.starredMessages[key] = [];
+        const arr = s.starredMessages[key];
+        const idx = arr.indexOf(msgId);
+        if (idx >= 0) arr.splice(idx, 1);
+        else arr.push(msgId);
+        saveSettings$1();
+        return idx < 0; // true = now starred
+    }
+
     /**
      * Итеративный Левенштейн с двумя строками-буферами (O(N) памяти).
      * Используется для мягкого подбора имени в resolveCharacterByName.
@@ -1422,335 +1691,6 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         t = t.replace(new RegExp(`\\s*</${tag}>$`, 'i'), '');
         
         return `${open}\n${t}\n${close}`;
-    }
-
-    function escHtml(str) {
-        return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
-
-    function fallbackCopy(text) {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;width:1px;height:1px;';
-        document.body.appendChild(ta);
-        ta.focus(); ta.select();
-        try { document.execCommand('copy'); toastr.success('Скопировано', EXT_DISPLAY); }
-        catch (e) { toastr.error('Не удалось скопировать', EXT_DISPLAY); }
-        ta.remove();
-    }
-
-    function copyText(text) {
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(text)
-                .then(() => toastr.success('Скопировано', EXT_DISPLAY))
-                .catch(() => fallbackCopy(text));
-        } else { fallbackCopy(text); }
-    }
-
-    function autoResize(el) { 
-        el.style.height = 'auto'; 
-        el.style.height = `${Math.min(el.scrollHeight, 180)}px`; 
-    }
-
-    function showCustomDialog({ type = 'alert', title = '', message = '', htmlMessage = '', defaultValue = '', placeholder = '', delayConfirm = 0 }) {
-        return new Promise(resolve => {
-            const overlay = document.createElement('div');
-            overlay.className = 'scp-dialog-overlay';
-            overlay.style.zIndex = '2147483050';
-            const isPrompt = type === 'prompt';
-            const isConfirm = type === 'confirm';
-            overlay.innerHTML = `
-            <div class="scp-dialog-box">
-                ${title ? `<div class="scp-dialog-title">${escHtml(title)}</div>` : ''}
-                ${message ? `<div class="scp-dialog-msg">${escHtml(message)}</div>` : (htmlMessage ? `<div class="scp-dialog-msg">${htmlMessage}</div>` : '')}
-                ${isPrompt ? `<input type="text" class="scp-dialog-input" value="${escHtml(defaultValue)}" placeholder="${escHtml(placeholder)}">` : ''}
-                <div class="scp-dialog-btns">
-                    ${(isPrompt || isConfirm) ? `<button class="scp-dialog-btn scp-dialog-cancel">Отмена</button>` : ''}
-                    <button class="scp-dialog-btn scp-dialog-ok${isConfirm ? ' danger' : ''}">${isConfirm ? 'Подтвердить' : 'OK'}</button>
-                </div>
-            </div>`;
-            document.body.appendChild(overlay);
-            const input = overlay.querySelector('.scp-dialog-input');
-            const okBtn = overlay.querySelector('.scp-dialog-ok');
-            const cancelBtn = overlay.querySelector('.scp-dialog-cancel');
-            
-            let timerIntv = null;
-            let currentDelay = delayConfirm;
-            const origOkText = okBtn.textContent;
-
-            const close = val => { 
-                if (timerIntv) clearInterval(timerIntv);
-                overlay.classList.remove('visible'); 
-                setTimeout(() => overlay.remove(), 150); 
-                resolve(val); 
-            };
-
-            if (isConfirm && currentDelay > 0) {
-                okBtn.disabled = true;
-                okBtn.style.opacity = '0.5';
-                okBtn.style.cursor = 'not-allowed';
-                okBtn.textContent = `${origOkText} (${currentDelay})`;
-                timerIntv = setInterval(() => {
-                    currentDelay--;
-                    if (currentDelay <= 0) {
-                        clearInterval(timerIntv);
-                        timerIntv = null;
-                        okBtn.disabled = false;
-                        okBtn.style.opacity = '1';
-                        okBtn.style.cursor = '';
-                        okBtn.textContent = origOkText;
-                        if (!input) okBtn.focus();
-                    } else {
-                        okBtn.textContent = `${origOkText} (${currentDelay})`;
-                    }
-                }, 1000);
-            }
-
-            if (input) { input.focus(); input.select(); } else if (currentDelay <= 0) { setTimeout(() => okBtn.focus(), 50); }
-            
-            okBtn.addEventListener('click', () => { if (!okBtn.disabled) close(isPrompt ? input.value : true); });
-            cancelBtn?.addEventListener('click', () => close(isPrompt ? null : false));
-            let _dlgMouseDownTarget = null;
-            overlay.addEventListener('mousedown', e => { _dlgMouseDownTarget = e.target; });
-            overlay.addEventListener('click', e => { if (e.target === overlay && _dlgMouseDownTarget === overlay) close(isPrompt ? null : false); });
-            const keyHandler = e => {
-                if (e.key === 'Enter') { e.preventDefault(); if (!okBtn.disabled) close(isPrompt ? input.value : true); }
-                if (e.key === 'Escape') close(isPrompt ? null : false);
-            };
-            (input || overlay).addEventListener('keydown', keyHandler);
-            requestAnimationFrame(() => overlay.classList.add('visible'));
-        });
-    }
-
-    async function _fileToDataUrl(file) {
-        return new Promise((res, rej) => {
-            const r = new FileReader();
-            r.onload = () => res(r.result);
-            r.onerror = () => {
-                rej(new Error('Read failed'));
-            };
-            r.readAsDataURL(file);
-        });
-    }
-
-    var utilDom = /*#__PURE__*/Object.freeze({
-        __proto__: null,
-        _fileToDataUrl: _fileToDataUrl,
-        autoResize: autoResize,
-        copyText: copyText,
-        escHtml: escHtml,
-        fallbackCopy: fallbackCopy,
-        showCustomDialog: showCustomDialog
-    });
-
-    // ─── Settings ───────────────────────────────────────────────────────────────
-    // Дефолты hoist'нуты на уровень модуля: getSettings() вызывается очень часто
-    // (каждый кадр физики лаунчера, каждый getEffectiveSettings, каждый recordStat),
-    // пересоздавать литерал из ~100 ключей на вызов — чистый churn.
-    const DEFAULT_SETTINGS = {
-        enabled: true,
-        performanceMode: true,
-        windowVisible: false,
-        minimized: false,
-        windowX: null, windowY: null,
-        windowW: 440, windowH: 600,
-        opacity: 95,
-        hotkey: 'Alt+Shift+C',
-        hotkeyEnabled: true,
-        searchHotkey: 'Ctrl+F',
-        searchHotkeyEnabled: true,
-        contextDepth: 15,
-        localHistoryLimit: 50,
-        connectionSource: 'default',
-        connectionProfileId: '',
-        customUrl: 'http://localhost:5000/v1',
-        customKey: '',
-        customModel: '',
-        maxTokens: 8048,
-        includeSystemPrompt: false,
-        includeAuthorsNote: true,
-        includeCharacterCard: true,
-        includeUserPersonality: true,
-        includeAlternateSwipes: false,
-        systemPrompt: DEFAULT_SYSTEM_PROMPT,
-        memoryManagePrompt: DEFAULT_MEMORY_PROMPT,
-        profiles: {},
-        activeProfile: '',
-        profileBindings: {},
-        customTheme: { ...THEME_PRESETS.default },
-        savedThemes: {},
-        activeThemeProfile: '',
-        sessions: {},
-        lorebookEnabled: true,
-        lorebookAutoKeyword: true,
-        lorebookSelectedBooks: [],
-        lorebookEntryOverrides: {},
-        lorebookAIManageEnabled: true,
-        lorebookManagePrompt: DEFAULT_LB_MANAGE_PROMPT,
-        lorebookSTScanDepth: 5,
-        lorebookCopilotScanDepth: 6,
-        floatingIconPersistent: false,
-        reasoningTrimStrings: '',
-        ghostModeOpacity: 15,
-        ghostModeHotkey: 'Alt+Shift+G',
-        ghostModeHotkeyEnabled: true,
-        quickPromptsVisible: false,
-        quickPrompts: [
-            { id: 'qp_d1', label: 'Анализ', icon: '🔍', text: 'Analyze the current scene and character motivations in detail.' },
-            { id: 'qp_d2', label: 'Идеи', icon: '💡', text: 'Give me 3 creative plot twist ideas for the current scene.' },
-            { id: 'qp_d3', label: 'Сводка', icon: '📋', text: 'Summarize everything that has happened in the roleplay so far.' },
-            { id: 'qp_d4', label: 'Чувства', icon: '💭', text: 'What is {{char}} likely feeling right now and why?' },
-            { id: 'qp_d5', label: 'Дальше?', icon: '🎯', text: 'What are the most interesting directions the story could go next?' },
-        ],
-        quickPromptSets: {},
-        activeQuickPromptSet: '',
-        promptPresets: {},
-        stats: { g:{}, c:{}, ch:{} },
-        changelogAutoShow: true,
-        lastSeenVersion: '',
-        starredMessages: {},
-        forceStreaming: 'auto',
-        applyRegexToContext: true,
-        charEditAIEnabled: true,
-        charEditPrompt: '',
-        charEditFields: {
-            tags: true, description: true, personality: true,
-            scenario: true, first_mes: true, mes_example: true,
-            alternate_greetings: false, authors_note: true,
-            system_prompt: true, post_history_instructions: true, name: false,
-        },
-        completionSound: 'none',
-        completionSoundVolume: 80,
-        completionSoundOnlyWhenUnfocused: false,
-        wobbleWindow: false,
-        altGreetingIndices: [],
-        chatEditAIEnabled: true,
-        chatEditPrompt: '',
-        lorebookExcludedBooks: [],
-        pickerPreviewLines: 1,
-        pickerPreviewLastLines: 0,
-        imageAnalysisMode: 'direct',
-        attachedFiles: [],
-        memoryEnabled: true,
-        memoryInject: true,
-        memoryScope: 'global',
-        memoryTag: 'memory-update',
-        memoryNotify: true,
-        memories: {},
-        toolsEnabled: true,
-        toolsThinking: false,
-        toolsMaxRounds: 5,
-        toolsProtocol: 'text',
-        toolsEnabled_search_chat: true,
-        toolsEnabled_search_lorebook: true,
-        toolsEnabled_get_lorebooks: true,
-        toolsEnabled_ask_user: true,
-        toolsEnabled_get_char_info: true,
-        toolsEnabled_get_chat_stats: true,
-        toolsEnabled_get_recent_messages: true,
-        toolsEnabled_read_url: true,
-        toolsEnabled_search_web: true,
-        toolsEnabled_todo_write: true,
-        includeSummaryception: true,
-        useAspectEvolutia: true,
-        autoExpandMacros: false,
-        includeHiddenMessages: false,
-    };
-    // Ключи с объектными/массивными значениями: при первом сидинге отдаём копию,
-    // чтобы последующие мутации settings не протекали в общий DEFAULT_SETTINGS.
-    const CLONED_DEFAULT_KEYS = new Set([
-        'customTheme', 'profiles', 'profileBindings', 'sessions', 'lorebookSelectedBooks',
-        'lorebookEntryOverrides', 'quickPrompts', 'quickPromptSets', 'promptPresets',
-        'stats', 'starredMessages', 'charEditFields', 'altGreetingIndices',
-        'attachedFiles', 'memories',
-    ]);
-
-    function getSettings() {
-        const { extensionSettings } = SillyTavern.getContext();
-        if (!extensionSettings[EXT_NAME]) extensionSettings[EXT_NAME] = {};
-        const s = extensionSettings[EXT_NAME];
-        for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
-            if (s[k] === undefined) s[k] = CLONED_DEFAULT_KEYS.has(k) ? JSON.parse(JSON.stringify(v)) : v;
-        }
-        // v2.10.0+: launcherMode replaces the removed floating FAB setting.
-        // Users who had the persistent floating icon get the floating launcher by default.
-        if (s.launcherMode === undefined) {
-            s.launcherMode = s.floatingIconPersistent ? 'floating' : 'bar';
-        }
-        return s;
-    }
-
-    function saveSettings$1(opts = {}) {
-        SillyTavern.getContext().saveSettingsDebounced();
-        // quiet: для сохранений, которые не меняют ничего, влияющего на системный
-        // промпт (статистика и т.п.) — не сбрасываем кэш промпта и не считаем diff.
-        if (!opts.quiet) {
-            _dbgDiffSettings();
-            invalidateSystemPromptCache('saveSettings');
-        }
-    }
-
-    // ─── ST Context Helpers ─────────────────────────────────────────────────────
-    function getBindingKey() {
-        const ctx = SillyTavern.getContext();
-        let charId = 'global';
-        if (ctx.characterId !== undefined && ctx.characterId !== null) {
-            charId = String(ctx.characterId);
-        } else if (typeof window.this_chid !== 'undefined' && window.this_chid !== null) {
-            charId = String(window.this_chid);
-        }
-
-        let chatId = 'default';
-        try {
-            if (typeof window.chat_file_name === 'string' && window.chat_file_name) {
-                chatId = String(window.chat_file_name);
-            } else if (typeof ctx.getCurrentChatId === 'function') {
-                const r = ctx.getCurrentChatId(); if (r) chatId = String(r);
-            }
-            
-            if (chatId === 'default' || !chatId) {
-                if (ctx.chatId) chatId = String(ctx.chatId);
-                else if (typeof window.chat_id !== 'undefined' && window.chat_id !== null) chatId = String(window.chat_id);
-            }
-        } catch (_) {}
-        
-        return { charId, chatId };
-    }
-
-    // ─── Session Override System ─────────────────────────────────────────────────
-    function getSessionOverrides() {
-        try { return getActiveSession(false)?.overrides || {}; } catch(_) { return {}; }
-    }
-
-    function getEffectiveSettings() {
-        return { ...getSettings(), ...getSessionOverrides() };
-    }
-
-    function setSessionOverride(key, value) {
-        try {
-            const sess = getCurrentSession();
-            if (!sess) return;
-            if (!sess.overrides) sess.overrides = {};
-            if (value === undefined || value === null) delete sess.overrides[key];
-            else sess.overrides[key] = value;
-            saveSessionsToMetadata();
-            Promise.resolve().then(function () { return uiSettings; }).then(m => m.updateSessionOverrideIndicator());
-        } catch(_) {}
-    }
-
-    function clearAllSessionOverrides() {
-        try {
-            const sess = getCurrentSession();
-            if (!sess) return;
-            sess.overrides = {};
-            saveSessionsToMetadata();
-            Promise.resolve().then(function () { return uiSettings; }).then(m => m.updateSessionOverrideIndicator());
-        } catch(_) {}
-    }
-
-    function hasSessionOverrides() {
-        try { const o = getActiveSession(false)?.overrides; return !!(o && Object.keys(o).length > 0); }
-        catch(_) { return false; }
     }
 
     // ─── Storage Subsystem ─────────────────────────────
@@ -2102,7 +2042,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             _inMemoryBucket = { activeSessionId: null, sessions: [] };
             _dbgAdd('STORAGE_BUCKET_EMPTY_INIT', { charId, chatId, fileId: targetFileId, hadPayload: !!payload });
         }
-        
+
         if (!payload || meta?.format !== 'v4') {
             await commitBucketChanges(true);
         }
@@ -2154,6 +2094,161 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         return _inMemoryBucket;
     }
 
+    function escHtml(str) {
+        return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function fallbackCopy(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;width:1px;height:1px;';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        try { document.execCommand('copy'); toastr.success('Скопировано', EXT_DISPLAY); }
+        catch (e) { toastr.error('Не удалось скопировать', EXT_DISPLAY); }
+        ta.remove();
+    }
+
+    function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text)
+                .then(() => toastr.success('Скопировано', EXT_DISPLAY))
+                .catch(() => fallbackCopy(text));
+        } else { fallbackCopy(text); }
+    }
+
+    function autoResize(el) { 
+        el.style.height = 'auto'; 
+        el.style.height = `${Math.min(el.scrollHeight, 180)}px`; 
+    }
+
+    function showCustomDialog({ type = 'alert', title = '', message = '', htmlMessage = '', defaultValue = '', placeholder = '', delayConfirm = 0 }) {
+        return new Promise(resolve => {
+            const overlay = document.createElement('div');
+            overlay.className = 'scp-dialog-overlay';
+            overlay.style.zIndex = '2147483050';
+            const isPrompt = type === 'prompt';
+            const isConfirm = type === 'confirm';
+            overlay.innerHTML = `
+            <div class="scp-dialog-box">
+                ${title ? `<div class="scp-dialog-title">${escHtml(title)}</div>` : ''}
+                ${message ? `<div class="scp-dialog-msg">${escHtml(message)}</div>` : (htmlMessage ? `<div class="scp-dialog-msg">${htmlMessage}</div>` : '')}
+                ${isPrompt ? `<input type="text" class="scp-dialog-input" value="${escHtml(defaultValue)}" placeholder="${escHtml(placeholder)}">` : ''}
+                <div class="scp-dialog-btns">
+                    ${(isPrompt || isConfirm) ? `<button class="scp-dialog-btn scp-dialog-cancel">Отмена</button>` : ''}
+                    <button class="scp-dialog-btn scp-dialog-ok${isConfirm ? ' danger' : ''}">${isConfirm ? 'Подтвердить' : 'OK'}</button>
+                </div>
+            </div>`;
+            document.body.appendChild(overlay);
+            const input = overlay.querySelector('.scp-dialog-input');
+            const okBtn = overlay.querySelector('.scp-dialog-ok');
+            const cancelBtn = overlay.querySelector('.scp-dialog-cancel');
+            
+            let timerIntv = null;
+            let currentDelay = delayConfirm;
+            const origOkText = okBtn.textContent;
+
+            const close = val => { 
+                if (timerIntv) clearInterval(timerIntv);
+                overlay.classList.remove('visible'); 
+                setTimeout(() => overlay.remove(), 150); 
+                resolve(val); 
+            };
+
+            if (isConfirm && currentDelay > 0) {
+                okBtn.disabled = true;
+                okBtn.style.opacity = '0.5';
+                okBtn.style.cursor = 'not-allowed';
+                okBtn.textContent = `${origOkText} (${currentDelay})`;
+                timerIntv = setInterval(() => {
+                    currentDelay--;
+                    if (currentDelay <= 0) {
+                        clearInterval(timerIntv);
+                        timerIntv = null;
+                        okBtn.disabled = false;
+                        okBtn.style.opacity = '1';
+                        okBtn.style.cursor = '';
+                        okBtn.textContent = origOkText;
+                        if (!input) okBtn.focus();
+                    } else {
+                        okBtn.textContent = `${origOkText} (${currentDelay})`;
+                    }
+                }, 1000);
+            }
+
+            if (input) { input.focus(); input.select(); } else if (currentDelay <= 0) { setTimeout(() => okBtn.focus(), 50); }
+            
+            okBtn.addEventListener('click', () => { if (!okBtn.disabled) close(isPrompt ? input.value : true); });
+            cancelBtn?.addEventListener('click', () => close(isPrompt ? null : false));
+            let _dlgMouseDownTarget = null;
+            overlay.addEventListener('mousedown', e => { _dlgMouseDownTarget = e.target; });
+            overlay.addEventListener('click', e => { if (e.target === overlay && _dlgMouseDownTarget === overlay) close(isPrompt ? null : false); });
+            const keyHandler = e => {
+                if (e.key === 'Enter') { e.preventDefault(); if (!okBtn.disabled) close(isPrompt ? input.value : true); }
+                if (e.key === 'Escape') close(isPrompt ? null : false);
+            };
+            (input || overlay).addEventListener('keydown', keyHandler);
+            requestAnimationFrame(() => overlay.classList.add('visible'));
+        });
+    }
+
+    async function _fileToDataUrl(file) {
+        return new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload = () => res(r.result);
+            r.onerror = () => {
+                rej(new Error('Read failed'));
+            };
+            r.readAsDataURL(file);
+        });
+    }
+
+    var utilDom = /*#__PURE__*/Object.freeze({
+        __proto__: null,
+        _fileToDataUrl: _fileToDataUrl,
+        autoResize: autoResize,
+        copyText: copyText,
+        escHtml: escHtml,
+        fallbackCopy: fallbackCopy,
+        showCustomDialog: showCustomDialog
+    });
+
+    // ─── Session Override System ─────────────────────────────────────────────────
+    function getSessionOverrides() {
+        try { return getActiveSession(false)?.overrides || {}; } catch(_) { return {}; }
+    }
+
+    function getEffectiveSettings() {
+        return { ...getSettings(), ...getSessionOverrides() };
+    }
+
+    function setSessionOverride(key, value) {
+        try {
+            const sess = getCurrentSession();
+            if (!sess) return;
+            if (!sess.overrides) sess.overrides = {};
+            if (value === undefined || value === null) delete sess.overrides[key];
+            else sess.overrides[key] = value;
+            saveSessionsToMetadata();
+            Promise.resolve().then(function () { return uiSettings; }).then(m => m.updateSessionOverrideIndicator());
+        } catch(_) {}
+    }
+
+    function clearAllSessionOverrides() {
+        try {
+            const sess = getCurrentSession();
+            if (!sess) return;
+            sess.overrides = {};
+            saveSessionsToMetadata();
+            Promise.resolve().then(function () { return uiSettings; }).then(m => m.updateSessionOverrideIndicator());
+        } catch(_) {}
+    }
+
+    function hasSessionOverrides() {
+        try { const o = getActiveSession(false)?.overrides; return !!(o && Object.keys(o).length > 0); }
+        catch(_) { return false; }
+    }
+
     // ─── Session Helpers ─────────────────────────────────────────────────────────
 
     function genId(prefix) { return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`; }
@@ -2162,7 +2257,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         const bucket = getChatBucket();
         const id = genId('sess');
         const sess = { id, name: name || `Сессия ${bucket.sessions.length + 1}`, created: Date.now(), messages: [], isTemporary };
-        
+
         if (recordStats) {
             const prev = bucket.sessions.find(s => s.id === bucket.activeSessionId);
             if (prev && prev.isTemporary) {
@@ -2228,9 +2323,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
     function addMessage(session, role, content, extra = {}) {
         const msg = { id: genId('msg'), role, content, timestamp: Date.now(), ...extra };
-        session.messages.push(msg); 
+        session.messages.push(msg);
         if (session.messages.length > 400) session.messages = session.messages.slice(-400);
-        saveSessionsToMetadata(); 
+        saveSessionsToMetadata();
         return msg;
     }
 
@@ -2249,60 +2344,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         if (idx !== -1) { session.messages.splice(idx); saveSessionsToMetadata(); }
     }
 
-    // ─── Macro Expansion Helper ────────────────────────────────────────────────
-
-    function expandMacros(text) {
-        if (!text) return text;
-        try {
-            const ctx = SillyTavern.getContext();
-            if (typeof ctx.substituteParams === 'function') {
-                return ctx.substituteParams(text);
-            }
-            if (typeof window.substituteParams === 'function') {
-                return window.substituteParams(text, ctx.name1, ctx.name2);
-            }
-        } catch (e) {
-            console.warn(`[${EXT_DISPLAY}] Macro expansion error:`, e);
-        }
-        try {
-            const ctx = SillyTavern.getContext();
-            const char = ctx.characters?.[ctx.characterId];
-            const d = char?.data || {};
-            const now = new Date();
-            return text
-                .replace(/\{\{user\}\}/gi, ctx.name1 || 'User')
-                .replace(/\{\{char\}\}/gi, char?.name || ctx.name2 || 'Character')
-                .replace(/\{\{time\}\}/gi, now.toLocaleTimeString())
-                .replace(/\{\{date\}\}/gi, now.toLocaleDateString())
-                .replace(/\{\{isodate\}\}/gi, now.toISOString().split('T')[0])
-                .replace(/\{\{isotime\}\}/gi, now.toTimeString().slice(0, 5))
-                .replace(/\{\{lastMessage\}\}/gi, () => {
-                    const msgs = ctx.chat;
-                    return msgs?.[msgs.length - 1]?.mes || '';
-                })
-                .replace(/\{\{lastUserMessage\}\}/gi, () => {
-                    const msgs = ctx.chat;
-                    if (!msgs) return '';
-                    for (let i = msgs.length - 1; i >= 0; i--) {
-                        if (msgs[i].is_user) return msgs[i].mes || '';
-                    }
-                    return '';
-                })
-                .replace(/\{\{lastCharMessage\}\}/gi, () => {
-                    const msgs = ctx.chat;
-                    if (!msgs) return '';
-                    for (let i = msgs.length - 1; i >= 0; i--) {
-                        if (!msgs[i].is_user) return msgs[i].mes || '';
-                    }
-                    return '';
-                })
-                .replace(/\{\{description\}\}/gi, d.description || char?.description || '')
-                .replace(/\{\{personality\}\}/gi, d.personality || char?.personality || '')
-                .replace(/\{\{scenario\}\}/gi, d.scenario || char?.scenario || '');
-        } catch (_) {
-            return text;
-        }
-    }
+    // ─── Session Import/Export Dialogs ──────────────────────────────────────────
 
     function exportCurrentSession() {
         try {
@@ -2407,33 +2449,12 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         });
     }
 
-    function getSessionFavKey() {
-        const { charId, chatId } = getBindingKey();
-        return `${charId} ${chatId}`;
-    }
-
-    function getStarredMessages() {
-        const s = getSettings();
-        const key = getSessionFavKey();
-        if (!s.starredMessages[key]) s.starredMessages[key] = [];
-        return s.starredMessages[key];
-    }
-
-    function isMessageStarred(msgId) {
-        return getStarredMessages().includes(msgId);
-    }
-
-    function toggleStarMessage(msgId) {
-        const s = getSettings();
-        const key = getSessionFavKey();
-        if (!s.starredMessages[key]) s.starredMessages[key] = [];
-        const arr = s.starredMessages[key];
-        const idx = arr.indexOf(msgId);
-        if (idx >= 0) arr.splice(idx, 1);
-        else arr.push(msgId);
-        saveSettings$1();
-        return idx < 0; // true = now starred
-    }
+    // Facade over the session submodule split (session-settings /
+    // session-storage / session-crud). Historical import sites (api.js, index.js,
+    // ui modules, feature modules, tests — including dynamic import('./session.js')
+    // call sites) keep importing everything from here.
+    // Mutable storage state (_inMemoryBucket, _currentSessionFileId, _saveQueue,
+    // _bucketInitEpoch, _filesWithContent) lives only in session-storage.js.
 
     var session = /*#__PURE__*/Object.freeze({
         __proto__: null,
@@ -2455,6 +2476,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         getSessionFavKey: getSessionFavKey,
         getSessionOverrides: getSessionOverrides,
         getSettings: getSettings,
+        getStableCharId: getStableCharId,
         getStarredMessages: getStarredMessages,
         hasSessionOverrides: hasSessionOverrides,
         importSession: importSession,
@@ -3550,7 +3572,8 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             if (metricIdx < 0 || metricIdx >= _STAT_N || !value) return;
             const st = _ensureStats();
             const dk = _statDateKey();
-            const { charId, chatId } = getBindingKey();
+            const chatId = getBindingKey().chatId;
+            const charId = getStableCharId();
             const chk = `${charId}\x1f${chatId}`;
             const inc = obj => {
                 if (!obj[dk]) obj[dk] = [0,0,0,0,0,0,0,0];
@@ -3568,7 +3591,8 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
     function _statGetObj(scope) {
         const st = _ensureStats();
-        const { charId, chatId } = getBindingKey();
+        const chatId = getBindingKey().chatId;
+        const charId = getStableCharId();
         if (scope === 'g') return st.g;
         if (scope === 'ch') return st.ch[`${charId}\x1f${chatId}`] || {};
         return st.c[charId] || {};
@@ -3983,6 +4007,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         renderStatsPane: renderStatsPane
     });
 
+    // Lorebook UI: proposal apply pipeline + history elements. Split out of
+    // feature-lorebook-ui.js (now a re-export facade); renderProposalCard and the
+    // manager overlay live in sibling submodules and import from here directly.
     function reconstructLBChangesBlock(pendingChanges) {
         if (!pendingChanges.length) return '';
         return '```lorebook-changes\n{"changes": ' + JSON.stringify(pendingChanges, null, 2) + '}\n```';
@@ -4334,6 +4361,10 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         return applied;
     }
 
+    // Lorebook UI: the interactive proposal card rendered under an assistant
+    // message (per-item apply/reject, world dropdown, edit panel). Split out of
+    // feature-lorebook-ui.js; apply/history helpers are imported from the sibling
+    // apply submodule directly, not through the facade.
     function renderProposalCard(changes, msgEl) {
         if (!changes?.length) return;
         _dbgAdd('LB_PROPOSAL_CARD_RENDER', { msgId: msgEl.dataset.id, changesCount: changes.length });
@@ -4849,6 +4880,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         bringWindowToFront();
     }
 
+    // Lorebook UI: the lorebook manager overlay (book list, entry list, entry
+    // detail editor, event listeners). Split out of feature-lorebook-ui.js (now a
+    // re-export facade); the proposal card lives in a sibling submodule.
     async function openLorebookManager() {
         const overlay = document.getElementById('scp-lb-overlay');
         if (!overlay) return;
@@ -5332,6 +5366,11 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         });
     }
 
+    // Facade over the lorebook UI submodule split (apply/history, proposal card,
+    // manager overlay). Historical import sites (ui-chat submodules, index.js,
+    // feature-chatedit/character UI, ui-settings) keep importing everything from
+    // here.
+
     var featureLorebookUi = /*#__PURE__*/Object.freeze({
         __proto__: null,
         _applyLBBookCheckState: _applyLBBookCheckState,
@@ -5528,15 +5567,15 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         if (!settings.charEditAIEnabled) return '';
         const baseFields = ['name', 'tags', 'description', 'personality', 'scenario', 'first_mes', 'mes_example', 'authors_note', 'alternate_greetings', 'system_prompt', 'post_history_instructions'];
         const fieldsList = baseFields.filter(k => k === 'name' || getEffectiveCharField(settings, k));
-        
+
         if (settings.includeUserPersonality && !fieldsList.includes('user_persona')) {
             fieldsList.push('user_persona');
         }
         const enabledFields = fieldsList.join(', ') || 'all fields';
-        
+
         const aeCharFields = settings.useAspectEvolutia ? _getAspectEvolutiaCharFields() : null;
         const aeUserFields = settings.useAspectEvolutia && settings.includeUserPersonality ? _getAspectEvolutiaPersonaFields() : null;
-        
+
         let evolutiaDocs = '';
         if (aeCharFields || aeUserFields) {
             evolutiaDocs = `\n\n<aspect_evolutia_integration>\nDynamic fields are currently managing descriptions. To edit them, target their specific virtual names.\n`;
@@ -5548,12 +5587,12 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             }
             evolutiaDocs += `Example: <replace field="evolutia_char:FieldName">...</replace>\n</aspect_evolutia_integration>`;
         }
-        
+
         const base = (settings.charEditPrompt || DEFAULT_CHAR_EDIT_DIRECTIVE.trim())
             .replace('{{char_edit_fields}}', enabledFields)
             .replace('{{char_edit_format}}', CHAR_EDIT_FORMAT_BLOCK)
             .replace('{{char_create_format}}', CHAR_CREATE_FORMAT_BLOCK);
-            
+
         return _ensureWrapped(`${base}${evolutiaDocs}`, 'character_management');
     }
 
@@ -5837,7 +5876,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
     function getCharFieldValue(char, fieldId) {
         if (fieldId === 'user_persona') return getUserPersona();
         if (fieldId === 'tags') return getTagsForCharacter(char).join(', ');
-        
+
         if (fieldId.startsWith('evolutia_char:')) {
             const aeName = fieldId.split('evolutia_char:')[1];
             const fields = _getAspectEvolutiaCharFields();
@@ -5850,7 +5889,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             const f = fields?.find(x => String(x.name).trim().toLowerCase() === String(aeName).trim().toLowerCase());
             return f ? f.content : '';
         }
-        
+
         if (fieldId === 'name') return char.name || '';
         const d = char.data || {};
         if (fieldId === 'authors_note') return getAuthorsNote();
@@ -5862,7 +5901,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
     async function saveCharacterField(char, fieldId, newValue) {
         const ctx = SillyTavern.getContext();
-        
+
         if (fieldId.startsWith('evolutia_char:')) {
             const aeName = fieldId.split('evolutia_char:')[1];
             const AE_KEY = 'st-description-swap-fields';
@@ -5873,7 +5912,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             const alterEgos = Array.isArray(state.alterEgos) ? state.alterEgos : [];
             const activeEgo = alterEgos.find(a => a.id === activeId) || alterEgos[0];
             const fields = Array.isArray(activeEgo?.fields) ? activeEgo.fields : (Array.isArray(state.fields) ? state.fields : []);
-            
+
             const f = fields.find(x => {
                 const rawName = String(x.name || '').trim().toLowerCase();
                 const rawId = String(x.id || '').trim().toLowerCase();
@@ -5881,9 +5920,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                 return rawName === searchTarget || rawId === searchTarget;
             });
             if (!f) throw new Error(`Aspect field "${aeName}" not found`);
-            
+
             f.content = newValue;
-            
+
             const payload = {
                 name: char.name,
                 avatar: char.avatar,
@@ -5893,18 +5932,18 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                     }
                 }
             };
-            
+
             const res = await fetch('/api/characters/merge-attributes', {
                 method: 'POST',
                 headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            
+
             if (!res.ok) {
                 const errText = await res.text().catch(() => res.statusText);
                 throw new Error(`HTTP ${res.status}: ${errText}`);
             }
-            
+
             const es = ctx.eventSource || window.eventSource;
             const et = ctx.event_types || window.event_types;
             if (es && et?.CHARACTER_EDITED) {
@@ -5923,7 +5962,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                 if (selected) personaId = selected.getAttribute('data-avatar-id') || selected.dataset?.avatarId;
             }
             if (typeof personaId === 'object' && personaId !== null) personaId = personaId.avatarId || personaId.avatar_id || personaId.user_avatar || personaId.userAvatar || personaId.id;
-            
+
             const AE_KEY = 'st-description-swap-fields';
             const personaState = pu[AE_KEY]?.personaDynamicFields?.[personaId];
             if (!personaState) throw new Error('Evolutia persona state missing');
@@ -5931,7 +5970,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             const alterEgos = Array.isArray(personaState.alterEgos) ? personaState.alterEgos : [];
             const activeEgo = alterEgos.find(a => a.id === activeId) || alterEgos[0];
             const fields = Array.isArray(activeEgo?.fields) ? activeEgo.fields : (Array.isArray(personaState.fields) ? personaState.fields : []);
-            
+
             const f = fields.find(x => {
                 const rawName = String(x.name || '').trim().toLowerCase();
                 const rawId = String(x.id || '').trim().toLowerCase();
@@ -5939,7 +5978,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                 return rawName === searchTarget || rawId === searchTarget;
             });
             if (!f) throw new Error(`Aspect persona field "${aeName}" not found`);
-            
+
             f.content = newValue;
 
             // Persona fields feed <{{user}}_persona> in the cached system prompt, but
@@ -5953,7 +5992,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         if (fieldId === 'name') {
             const trimmedName = (newValue || '').trim();
             if (!trimmedName) throw new Error('Character name cannot be empty');
-            
+
             if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
                 const safeName = trimmedName.replace(/"/g, '\\"');
                 await ctx.executeSlashCommandsWithOptions(`/rename-char silent=true chats=true "${safeName}"`);
@@ -5982,10 +6021,10 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             if (typeof window.PrintCharacterList === 'function') window.PrintCharacterList();
             return;
         }
-        
+
         if (fieldId === 'user_persona') {
             const pu = window.power_user || ctx.powerUserSettings || {};
-            
+
             let avatar = window.user_avatar || ctx.user_avatar || ctx.userAvatar || ctx.personaId || ctx.activePersonaId || ctx.active_persona_id;
             if (!avatar && typeof document !== 'undefined') {
                 const selected = document.querySelector('#user_avatar_block .avatar-container.selected, #persona_container .avatar-container.selected, .persona_selected');
@@ -6003,7 +6042,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                         body: JSON.stringify({ avatar: avatar, data: { description: newValue }, is_persona: true })
                     });
                 } catch(e) { console.warn("Failed to merge persona API:", e); }
-                
+
                 if (pu.persona_descriptions && typeof pu.persona_descriptions === 'object') {
                     if (typeof pu.persona_descriptions[avatar] === 'object') {
                         pu.persona_descriptions[avatar].description = newValue;
@@ -6020,7 +6059,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             invalidateSystemPromptCache('char_edit:user_persona');
             if (typeof ctx.saveSettingsDebounced === 'function') ctx.saveSettingsDebounced();
             else if (typeof window.saveSettingsDebounced === 'function') window.saveSettingsDebounced();
-            
+
             ['persona_description', 'user_persona_edit', 'user_persona_textarea', 'persona_description_textarea'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) { el.value = newValue; el.dispatchEvent(new Event('input', {bubbles:true})); }
@@ -6036,7 +6075,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             invalidateSystemPromptCache('char_edit:authors_note');
             if (typeof ctx.saveMetadata === 'function') ctx.saveMetadata();
             else saveSettings();
-            
+
             ['note_prompt', 'note_textarea', 'chat_anote_textarea', 'anote_textarea', 'extension_floating_prompt'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) { el.value = newValue; el.dispatchEvent(new Event('input', {bubbles:true})); }
@@ -6045,12 +6084,12 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         }
 
         if (fieldId === 'tags') {
-            const newTagsNames = typeof newValue === 'string' 
-                ? newValue.split(',').map(t => t.trim()).filter(Boolean) 
+            const newTagsNames = typeof newValue === 'string'
+                ? newValue.split(',').map(t => t.trim()).filter(Boolean)
                 : (Array.isArray(newValue) ? newValue : []);
-            
+
             const avatar = char.avatar;
-            
+
             if (ctx.tagMap && ctx.tags) {
                 const currentTagIds = ctx.tagMap[avatar] || [];
                 const toUnlink = currentTagIds.filter(id => {
@@ -6065,18 +6104,18 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                     else if (typeof window.saveSettingsDebounced === 'function') window.saveSettingsDebounced();
                 }
             }
-            
+
             if (!char.data) char.data = {};
             char.data.tags = newTagsNames;
             char.tags = newTagsNames;
-            
+
             const payload = {
                 avatar_url: avatar,
                 ch_name: char.name || 'Unknown',
                 field: 'tags',
                 value: newTagsNames
             };
-            
+
             try {
                 const res = await fetch('/api/characters/edit-attribute', {
                     method: 'POST',
@@ -6088,7 +6127,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
             if (typeof ctx.importTags === 'function') {
                 try {
-                    await ctx.importTags(char, { importSetting: 3 }); 
+                    await ctx.importTags(char, { importSetting: 3 });
                 } catch(e) { console.warn("[ST-Copilot] Failed to import tags via core context:", e); }
             }
 
@@ -6100,14 +6139,14 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             }
             return;
         }
-        
+
         if (!char.data) char.data = {};
-        
-        const payload = { 
-            avatar_url: char.avatar, 
+
+        const payload = {
+            avatar_url: char.avatar,
             ch_name: char.name || 'Unknown',
             field: fieldId,
-            value: newValue 
+            value: newValue
         };
 
         if (fieldId === 'alternate_greetings') {
@@ -6116,7 +6155,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             char.data[fieldId] = newValue;
             char[fieldId] = newValue;
         }
-        
+
         const res = await fetch('/api/characters/edit-attribute', {
             method: 'POST',
             headers: { ...ctx.getRequestHeaders(), 'Content-Type': 'application/json' },
@@ -6156,11 +6195,11 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
     async function createCharacterAPI(data) {
         const ctx = SillyTavern.getContext();
-        
+
         _dbgAdd('CHAR_CREATE_START', { data });
 
-        const tagsString = Array.isArray(data.tags) 
-            ? data.tags.join(', ') 
+        const tagsString = Array.isArray(data.tags)
+            ? data.tags.join(', ')
             : (typeof data.tags === 'string' ? data.tags : '');
 
         const formData = new FormData();
@@ -6174,7 +6213,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
         const headers = ctx.getRequestHeaders();
         delete headers['Content-Type'];
-        
+
         let res;
         try {
             res = await fetch('/api/characters/create', {
@@ -6213,7 +6252,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         }
 
         const chars = ctx.characters || window.characters || [];
-        
+
         const foundChar = chars.find(c => c.avatar === newAvatar);
         if (foundChar) {
             _dbgAdd('CHAR_CREATE_CACHE_FOUND', { name: foundChar.name, tags: foundChar.tags });
@@ -6253,12 +6292,12 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
     function buildAltGreetingsPicker(container, isOverride = false) {
         if (!container) return;
         container.innerHTML = '';
-        
+
         const s = getSettings();
         if (!s.charEditFields) s.charEditFields = {};
         if (Array.isArray(s.altGreetingIndices)) s.altGreetingIndices = {};
         if (!s.altGreetingIndices) s.altGreetingIndices = {};
-        
+
         const ctx = SillyTavern.getContext();
         const char = ctx.characters?.[ctx.characterId];
         const charId = char?.avatar || 'unknown';
@@ -6308,7 +6347,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         allBtn.type = 'button';
         allBtn.style.cssText = 'font-size:10px;cursor:pointer;background:none;border:1px solid rgba(255,255,255,.1);border-radius:4px;color:var(--scp-text-muted,#888);padding:2px 8px;align-self:flex-start;margin-bottom:3px;font-family:inherit';
         allBtn.textContent = targetArray.length === greetings.length ? 'Снять все' : 'Выбрать все';
-        
+
         allBtn.addEventListener('click', () => {
             const isAll = targetArray.length === greetings.length;
             const newArray = isAll ? [] : greetings.map((_, i) => i);
@@ -6328,7 +6367,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             const isSelected = targetArray.includes(idx);
             const row = document.createElement('label');
             row.style.cssText = 'display:flex;align-items:flex-start;gap:6px;cursor:pointer;padding:3px 4px;border-radius:4px;transition:background .12s';
-            
+
             const cb = document.createElement('input');
             cb.type = 'checkbox'; cb.checked = isSelected; cb.style.cssText = 'flex-shrink:0;margin-top:2px;accent-color:var(--scp-accent,#7c6dfa)';
             cb.addEventListener('change', () => {
@@ -6336,7 +6375,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                 if (cb.checked) { if (!currentArr.includes(idx)) currentArr.push(idx); }
                 else currentArr = currentArr.filter(i => i !== idx);
                 currentArr.sort((a, b) => a - b);
-                
+
                 if (isOverride) {
                     const sess = getCurrentSession();
                     if (!sess.overrides) sess.overrides = {};
@@ -6345,7 +6384,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                 } else {
                     getSettings().altGreetingIndices[charId] = currentArr;
                 }
-                
+
                 saveSettings$1();
                 allBtn.textContent = currentArr.length === greetings.length ? 'Снять все' : 'Выбрать все';
                 targetArray = currentArr;
@@ -6476,7 +6515,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             const icon = statusStr === 'Applied' ? '✓' : (statusStr === 'Rejected' ? '✕' : '·');
             const actionText = statusStr === 'Applied' ? 'ACCEPTED' : (statusStr === 'Rejected' ? 'REJECTED' : 'DISMISSED (ignored)');
             const newLines = [`${icon} **${actionText}**: Character Creation Proposal for "${creationData.name_suggestion || 'New Character'}"`];
-            
+
             if (afterMsgId && addHistoryToSwipe(afterMsgId, newLines)) return;
 
             const histText = `**System Notification** — Character card edits:\n${newLines.join('\n')}`;
@@ -6500,9 +6539,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             } else if (c.action === 'append') {
                 xml += `<append field="${c.field}">${c.value}</append>\n`;
             } else if (c.action === 'prepend') {
-                xml += `<prepend field="${c.field}"${c.index ? ` index="${c.index}"` : ''}>${c.value}</prepend>\n`;
+                xml += `<prepend field="${c.field}">${c.value}</prepend>\n`;
             } else if (c.action === 'append_text') {
-                xml += `<append_text field="${c.field}"${c.index ? ` index="${c.index}"` : ''}>${c.value}</append_text>\n`;
+                xml += `<append_text field="${c.field}">${c.value}</append_text>\n`;
             }
         }
         xml += '```';
@@ -6539,10 +6578,10 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         const stripAndRemove = () => {
             const session = getCurrentSession();
             const msg = session.messages.find(m => m.id === card.dataset.for);
-            if (msg) { 
-                msg.content = stripCharCreationBlock(msg.content); 
+            if (msg) {
+                msg.content = stripCharCreationBlock(msg.content);
                 if (msg.swipes) msg.swipes[msg.swipeIndex || 0].content = msg.content;
-                saveSessionsToMetadata(); 
+                saveSessionsToMetadata();
             }
             card.remove();
         };
@@ -6616,10 +6655,10 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             createBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Создание…';
             const session = getCurrentSession();
             const msgForStrip = session.messages.find(m => m.id === card.dataset.for);
-            if (msgForStrip) { 
-                msgForStrip.content = stripCharCreationBlock(msgForStrip.content); 
+            if (msgForStrip) {
+                msgForStrip.content = stripCharCreationBlock(msgForStrip.content);
                 if (msgForStrip.swipes) msgForStrip.swipes[msgForStrip.swipeIndex || 0].content = msgForStrip.content;
-                saveSessionsToMetadata(); 
+                saveSessionsToMetadata();
             }
             try {
                 await createCharacterAPI(editableData);
@@ -7073,6 +7112,12 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         bringWindowToFront();
     }
 
+    // Facade over the character-UI submodule split (-pickers / -apply / -cards).
+    // Historical import sites (ui/render-msg, msg-actions, session-view, search,
+    // chat-picker) and dynamic import sites (chat-shared.js featCharUiMod,
+    // ui-settings.js refreshAltGreetingsPickers) keep importing everything from
+    // here.
+
     var featureCharacterUi = /*#__PURE__*/Object.freeze({
         __proto__: null,
         applyCharChanges: applyCharChanges,
@@ -7196,9 +7241,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
     // avatar (the on-disk identity used everywhere else in this extension) rather
     // than ctx.characterId, which is a volatile roster index.
     function getMemoryCharKey() {
-        const ctx = SillyTavern.getContext();
-        const char = ctx.characters?.[ctx.characterId];
-        return char?.avatar || String(ctx.characterId ?? '');
+        return getStableCharId();
     }
 
     // One-time rewrite of index-keyed records to avatar keys. Records whose
@@ -9847,6 +9890,320 @@ ${scopeHtml}
         setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
     }
 
+    // Settings engine: two-way binding of registered fields to the ST drawer and
+    // the settings overlay, plus the UI sync functions. Split out of ui-settings.js;
+    // profile/theme functions are imported from the sibling settings-profiles
+    // submodule directly, not through the facade.
+    // ─── Settings Engine ──────────────────────────────────────────────────────────
+
+    function _applyConnectionSourceVisibility(val) {
+        [['scp-profile-group', 'scp-custom-profile-group'],
+         ['scp-sp-global-profile-group', 'scp-sp-custom-profile-group']].forEach(([pId, cId]) => {
+            const pEl = document.getElementById(pId); const cEl = document.getElementById(cId);
+            if (pEl) pEl.style.display = val === 'profile' ? '' : 'none';
+            if (cEl) cEl.style.display = val === 'custom' ? '' : 'none';
+        });
+        if (val === 'profile') updateSPConnProfileList$1();
+    }
+
+    function _pruneMatchingOverrides() {
+        const s = getSettings(); const bucket = getChatBucket(); let changed = false;
+        
+        if (bucket && bucket.sessions) {
+            bucket.sessions.forEach(sess => {
+                if (!sess.overrides) return;
+                for (const key of Object.keys(sess.overrides)) {
+                    const globalVal = key.startsWith('charField_') ? (s.charEditFields || {})[key.replace('charField_', '')] !== false : s[key];
+                    const isEqual = typeof globalVal === 'boolean' ? sess.overrides[key] === globalVal : String(sess.overrides[key]) === String(globalVal);
+                    if (isEqual) { delete sess.overrides[key]; changed = true; }
+                }
+            });
+            if (changed) { saveSessionsToMetadata(); updateSessionOverrideIndicator(); }
+        }
+
+        let charChanged = false;
+        if (s.charMgrFieldOverrides) {
+            for (const charId of Object.keys(s.charMgrFieldOverrides)) {
+                const ovs = s.charMgrFieldOverrides[charId];
+                for (const key of Object.keys(ovs)) {
+                    const globalVal = (s.charEditFields || {})[key] !== false;
+                    if (ovs[key] === globalVal) {
+                        delete ovs[key];
+                        charChanged = true;
+                    }
+                }
+                if (Object.keys(ovs).length === 0) {
+                    delete s.charMgrFieldOverrides[charId];
+                }
+            }
+        }
+        if (charChanged) saveSettings$1();
+        
+        document.querySelectorAll('.scp-char-ov-row').forEach(row => {
+            if (typeof row._refreshOverride === 'function') row._refreshOverride();
+        });
+    }
+
+    function _readFromSettings(def) {
+        const s = getSettings();
+        return def.fromSetting ? def.fromSetting(s) : s[def.key];
+    }
+
+    function _writeToEl(el, def, val) {
+        if (!el) return;
+        if (def.type === 'checkbox') el.checked = !!val;
+        else el.value = val ?? '';
+    }
+
+    function _bindSetting(def) {
+        const stEl = def.stId ? document.getElementById(def.stId) : null;
+        const spEl = def.spId ? document.getElementById(def.spId) : null;
+        if (!stEl && !spEl) return;
+
+        const apply = raw => {
+            const val = def.toVal ? def.toVal(raw) : raw;
+            getSettings()[def.key] = val; saveSettings$1();
+            _markDirty('config'); _pruneMatchingOverrides();
+            if (def.onChange) def.onChange(val, getSettings());
+            if (def.updCtx) Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession()));
+        };
+
+        if (def.type === 'slider') {
+            const setDisplayVal = (valId, v) => { const el = document.getElementById(valId); if (el) el.textContent = def.valFmt ? def.valFmt(v) : String(v); };
+            stEl?.addEventListener('input', () => setDisplayVal(def.stValId, stEl.value));
+            spEl?.addEventListener('input', () => setDisplayVal(def.spValId, spEl.value));
+            stEl?.addEventListener('change', () => {
+                const v = def.toVal ? def.toVal(stEl.value) : stEl.value;
+                _writeToEl(spEl, def, v); setDisplayVal(def.stValId, v); setDisplayVal(def.spValId, v); apply(stEl.value);
+            });
+            spEl?.addEventListener('change', () => {
+                const v = def.toVal ? def.toVal(spEl.value) : spEl.value;
+                _writeToEl(stEl, def, v); setDisplayVal(def.stValId, v); setDisplayVal(def.spValId, v); apply(spEl.value);
+            });
+        } else {
+            const isText = def.type === 'input' || def.type === 'textarea';
+            const ev = isText ? 'input' : 'change';
+            // Текстовые поля: apply (saveSettings + prune overrides + updateMsgCount)
+            // дебаунсится, чтобы не платить за каждое нажатие клавиши;
+            // синхронизация близнеца остаётся мгновенной.
+            let _applyDebounce = 0;
+            const applyMaybeDebounced = raw => {
+                if (!isText) { apply(raw); return; }
+                clearTimeout(_applyDebounce);
+                _applyDebounce = setTimeout(() => apply(raw), 300);
+            };
+            stEl?.addEventListener(ev, () => { const raw = def.type === 'checkbox' ? stEl.checked : stEl.value; _writeToEl(spEl, def, raw); applyMaybeDebounced(raw); });
+            spEl?.addEventListener(ev, () => { const raw = def.type === 'checkbox' ? spEl.checked : spEl.value; _writeToEl(stEl, def, raw); applyMaybeDebounced(raw); });
+        }
+    }
+
+    function _bindCeField(ceDef) {
+        const stEl = document.getElementById(ceDef.stId);
+        const spEl = document.getElementById(ceDef.spId);
+        const apply = val => {
+            const s = getSettings(); if (!s.charEditFields) s.charEditFields = {};
+            s.charEditFields[ceDef.fk] = val; saveSettings$1(); _markDirty('config'); _pruneMatchingOverrides();
+            Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession()));
+            if (ceDef.altGreetingPicker) {
+                ['scp-ce-alt-greetings-picker', 'scp-sp-ce-alt-greetings-picker'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = val ? '' : 'none'; });
+                Promise.resolve().then(function () { return featureCharacterUi; }).then(m => m.refreshAltGreetingsPickers());
+            }
+        };
+        stEl?.addEventListener('change', () => { if (spEl) spEl.checked = stEl.checked; apply(stEl.checked); });
+        spEl?.addEventListener('change', () => { if (stEl) stEl.checked = spEl.checked; apply(spEl.checked); });
+    }
+
+    function _bindAllSettings() {
+        _SETTINGS_DEF.forEach(_bindSetting);
+        _CE_FIELDS_DEF.forEach(_bindCeField);
+    }
+
+    function _syncOvToGlobal(key, newVal) {
+        const s = getSettings();
+        const globalVal = key.startsWith('charField_') ? (s.charEditFields || {})[key.replace('charField_', '')] !== false : s[key];
+        const isDefault = (newVal === undefined || newVal === null) ? true
+            : (typeof globalVal === 'boolean' ? newVal === globalVal : String(newVal) === String(globalVal));
+        setSessionOverride(key, isDefault ? undefined : newVal);
+        updateSPOverrideIndicators();
+        Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession()));
+    }
+
+    function _resetOvElToEffective(key) {
+        const eff = getEffectiveSettings();
+        (_OV_EL_MAP[key] || []).forEach(id => {
+            const el = document.getElementById(id); if (!el) return;
+            if (id.endsWith('-depth-val') || (id.endsWith('-val') && !id.endsWith('slider'))) {
+                el.textContent = eff.contextDepth ?? 15; return;
+            }
+            if (el.type === 'checkbox') {
+                el.checked = key.startsWith('charField_') ? (getSettings().charEditFields || {})[key.replace('charField_', '')] !== false : !!eff[key];
+            } else if (el.type === 'range') {
+                el.value = eff[key] ?? 15;
+            } else {
+                el.value = eff[key] ?? '';
+            }
+        });
+        if (key === 'connectionSource') {
+            const val = eff.connectionSource ?? 'default';
+            const pg = document.getElementById('scp-sp-ov-profile-group'); const cg = document.getElementById('scp-sp-ov-custom-profile-group');
+            if (pg) pg.style.display = val === 'profile' ? '' : 'none';
+            if (cg) cg.style.display = val === 'custom' ? '' : 'none';
+        }
+        if (key === 'forceStreaming') {
+            const val = eff.forceStreaming === true ? 'on' : (eff.forceStreaming === false ? 'auto' : (eff.forceStreaming || 'auto'));
+            document.querySelectorAll('.scp-ov-stream-btn').forEach(b => {
+                const active = b.dataset.stream === val; b.classList.toggle('active', active);
+                b.style.color = active ? 'var(--scp-accent)' : ''; b.style.borderColor = active ? 'var(--scp-accent-dim)' : ''; b.style.background = active ? 'var(--scp-accent-bg)' : '';
+            });
+        }
+    }
+
+    // ─── UI Sync ──────────────────────────────────────────────────────────────────
+
+    function syncOverlayUI(key, val) {
+        const def = _SETTINGS_DEF.find(d => d.key === key);
+        if (def?.spId) {
+            _writeToEl(document.getElementById(def.spId), def, val);
+            if (def.type === 'slider' && def.spValId) { const el = document.getElementById(def.spValId); if (el) el.textContent = def.valFmt ? def.valFmt(val) : String(val ?? ''); }
+        }
+        if (key === 'forceStreaming') {
+            const sv = val === true ? 'on' : (val === false ? 'auto' : (val || 'auto'));
+            document.querySelectorAll('.scp-stream-btn:not(.scp-ov-stream-btn)').forEach(b => b.classList.toggle('active', b.dataset.stream === sv));
+            if (!('forceStreaming' in getSessionOverrides())) document.querySelectorAll('.scp-ov-stream-btn').forEach(b => b.classList.toggle('active', b.dataset.stream === sv));
+            return;
+        }
+        if (key === 'connectionSource') { _applyConnectionSourceVisibility(val); return; }
+        if (key === 'contextDepth') { const dv = document.getElementById('scp-sp-depth-val'); if (dv) dv.textContent = val ?? 15; }
+        if (key in getSessionOverrides()) return;
+        if (key.startsWith('charField_')) {
+            const ceDef = _CE_FIELDS_DEF.find(d => d.fk === key.replace('charField_', ''));
+            if (ceDef) { const el = document.getElementById(ceDef.ovId); if (el) el.checked = !!val; }
+            return;
+        }
+        if (_OV_EL_MAP[key]) _resetOvElToEffective(key);
+    }
+
+    function updateSettingsUI() {
+        const s = getSettings();
+        for (const def of _SETTINGS_DEF) {
+            const val = _readFromSettings(def);
+            if (def.stId) _writeToEl(document.getElementById(def.stId), def, val);
+            if (def.spId) _writeToEl(document.getElementById(def.spId), def, val);
+            if (def.type === 'slider') {
+                const fmt = def.valFmt ? def.valFmt(val) : String(val ?? '');
+                [def.stValId, def.spValId].forEach(id => { if (!id) return; const el = document.getElementById(id); if (el) el.textContent = fmt; });
+            }
+        }
+        for (const ceDef of _CE_FIELDS_DEF) {
+            const val = (s.charEditFields || {})[ceDef.fk] !== false;
+            if (ceDef.stId) { const el = document.getElementById(ceDef.stId); if (el) el.checked = val; }
+            if (ceDef.spId) { const el = document.getElementById(ceDef.spId); if (el) el.checked = val; }
+        }
+        const fsVal = s.forceStreaming === true ? 'on' : (s.forceStreaming === false ? 'auto' : (s.forceStreaming || 'auto'));
+        document.querySelectorAll('#scp-st-stream-auto, #scp-st-stream-on, #scp-st-stream-off').forEach(b => {
+            const active = b.dataset.stream === fsVal; b.classList.toggle('active', active);
+            b.style.color = active ? 'var(--SmartThemeQuoteColor,#a99bfb)' : ''; b.style.borderColor = active ? 'rgba(124,109,250,0.5)' : ''; b.style.background = active ? 'rgba(124,109,250,0.12)' : '';
+        });
+        _applyConnectionSourceVisibility(s.connectionSource ?? 'default');
+        const agPicker = document.getElementById('scp-ce-alt-greetings-picker');
+        if (agPicker) agPicker.style.display = s.charEditFields?.alternate_greetings ? '' : 'none';
+        refreshProfilesDropdown(); buildThemeEditor();
+        Promise.resolve().then(function () { return uiWidgets; }).then(m => m.buildSoundSettingsUI(document.getElementById('scp-sound-settings')));
+        Promise.resolve().then(function () { return featureCharacterUi; }).then(m => m.refreshAltGreetingsPickers());
+    }
+
+    function syncSPFromSettings() {
+        const s = getSettings(); const ov = getSessionOverrides(); const eff = getEffectiveSettings();
+        Promise.resolve().then(function () { return uiChat; }).then(m => { if (m.updateDepthSlidersMax) m.updateDepthSlidersMax(); });
+
+        for (const def of _SETTINGS_DEF) {
+            if (!def.spId) continue;
+            const val = _readFromSettings(def);
+            _writeToEl(document.getElementById(def.spId), def, val);
+            if (def.type === 'slider' && def.spValId) { const el = document.getElementById(def.spValId); if (el) el.textContent = def.valFmt ? def.valFmt(val) : String(val ?? ''); }
+        }
+        for (const ceDef of _CE_FIELDS_DEF) {
+            const val = (s.charEditFields || {})[ceDef.fk] !== false;
+            const el = document.getElementById(ceDef.spId); if (el) el.checked = val;
+        }
+
+        const streamVal = s.forceStreaming === true ? 'on' : (s.forceStreaming === false ? 'auto' : (s.forceStreaming || 'auto'));
+        document.querySelectorAll('.scp-stream-btn:not(.scp-ov-stream-btn)').forEach(b => { b.classList.toggle('active', b.dataset.stream === streamVal); b.style.color = ''; b.style.borderColor = ''; b.style.background = ''; });
+        _applyConnectionSourceVisibility(s.connectionSource ?? 'default');
+        refreshSPProfilesDropdown(); updateSPConnProfileList$1();
+
+        // ── Session Override UI ──
+        const g  = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
+        const gC = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
+
+        const ovDs = document.getElementById('scp-sp-ov-depth-slider'); const ovDv = document.getElementById('scp-sp-ov-depth-val');
+        if (ovDs) ovDs.value = eff.contextDepth ?? 15; if (ovDv) ovDv.textContent = eff.contextDepth ?? 15;
+
+        g('scp-sp-ov-conn-source', eff.connectionSource ?? 'default');
+        const ovPg = document.getElementById('scp-sp-ov-profile-group'); const ovCus = document.getElementById('scp-sp-ov-custom-profile-group');
+        if (ovPg) ovPg.style.display = eff.connectionSource === 'profile' ? '' : 'none';
+        if (ovCus) ovCus.style.display = eff.connectionSource === 'custom' ? '' : 'none';
+        g('scp-sp-ov-conn-profile', eff.connectionProfileId ?? '');
+
+        const ovi = (id, key) => { const el = document.getElementById(id); if (el) el.value = key in ov ? (ov[key] ?? '') : ''; };
+        ovi('scp-sp-ov-custom-url', 'customUrl'); ovi('scp-sp-ov-custom-key', 'customKey'); ovi('scp-sp-ov-custom-model', 'customModel');
+        ovi('scp-sp-ov-max-tokens', 'maxTokens'); ovi('scp-sp-ov-history-limit', 'localHistoryLimit');
+        ovi('scp-sp-ov-reasoning-trim', 'reasoningTrimStrings'); ovi('scp-sp-ov-sysprompt', 'systemPrompt');
+        ovi('scp-sp-ov-char-edit-prompt', 'charEditPrompt'); ovi('scp-sp-ov-lb-manage-prompt', 'lorebookManagePrompt'); ovi('scp-sp-ov-chat-edit-prompt', 'chatEditPrompt');
+
+        gC('scp-sp-ov-include-sysprompt', eff.includeSystemPrompt); gC('scp-sp-ov-include-persona', eff.includeUserPersonality);
+        gC('scp-sp-ov-include-alt-swipes', eff.includeAlternateSwipes); gC('scp-sp-ov-apply-regex', eff.applyRegexToContext);
+        gC('scp-sp-ov-char-edit-enabled',  'charEditAIEnabled'        in ov ? ov.charEditAIEnabled        : s.charEditAIEnabled);
+        gC('scp-sp-ov-lb-ai-enabled',      'lorebookAIManageEnabled'  in ov ? ov.lorebookAIManageEnabled  : s.lorebookAIManageEnabled);
+        gC('scp-sp-ov-chat-edit-enabled',  'chatEditAIEnabled'        in ov ? ov.chatEditAIEnabled        : s.chatEditAIEnabled);
+        gC('scp-sp-ov-lb-auto-kw',         'lorebookAutoKeyword'      in ov ? ov.lorebookAutoKeyword      : s.lorebookAutoKeyword);
+
+        const ovStreamVal = eff.forceStreaming === true ? 'on' : (eff.forceStreaming === false ? 'auto' : (eff.forceStreaming || 'auto'));
+        document.querySelectorAll('.scp-ov-stream-btn').forEach(b => {
+            const active = b.dataset.stream === ovStreamVal; b.classList.toggle('active', active);
+            b.style.color = active ? 'var(--scp-accent)' : ''; b.style.borderColor = active ? 'var(--scp-accent-dim)' : ''; b.style.background = active ? 'var(--scp-accent-bg)' : '';
+        });
+        for (const ceDef of _CE_FIELDS_DEF) {
+            const ovKey = 'charField_' + ceDef.fk;
+            const val = ovKey in ov ? !!ov[ovKey] : (s.charEditFields || {})[ceDef.fk] !== false;
+            const el = document.getElementById(ceDef.ovId); if (el) el.checked = val;
+        }
+        const altGrOvEl = document.getElementById('scp-sp-ov-ce-alt-greetings');
+        if (altGrOvEl) {
+            const picker = document.getElementById('scp-sp-ov-ce-alt-greetings-picker');
+            if (picker) picker.style.display = altGrOvEl.checked ? '' : 'none';
+            Promise.resolve().then(function () { return featureCharacterUi; }).then(m => m.refreshAltGreetingsPickers());
+        }
+        updateSPOverrideIndicators();
+        buildThemeEditor(document.getElementById('scp-sp-theme-section'));
+        Promise.resolve().then(function () { return featureMemory; }).then(m => m.updateMemoryDot());
+    }
+
+    function updateSPOverrideIndicators() {
+        const ov = getSessionOverrides();
+        document.querySelectorAll('.scp-sp-ov-label[data-ovkey]').forEach(l => l.classList.toggle('has-override', l.dataset.ovkey in ov));
+        document.querySelectorAll('.scp-sp-ov-clear[data-ovkey]').forEach(btn => {
+            const active = btn.dataset.ovkey in ov; btn.classList.toggle('active', active); btn.disabled = !active;
+        });
+    }
+
+    function updateSessionOverrideIndicator() {
+        const has = hasSessionOverrides();
+        const dot = document.getElementById('scp-sp-override-dot'); if (dot) dot.style.display = has ? '' : 'none';
+        const gearDot = document.getElementById('scp-gear-ov-dot'); if (gearDot) gearDot.style.display = has ? '' : 'none';
+        document.getElementById('scp-ext-settings-btn')?.classList.toggle('scp-has-overrides', has);
+        updateSPOverrideIndicators();
+        const info = document.getElementById('scp-sp-footer-info');
+        if (info) { const count = Object.keys(getSessionOverrides()).length; info.textContent = count ? `${count} ${count !== 1 ? 'переопределений сессии активно' : 'переопределение сессии активно'}` : ''; }
+        const ov = getSessionOverrides(); const hasDepthOv = 'contextDepth' in ov;
+        document.getElementById('scp-depth-slider')?.classList.toggle('scp-slider-overridden', hasDepthOv);
+        document.getElementById('scp-depth-val')?.classList.toggle('scp-depth-val-overridden', hasDepthOv);
+    }
+
+    // Settings definitions: the field registry binding settings keys to ST-drawer
+    // and settings-overlay elements, charEdit field defs, the override-element map
+    // and the derived profile key list. Split out of ui-settings.js (now a
+    // re-export facade); engine/sync/profiles/panel live in sibling submodules.
     // ─── Settings Registry ────────────────────────────────────────────────────────
     //
     // FIELDS:
@@ -10023,6 +10380,10 @@ ${scopeHtml}
         'includeAuthorsNote', 'includeCharacterCard'
     ];
 
+    // Settings: configuration profiles (save/load/bindings), the dirty-state
+    // tracking shared by profiles and themes, and the theme editor. Split out of
+    // ui-settings.js; registry/engine functions are imported from the sibling
+    // submodules directly, not through the facade.
     // ─── Configuration Profiles ───────────────────────────────────────────────────
 
     let _profileSnapshot = null;
@@ -10145,7 +10506,7 @@ ${scopeHtml}
         if (Array.from(profSel.options).some(o => o.value === currentVal)) profSel.value = currentVal;
     }
 
-    async function updateSPConnProfileList() {
+    async function updateSPConnProfileList$1() {
         const selIds = ['scp-sp-conn-profile', 'scp-sp-ov-conn-profile'];
         const s = getSettings(); const eff = getEffectiveSettings();
         const ctx = SillyTavern.getContext(); const service = ctx.ConnectionManagerRequestService;
@@ -10378,312 +10739,10 @@ ${scopeHtml}
         container.appendChild(grid);
     }
 
-    // ─── Settings Engine ──────────────────────────────────────────────────────────
-
-    function _applyConnectionSourceVisibility(val) {
-        [['scp-profile-group', 'scp-custom-profile-group'],
-         ['scp-sp-global-profile-group', 'scp-sp-custom-profile-group']].forEach(([pId, cId]) => {
-            const pEl = document.getElementById(pId); const cEl = document.getElementById(cId);
-            if (pEl) pEl.style.display = val === 'profile' ? '' : 'none';
-            if (cEl) cEl.style.display = val === 'custom' ? '' : 'none';
-        });
-        if (val === 'profile') updateSPConnProfileList();
-    }
-
-    function _pruneMatchingOverrides() {
-        const s = getSettings(); const bucket = getChatBucket(); let changed = false;
-        
-        if (bucket && bucket.sessions) {
-            bucket.sessions.forEach(sess => {
-                if (!sess.overrides) return;
-                for (const key of Object.keys(sess.overrides)) {
-                    const globalVal = key.startsWith('charField_') ? (s.charEditFields || {})[key.replace('charField_', '')] !== false : s[key];
-                    const isEqual = typeof globalVal === 'boolean' ? sess.overrides[key] === globalVal : String(sess.overrides[key]) === String(globalVal);
-                    if (isEqual) { delete sess.overrides[key]; changed = true; }
-                }
-            });
-            if (changed) { saveSessionsToMetadata(); updateSessionOverrideIndicator(); }
-        }
-
-        let charChanged = false;
-        if (s.charMgrFieldOverrides) {
-            for (const charId of Object.keys(s.charMgrFieldOverrides)) {
-                const ovs = s.charMgrFieldOverrides[charId];
-                for (const key of Object.keys(ovs)) {
-                    const globalVal = (s.charEditFields || {})[key] !== false;
-                    if (ovs[key] === globalVal) {
-                        delete ovs[key];
-                        charChanged = true;
-                    }
-                }
-                if (Object.keys(ovs).length === 0) {
-                    delete s.charMgrFieldOverrides[charId];
-                }
-            }
-        }
-        if (charChanged) saveSettings$1();
-        
-        document.querySelectorAll('.scp-char-ov-row').forEach(row => {
-            if (typeof row._refreshOverride === 'function') row._refreshOverride();
-        });
-    }
-
-    function _readFromSettings(def) {
-        const s = getSettings();
-        return def.fromSetting ? def.fromSetting(s) : s[def.key];
-    }
-
-    function _writeToEl(el, def, val) {
-        if (!el) return;
-        if (def.type === 'checkbox') el.checked = !!val;
-        else el.value = val ?? '';
-    }
-
-    function _bindSetting(def) {
-        const stEl = def.stId ? document.getElementById(def.stId) : null;
-        const spEl = def.spId ? document.getElementById(def.spId) : null;
-        if (!stEl && !spEl) return;
-
-        const apply = raw => {
-            const val = def.toVal ? def.toVal(raw) : raw;
-            getSettings()[def.key] = val; saveSettings$1();
-            _markDirty('config'); _pruneMatchingOverrides();
-            if (def.onChange) def.onChange(val, getSettings());
-            if (def.updCtx) Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession()));
-        };
-
-        if (def.type === 'slider') {
-            const setDisplayVal = (valId, v) => { const el = document.getElementById(valId); if (el) el.textContent = def.valFmt ? def.valFmt(v) : String(v); };
-            stEl?.addEventListener('input', () => setDisplayVal(def.stValId, stEl.value));
-            spEl?.addEventListener('input', () => setDisplayVal(def.spValId, spEl.value));
-            stEl?.addEventListener('change', () => {
-                const v = def.toVal ? def.toVal(stEl.value) : stEl.value;
-                _writeToEl(spEl, def, v); setDisplayVal(def.stValId, v); setDisplayVal(def.spValId, v); apply(stEl.value);
-            });
-            spEl?.addEventListener('change', () => {
-                const v = def.toVal ? def.toVal(spEl.value) : spEl.value;
-                _writeToEl(stEl, def, v); setDisplayVal(def.stValId, v); setDisplayVal(def.spValId, v); apply(spEl.value);
-            });
-        } else {
-            const isText = def.type === 'input' || def.type === 'textarea';
-            const ev = isText ? 'input' : 'change';
-            // Текстовые поля: apply (saveSettings + prune overrides + updateMsgCount)
-            // дебаунсится, чтобы не платить за каждое нажатие клавиши;
-            // синхронизация близнеца остаётся мгновенной.
-            let _applyDebounce = 0;
-            const applyMaybeDebounced = raw => {
-                if (!isText) { apply(raw); return; }
-                clearTimeout(_applyDebounce);
-                _applyDebounce = setTimeout(() => apply(raw), 300);
-            };
-            stEl?.addEventListener(ev, () => { const raw = def.type === 'checkbox' ? stEl.checked : stEl.value; _writeToEl(spEl, def, raw); applyMaybeDebounced(raw); });
-            spEl?.addEventListener(ev, () => { const raw = def.type === 'checkbox' ? spEl.checked : spEl.value; _writeToEl(stEl, def, raw); applyMaybeDebounced(raw); });
-        }
-    }
-
-    function _bindCeField(ceDef) {
-        const stEl = document.getElementById(ceDef.stId);
-        const spEl = document.getElementById(ceDef.spId);
-        const apply = val => {
-            const s = getSettings(); if (!s.charEditFields) s.charEditFields = {};
-            s.charEditFields[ceDef.fk] = val; saveSettings$1(); _markDirty('config'); _pruneMatchingOverrides();
-            Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession()));
-            if (ceDef.altGreetingPicker) {
-                ['scp-ce-alt-greetings-picker', 'scp-sp-ce-alt-greetings-picker'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = val ? '' : 'none'; });
-                Promise.resolve().then(function () { return featureCharacterUi; }).then(m => m.refreshAltGreetingsPickers());
-            }
-        };
-        stEl?.addEventListener('change', () => { if (spEl) spEl.checked = stEl.checked; apply(stEl.checked); });
-        spEl?.addEventListener('change', () => { if (stEl) stEl.checked = spEl.checked; apply(spEl.checked); });
-    }
-
-    function _bindAllSettings() {
-        _SETTINGS_DEF.forEach(_bindSetting);
-        _CE_FIELDS_DEF.forEach(_bindCeField);
-    }
-
-    function _syncOvToGlobal(key, newVal) {
-        const s = getSettings();
-        const globalVal = key.startsWith('charField_') ? (s.charEditFields || {})[key.replace('charField_', '')] !== false : s[key];
-        const isDefault = (newVal === undefined || newVal === null) ? true
-            : (typeof globalVal === 'boolean' ? newVal === globalVal : String(newVal) === String(globalVal));
-        setSessionOverride(key, isDefault ? undefined : newVal);
-        updateSPOverrideIndicators();
-        Promise.resolve().then(function () { return uiChat; }).then(m => m.updateMsgCount(getCurrentSession()));
-    }
-
-    function _resetOvElToEffective(key) {
-        const eff = getEffectiveSettings();
-        (_OV_EL_MAP[key] || []).forEach(id => {
-            const el = document.getElementById(id); if (!el) return;
-            if (id.endsWith('-depth-val') || (id.endsWith('-val') && !id.endsWith('slider'))) {
-                el.textContent = eff.contextDepth ?? 15; return;
-            }
-            if (el.type === 'checkbox') {
-                el.checked = key.startsWith('charField_') ? (getSettings().charEditFields || {})[key.replace('charField_', '')] !== false : !!eff[key];
-            } else if (el.type === 'range') {
-                el.value = eff[key] ?? 15;
-            } else {
-                el.value = eff[key] ?? '';
-            }
-        });
-        if (key === 'connectionSource') {
-            const val = eff.connectionSource ?? 'default';
-            const pg = document.getElementById('scp-sp-ov-profile-group'); const cg = document.getElementById('scp-sp-ov-custom-profile-group');
-            if (pg) pg.style.display = val === 'profile' ? '' : 'none';
-            if (cg) cg.style.display = val === 'custom' ? '' : 'none';
-        }
-        if (key === 'forceStreaming') {
-            const val = eff.forceStreaming === true ? 'on' : (eff.forceStreaming === false ? 'auto' : (eff.forceStreaming || 'auto'));
-            document.querySelectorAll('.scp-ov-stream-btn').forEach(b => {
-                const active = b.dataset.stream === val; b.classList.toggle('active', active);
-                b.style.color = active ? 'var(--scp-accent)' : ''; b.style.borderColor = active ? 'var(--scp-accent-dim)' : ''; b.style.background = active ? 'var(--scp-accent-bg)' : '';
-            });
-        }
-    }
-
-    // ─── UI Sync ──────────────────────────────────────────────────────────────────
-
-    function syncOverlayUI(key, val) {
-        const def = _SETTINGS_DEF.find(d => d.key === key);
-        if (def?.spId) {
-            _writeToEl(document.getElementById(def.spId), def, val);
-            if (def.type === 'slider' && def.spValId) { const el = document.getElementById(def.spValId); if (el) el.textContent = def.valFmt ? def.valFmt(val) : String(val ?? ''); }
-        }
-        if (key === 'forceStreaming') {
-            const sv = val === true ? 'on' : (val === false ? 'auto' : (val || 'auto'));
-            document.querySelectorAll('.scp-stream-btn:not(.scp-ov-stream-btn)').forEach(b => b.classList.toggle('active', b.dataset.stream === sv));
-            if (!('forceStreaming' in getSessionOverrides())) document.querySelectorAll('.scp-ov-stream-btn').forEach(b => b.classList.toggle('active', b.dataset.stream === sv));
-            return;
-        }
-        if (key === 'connectionSource') { _applyConnectionSourceVisibility(val); return; }
-        if (key === 'contextDepth') { const dv = document.getElementById('scp-sp-depth-val'); if (dv) dv.textContent = val ?? 15; }
-        if (key in getSessionOverrides()) return;
-        if (key.startsWith('charField_')) {
-            const ceDef = _CE_FIELDS_DEF.find(d => d.fk === key.replace('charField_', ''));
-            if (ceDef) { const el = document.getElementById(ceDef.ovId); if (el) el.checked = !!val; }
-            return;
-        }
-        if (_OV_EL_MAP[key]) _resetOvElToEffective(key);
-    }
-
-    function updateSettingsUI() {
-        const s = getSettings();
-        for (const def of _SETTINGS_DEF) {
-            const val = _readFromSettings(def);
-            if (def.stId) _writeToEl(document.getElementById(def.stId), def, val);
-            if (def.spId) _writeToEl(document.getElementById(def.spId), def, val);
-            if (def.type === 'slider') {
-                const fmt = def.valFmt ? def.valFmt(val) : String(val ?? '');
-                [def.stValId, def.spValId].forEach(id => { if (!id) return; const el = document.getElementById(id); if (el) el.textContent = fmt; });
-            }
-        }
-        for (const ceDef of _CE_FIELDS_DEF) {
-            const val = (s.charEditFields || {})[ceDef.fk] !== false;
-            if (ceDef.stId) { const el = document.getElementById(ceDef.stId); if (el) el.checked = val; }
-            if (ceDef.spId) { const el = document.getElementById(ceDef.spId); if (el) el.checked = val; }
-        }
-        const fsVal = s.forceStreaming === true ? 'on' : (s.forceStreaming === false ? 'auto' : (s.forceStreaming || 'auto'));
-        document.querySelectorAll('#scp-st-stream-auto, #scp-st-stream-on, #scp-st-stream-off').forEach(b => {
-            const active = b.dataset.stream === fsVal; b.classList.toggle('active', active);
-            b.style.color = active ? 'var(--SmartThemeQuoteColor,#a99bfb)' : ''; b.style.borderColor = active ? 'rgba(124,109,250,0.5)' : ''; b.style.background = active ? 'rgba(124,109,250,0.12)' : '';
-        });
-        _applyConnectionSourceVisibility(s.connectionSource ?? 'default');
-        const agPicker = document.getElementById('scp-ce-alt-greetings-picker');
-        if (agPicker) agPicker.style.display = s.charEditFields?.alternate_greetings ? '' : 'none';
-        refreshProfilesDropdown(); buildThemeEditor();
-        Promise.resolve().then(function () { return uiWidgets; }).then(m => m.buildSoundSettingsUI(document.getElementById('scp-sound-settings')));
-        Promise.resolve().then(function () { return featureCharacterUi; }).then(m => m.refreshAltGreetingsPickers());
-    }
-
-    function syncSPFromSettings() {
-        const s = getSettings(); const ov = getSessionOverrides(); const eff = getEffectiveSettings();
-        Promise.resolve().then(function () { return uiChat; }).then(m => { if (m.updateDepthSlidersMax) m.updateDepthSlidersMax(); });
-
-        for (const def of _SETTINGS_DEF) {
-            if (!def.spId) continue;
-            const val = _readFromSettings(def);
-            _writeToEl(document.getElementById(def.spId), def, val);
-            if (def.type === 'slider' && def.spValId) { const el = document.getElementById(def.spValId); if (el) el.textContent = def.valFmt ? def.valFmt(val) : String(val ?? ''); }
-        }
-        for (const ceDef of _CE_FIELDS_DEF) {
-            const val = (s.charEditFields || {})[ceDef.fk] !== false;
-            const el = document.getElementById(ceDef.spId); if (el) el.checked = val;
-        }
-
-        const streamVal = s.forceStreaming === true ? 'on' : (s.forceStreaming === false ? 'auto' : (s.forceStreaming || 'auto'));
-        document.querySelectorAll('.scp-stream-btn:not(.scp-ov-stream-btn)').forEach(b => { b.classList.toggle('active', b.dataset.stream === streamVal); b.style.color = ''; b.style.borderColor = ''; b.style.background = ''; });
-        _applyConnectionSourceVisibility(s.connectionSource ?? 'default');
-        refreshSPProfilesDropdown(); updateSPConnProfileList();
-
-        // ── Session Override UI ──
-        const g  = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
-        const gC = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
-
-        const ovDs = document.getElementById('scp-sp-ov-depth-slider'); const ovDv = document.getElementById('scp-sp-ov-depth-val');
-        if (ovDs) ovDs.value = eff.contextDepth ?? 15; if (ovDv) ovDv.textContent = eff.contextDepth ?? 15;
-
-        g('scp-sp-ov-conn-source', eff.connectionSource ?? 'default');
-        const ovPg = document.getElementById('scp-sp-ov-profile-group'); const ovCus = document.getElementById('scp-sp-ov-custom-profile-group');
-        if (ovPg) ovPg.style.display = eff.connectionSource === 'profile' ? '' : 'none';
-        if (ovCus) ovCus.style.display = eff.connectionSource === 'custom' ? '' : 'none';
-        g('scp-sp-ov-conn-profile', eff.connectionProfileId ?? '');
-
-        const ovi = (id, key) => { const el = document.getElementById(id); if (el) el.value = key in ov ? (ov[key] ?? '') : ''; };
-        ovi('scp-sp-ov-custom-url', 'customUrl'); ovi('scp-sp-ov-custom-key', 'customKey'); ovi('scp-sp-ov-custom-model', 'customModel');
-        ovi('scp-sp-ov-max-tokens', 'maxTokens'); ovi('scp-sp-ov-history-limit', 'localHistoryLimit');
-        ovi('scp-sp-ov-reasoning-trim', 'reasoningTrimStrings'); ovi('scp-sp-ov-sysprompt', 'systemPrompt');
-        ovi('scp-sp-ov-char-edit-prompt', 'charEditPrompt'); ovi('scp-sp-ov-lb-manage-prompt', 'lorebookManagePrompt'); ovi('scp-sp-ov-chat-edit-prompt', 'chatEditPrompt');
-
-        gC('scp-sp-ov-include-sysprompt', eff.includeSystemPrompt); gC('scp-sp-ov-include-persona', eff.includeUserPersonality);
-        gC('scp-sp-ov-include-alt-swipes', eff.includeAlternateSwipes); gC('scp-sp-ov-apply-regex', eff.applyRegexToContext);
-        gC('scp-sp-ov-char-edit-enabled',  'charEditAIEnabled'        in ov ? ov.charEditAIEnabled        : s.charEditAIEnabled);
-        gC('scp-sp-ov-lb-ai-enabled',      'lorebookAIManageEnabled'  in ov ? ov.lorebookAIManageEnabled  : s.lorebookAIManageEnabled);
-        gC('scp-sp-ov-chat-edit-enabled',  'chatEditAIEnabled'        in ov ? ov.chatEditAIEnabled        : s.chatEditAIEnabled);
-        gC('scp-sp-ov-lb-auto-kw',         'lorebookAutoKeyword'      in ov ? ov.lorebookAutoKeyword      : s.lorebookAutoKeyword);
-
-        const ovStreamVal = eff.forceStreaming === true ? 'on' : (eff.forceStreaming === false ? 'auto' : (eff.forceStreaming || 'auto'));
-        document.querySelectorAll('.scp-ov-stream-btn').forEach(b => {
-            const active = b.dataset.stream === ovStreamVal; b.classList.toggle('active', active);
-            b.style.color = active ? 'var(--scp-accent)' : ''; b.style.borderColor = active ? 'var(--scp-accent-dim)' : ''; b.style.background = active ? 'var(--scp-accent-bg)' : '';
-        });
-        for (const ceDef of _CE_FIELDS_DEF) {
-            const ovKey = 'charField_' + ceDef.fk;
-            const val = ovKey in ov ? !!ov[ovKey] : (s.charEditFields || {})[ceDef.fk] !== false;
-            const el = document.getElementById(ceDef.ovId); if (el) el.checked = val;
-        }
-        const altGrOvEl = document.getElementById('scp-sp-ov-ce-alt-greetings');
-        if (altGrOvEl) {
-            const picker = document.getElementById('scp-sp-ov-ce-alt-greetings-picker');
-            if (picker) picker.style.display = altGrOvEl.checked ? '' : 'none';
-            Promise.resolve().then(function () { return featureCharacterUi; }).then(m => m.refreshAltGreetingsPickers());
-        }
-        updateSPOverrideIndicators();
-        buildThemeEditor(document.getElementById('scp-sp-theme-section'));
-        Promise.resolve().then(function () { return featureMemory; }).then(m => m.updateMemoryDot());
-    }
-
-    function updateSPOverrideIndicators() {
-        const ov = getSessionOverrides();
-        document.querySelectorAll('.scp-sp-ov-label[data-ovkey]').forEach(l => l.classList.toggle('has-override', l.dataset.ovkey in ov));
-        document.querySelectorAll('.scp-sp-ov-clear[data-ovkey]').forEach(btn => {
-            const active = btn.dataset.ovkey in ov; btn.classList.toggle('active', active); btn.disabled = !active;
-        });
-    }
-
-    function updateSessionOverrideIndicator() {
-        const has = hasSessionOverrides();
-        const dot = document.getElementById('scp-sp-override-dot'); if (dot) dot.style.display = has ? '' : 'none';
-        const gearDot = document.getElementById('scp-gear-ov-dot'); if (gearDot) gearDot.style.display = has ? '' : 'none';
-        document.getElementById('scp-ext-settings-btn')?.classList.toggle('scp-has-overrides', has);
-        updateSPOverrideIndicators();
-        const info = document.getElementById('scp-sp-footer-info');
-        if (info) { const count = Object.keys(getSessionOverrides()).length; info.textContent = count ? `${count} ${count !== 1 ? 'переопределений сессии активно' : 'переопределение сессии активно'}` : ''; }
-        const ov = getSessionOverrides(); const hasDepthOv = 'contextDepth' in ov;
-        document.getElementById('scp-depth-slider')?.classList.toggle('scp-slider-overridden', hasDepthOv);
-        document.getElementById('scp-depth-val')?.classList.toggle('scp-depth-val-overridden', hasDepthOv);
-    }
-
+    // Settings panel: overlay open/close, the setup functions wiring all panel and
+    // ST-drawer listeners, and the quick-prompts settings list. Split out of
+    // ui-settings.js; registry/engine/profiles functions are imported from the
+    // sibling submodules directly, not through the facade.
     // ─── Panel Open/Close ─────────────────────────────────────────────────────────
 
     function openSettingsPanel() {
@@ -11130,6 +11189,10 @@ ${scopeHtml}
         container.appendChild(list); container.appendChild(addBtn);
     }
 
+    // Facade over the ui-settings submodule split (defs, profiles/themes, engine,
+    // panel). Historical import sites (index.js, session.js, session-view.js,
+    // feature-tools-ui, chat-shared lazy refs) keep importing everything from here.
+
     var uiSettings = /*#__PURE__*/Object.freeze({
         __proto__: null,
         _clearDirty: _clearDirty,
@@ -11155,7 +11218,7 @@ ${scopeHtml}
         updateBindingSection: updateBindingSection,
         updateProfilesList: updateProfilesList,
         updateSPBindingSection: updateSPBindingSection,
-        updateSPConnProfileList: updateSPConnProfileList,
+        updateSPConnProfileList: updateSPConnProfileList$1,
         updateSPOverrideIndicators: updateSPOverrideIndicators,
         updateSessionOverrideIndicator: updateSessionOverrideIndicator,
         updateSettingsUI: updateSettingsUI
@@ -12547,6 +12610,198 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
         });
     }
 
+    // ─── Message element ─────────────────────────────────────────────────────────
+
+    function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
+        const isUser = msg.role === 'user';
+        const wrap = document.createElement('div');
+        wrap.className = `scp-msg ${isUser ? 'scp-msg-user' : 'scp-msg-assistant'}`;
+        wrap.dataset.id = msg.id;
+
+        const header = document.createElement('div');
+        header.className = 'scp-msg-header';
+
+        const avatar = document.createElement('div');
+        avatar.className = 'scp-msg-avatar';
+        avatar.innerHTML = isUser ? I.user : I.bot;
+
+        const meta = document.createElement('div');
+        meta.className = 'scp-msg-meta';
+        const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        meta.textContent = msg.genStamp ? `${timeStr} · ${msg.genStamp}` : timeStr;
+        if (msg.genStamp) meta.title = msg.genStamp;
+
+        const tokenCountEl = document.createElement('div');
+        tokenCountEl.className = 'scp-msg-token-count';
+        tokenCountEl.textContent = '…';
+        _updateMsgTokenCount({ querySelector: () => tokenCountEl, isConnected: true }, msg.content);
+
+        const headerRight = document.createElement('div');
+        headerRight.className = 'scp-msg-header-right';
+        headerRight.appendChild(meta);
+        headerRight.appendChild(tokenCountEl);
+
+        header.appendChild(avatar);
+        header.appendChild(headerRight);
+
+        const body = document.createElement('div');
+        body.className = 'scp-msg-body';
+
+        const content = document.createElement('div');
+        content.className = 'scp-msg-content';
+        body.appendChild(content);
+
+        const actions = document.createElement('div');
+        actions.className = 'scp-msg-actions';
+
+        const makeBtn = (icon, label, cls, cb) => {
+            const b = document.createElement('button');
+            b.className = `scp-msg-btn${cls ? ' ' + cls : ''}`;
+            b.innerHTML = icon; b.title = label;
+            b.addEventListener('click', cb);
+            return b;
+        };
+
+        actions.appendChild(makeBtn(I.copy, 'Копировать', '', () => onCopy(msg)));
+        actions.appendChild(makeBtn(I.edit, 'Изменить', '', () => onEdit(wrap, msg)));
+        actions.appendChild(makeBtn(I.refresh, 'Перегенерировать', '', () => onRegen(wrap, msg)));
+        actions.appendChild(makeBtn(I.trash, 'Удалить', 'scp-msg-btn-danger', () => onDelete(wrap, msg)));
+
+        const isStarred = isMessageStarred(msg.id);
+        const starBtn = makeBtn(isStarred ? I.starFill : I.star, isStarred ? 'Убрать из избранного' : 'В избранное', `scp-msg-btn-star${isStarred ? ' starred' : ''}`, () => {
+            const nowStarred = toggleStarMessage(msg.id);
+            starBtn.innerHTML = nowStarred ? I.starFill : I.star;
+            starBtn.title = nowStarred ? 'Убрать из избранного' : 'В избранное';
+            starBtn.classList.toggle('starred', nowStarred);
+            wrap.classList.toggle('scp-msg-starred', nowStarred);
+            if (document.getElementById('scp-fav-panel')?.style.display !== 'none' && uiWdgMod) {
+                uiWdgMod.renderFavoritesPanel();
+            }
+        });
+        actions.appendChild(starBtn);
+        if (isStarred) wrap.classList.add('scp-msg-starred');
+
+        if (!isUser) {
+            const continueBtn = makeBtn(I.continueArrow, 'Продолжить ответ', 'scp-msg-btn-continue', () => {
+                if (apiMod) apiMod.runContinue(getCurrentSession(), msg.id);
+            });
+            actions.appendChild(continueBtn);
+        }
+
+        body.appendChild(actions);
+
+        if (!isUser) {
+            const swipeBar = document.createElement('div');
+            swipeBar.className = 'scp-swipe-bar';
+            swipeBar.style.display = 'none';
+
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'scp-swipe-btn scp-swipe-prev';
+            prevBtn.innerHTML = I.chevronLeft;
+            prevBtn.title = 'Предыдущий вариант';
+            prevBtn.disabled = true;
+
+            const counter = document.createElement('span');
+            counter.className = 'scp-swipe-counter';
+
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'scp-swipe-btn scp-swipe-next';
+            nextBtn.innerHTML = I.chevronRight;
+            nextBtn.title = 'Новый вариант (перегенерировать)';
+
+            prevBtn.addEventListener('click', async () => {
+                if (prevBtn.disabled || state.generating) return;
+                if (wrap.classList.contains('is-editing')) { toastr.info('Сначала завершите редактирование сообщения.', EXT_DISPLAY); return; }
+                const session = getCurrentSession();
+                if (!getSwipesForMsg(session, msg.id)) return;
+                
+                const bdy = wrap.querySelector('.scp-msg-body');
+                if (bdy) {
+                    bdy.classList.remove('scp-swipe-anim-right', 'scp-swipe-anim-left');
+                    bdy.classList.add('scp-swipe-anim-out-right'); 
+                    await new Promise(r => setTimeout(r, 150));
+                }
+                
+                if (navigateSwipe(session, msg.id, -1)) {
+                    if (bdy) {
+                        bdy.classList.remove('scp-swipe-anim-out-right');
+                        void bdy.offsetWidth;
+                        bdy.classList.add('scp-swipe-anim-left'); 
+                    }
+                    _renderMsgBodyContent(wrap, session.messages.find(m => m.id === msg.id));
+                    updateSwipeBar(wrap, session, msg.id);
+                }
+            });
+
+            nextBtn.addEventListener('click', async () => {
+                if (nextBtn.disabled || state.generating) return;
+                if (wrap.classList.contains('is-editing')) { toastr.info('Сначала завершите редактирование сообщения.', EXT_DISPLAY); return; }
+                const session = getCurrentSession();
+                const msgData = session.messages.find(m => m.id === msg.id);
+                if (!msgData) return;
+                
+                if (msgData.swipeIndex !== undefined && msgData.swipeIndex < (msgData.swipes?.length || 1) - 1) {
+                    const bdy = wrap.querySelector('.scp-msg-body');
+                    if (bdy) {
+                        bdy.classList.remove('scp-swipe-anim-right', 'scp-swipe-anim-left');
+                        bdy.classList.add('scp-swipe-anim-out-left'); 
+                        await new Promise(r => setTimeout(r, 150));
+                    }
+
+                    if (navigateSwipe(session, msg.id, 1)) {
+                        if (bdy) {
+                            bdy.classList.remove('scp-swipe-anim-out-left');
+                            void bdy.offsetWidth;
+                            bdy.classList.add('scp-swipe-anim-right'); 
+                        }
+                        _renderMsgBodyContent(wrap, session.messages.find(m => m.id === msg.id));
+                        updateSwipeBar(wrap, session, msg.id);
+                    }
+                } else {
+                    _dbgAdd('SWIPE_REGEN_TRIGGERED', { msgId: msg.id });
+                    _runSwipeRegen(session, msg.id, wrap);
+                }
+            });
+
+            swipeBar.appendChild(prevBtn);
+            swipeBar.appendChild(counter);
+            swipeBar.appendChild(nextBtn);
+
+            const delSwipeBtn = document.createElement('button');
+            delSwipeBtn.className = 'scp-swipe-btn scp-swipe-del';
+            delSwipeBtn.innerHTML = I.x;
+            delSwipeBtn.title = 'Удалить текущий вариант ответа';
+            delSwipeBtn.addEventListener('click', async () => {
+                if (state.generating) return;
+                if (wrap.classList.contains('is-editing')) { toastr.info('Сначала завершите редактирование сообщения.', EXT_DISPLAY); return; }
+                const session = getCurrentSession();
+                const msgData = session.messages.find(m => m.id === msg.id);
+                if (!msgData || (msgData.swipes?.length || 1) < 2) return;
+                const ok = await showCustomDialog({
+                    type: 'confirm',
+                    title: 'Удалить вариант',
+                    message: 'Удалить текущий вариант ответа? Остальные варианты сохранятся.'
+                });
+                if (!ok) return;
+                msgData.swipes.splice(msgData.swipeIndex ?? 0, 1);
+                msgData.swipeIndex = Math.min(msgData.swipeIndex ?? 0, msgData.swipes.length - 1);
+                msgData.content = msgData.swipes[msgData.swipeIndex].content;
+                msgData.reasoning = msgData.swipes[msgData.swipeIndex].reasoning || null;
+                saveSessionsToMetadata();
+                updateMsgCount(session);
+                _renderMsgBodyContent(wrap, msgData);
+                updateSwipeBar(wrap, session, msg.id);
+            });
+            swipeBar.appendChild(delSwipeBtn);
+            body.appendChild(swipeBar);
+        }
+
+        wrap.appendChild(header); wrap.appendChild(body);
+        _renderMsgBodyContent(wrap, msg);
+        
+        return wrap;
+    }
+
     function getLastAssistantMsgId(session) {
         for (let i = session.messages.length - 1; i >= 0; i--) {
             const m = session.messages[i];
@@ -13557,7 +13812,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         result = result.replace(/```tool_call\n?([\s\S]*?)```/gi, (match, inner) => {
             const blockTcs = parseToolCallsFromText(`\`\`\`tool_call\n${inner}\n\`\`\``);
             let phs = '';
-            const count = Math.max(1, blockTcs.length);
+            const count = blockTcs.length; // no inflation: empty fences must not consume slots
             for (let i = 0; i < count; i++) {
                 phs += `\x00TC_${tcIndex++}\x00`;
             }
@@ -13567,7 +13822,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         result = result.replace(/```tool_call\n?([\s\S]*)$/gi, (match, inner) => {
             const blockTcs = parseToolCallsFromText(`\`\`\`tool_call\n${inner}\n\`\`\``);
             let phs = '';
-            const count = Math.max(1, blockTcs.length);
+            const count = blockTcs.length; // no inflation: empty fences must not consume slots
             for (let i = 0; i < count; i++) {
                 phs += `\x00TC_${tcIndex++}\x00`;
             }
@@ -13764,198 +14019,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             });
         }
     }
-
-    function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
-        const isUser = msg.role === 'user';
-        const wrap = document.createElement('div');
-        wrap.className = `scp-msg ${isUser ? 'scp-msg-user' : 'scp-msg-assistant'}`;
-        wrap.dataset.id = msg.id;
-
-        const header = document.createElement('div');
-        header.className = 'scp-msg-header';
-
-        const avatar = document.createElement('div');
-        avatar.className = 'scp-msg-avatar';
-        avatar.innerHTML = isUser ? I.user : I.bot;
-
-        const meta = document.createElement('div');
-        meta.className = 'scp-msg-meta';
-        const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        meta.textContent = msg.genStamp ? `${timeStr} · ${msg.genStamp}` : timeStr;
-        if (msg.genStamp) meta.title = msg.genStamp;
-
-        const tokenCountEl = document.createElement('div');
-        tokenCountEl.className = 'scp-msg-token-count';
-        tokenCountEl.textContent = '…';
-        _updateMsgTokenCount({ querySelector: () => tokenCountEl, isConnected: true }, msg.content);
-
-        const headerRight = document.createElement('div');
-        headerRight.className = 'scp-msg-header-right';
-        headerRight.appendChild(meta);
-        headerRight.appendChild(tokenCountEl);
-
-        header.appendChild(avatar);
-        header.appendChild(headerRight);
-
-        const body = document.createElement('div');
-        body.className = 'scp-msg-body';
-
-        const content = document.createElement('div');
-        content.className = 'scp-msg-content';
-        body.appendChild(content);
-
-        const actions = document.createElement('div');
-        actions.className = 'scp-msg-actions';
-
-        const makeBtn = (icon, label, cls, cb) => {
-            const b = document.createElement('button');
-            b.className = `scp-msg-btn${cls ? ' ' + cls : ''}`;
-            b.innerHTML = icon; b.title = label;
-            b.addEventListener('click', cb);
-            return b;
-        };
-
-        actions.appendChild(makeBtn(I.copy, 'Копировать', '', () => onCopy(msg)));
-        actions.appendChild(makeBtn(I.edit, 'Изменить', '', () => onEdit(wrap, msg)));
-        actions.appendChild(makeBtn(I.refresh, 'Перегенерировать', '', () => onRegen(wrap, msg)));
-        actions.appendChild(makeBtn(I.trash, 'Удалить', 'scp-msg-btn-danger', () => onDelete(wrap, msg)));
-
-        const isStarred = isMessageStarred(msg.id);
-        const starBtn = makeBtn(isStarred ? I.starFill : I.star, isStarred ? 'Убрать из избранного' : 'В избранное', `scp-msg-btn-star${isStarred ? ' starred' : ''}`, () => {
-            const nowStarred = toggleStarMessage(msg.id);
-            starBtn.innerHTML = nowStarred ? I.starFill : I.star;
-            starBtn.title = nowStarred ? 'Убрать из избранного' : 'В избранное';
-            starBtn.classList.toggle('starred', nowStarred);
-            wrap.classList.toggle('scp-msg-starred', nowStarred);
-            if (document.getElementById('scp-fav-panel')?.style.display !== 'none' && uiWdgMod) {
-                uiWdgMod.renderFavoritesPanel();
-            }
-        });
-        actions.appendChild(starBtn);
-        if (isStarred) wrap.classList.add('scp-msg-starred');
-
-        if (!isUser) {
-            const continueBtn = makeBtn(I.continueArrow, 'Продолжить ответ', 'scp-msg-btn-continue', () => {
-                if (apiMod) apiMod.runContinue(getCurrentSession(), msg.id);
-            });
-            actions.appendChild(continueBtn);
-        }
-
-        body.appendChild(actions);
-
-        if (!isUser) {
-            const swipeBar = document.createElement('div');
-            swipeBar.className = 'scp-swipe-bar';
-            swipeBar.style.display = 'none';
-
-            const prevBtn = document.createElement('button');
-            prevBtn.className = 'scp-swipe-btn scp-swipe-prev';
-            prevBtn.innerHTML = I.chevronLeft;
-            prevBtn.title = 'Предыдущий вариант';
-            prevBtn.disabled = true;
-
-            const counter = document.createElement('span');
-            counter.className = 'scp-swipe-counter';
-
-            const nextBtn = document.createElement('button');
-            nextBtn.className = 'scp-swipe-btn scp-swipe-next';
-            nextBtn.innerHTML = I.chevronRight;
-            nextBtn.title = 'Новый вариант (перегенерировать)';
-
-            prevBtn.addEventListener('click', async () => {
-                if (prevBtn.disabled || state.generating) return;
-                if (wrap.classList.contains('is-editing')) { toastr.info('Сначала завершите редактирование сообщения.', EXT_DISPLAY); return; }
-                const session = getCurrentSession();
-                if (!getSwipesForMsg(session, msg.id)) return;
-                
-                const bdy = wrap.querySelector('.scp-msg-body');
-                if (bdy) {
-                    bdy.classList.remove('scp-swipe-anim-right', 'scp-swipe-anim-left');
-                    bdy.classList.add('scp-swipe-anim-out-right'); 
-                    await new Promise(r => setTimeout(r, 150));
-                }
-                
-                if (navigateSwipe(session, msg.id, -1)) {
-                    if (bdy) {
-                        bdy.classList.remove('scp-swipe-anim-out-right');
-                        void bdy.offsetWidth;
-                        bdy.classList.add('scp-swipe-anim-left'); 
-                    }
-                    _renderMsgBodyContent(wrap, session.messages.find(m => m.id === msg.id));
-                    updateSwipeBar(wrap, session, msg.id);
-                }
-            });
-
-            nextBtn.addEventListener('click', async () => {
-                if (nextBtn.disabled || state.generating) return;
-                if (wrap.classList.contains('is-editing')) { toastr.info('Сначала завершите редактирование сообщения.', EXT_DISPLAY); return; }
-                const session = getCurrentSession();
-                const msgData = session.messages.find(m => m.id === msg.id);
-                if (!msgData) return;
-                
-                if (msgData.swipeIndex !== undefined && msgData.swipeIndex < (msgData.swipes?.length || 1) - 1) {
-                    const bdy = wrap.querySelector('.scp-msg-body');
-                    if (bdy) {
-                        bdy.classList.remove('scp-swipe-anim-right', 'scp-swipe-anim-left');
-                        bdy.classList.add('scp-swipe-anim-out-left'); 
-                        await new Promise(r => setTimeout(r, 150));
-                    }
-
-                    if (navigateSwipe(session, msg.id, 1)) {
-                        if (bdy) {
-                            bdy.classList.remove('scp-swipe-anim-out-left');
-                            void bdy.offsetWidth;
-                            bdy.classList.add('scp-swipe-anim-right'); 
-                        }
-                        _renderMsgBodyContent(wrap, session.messages.find(m => m.id === msg.id));
-                        updateSwipeBar(wrap, session, msg.id);
-                    }
-                } else {
-                    _dbgAdd('SWIPE_REGEN_TRIGGERED', { msgId: msg.id });
-                    _runSwipeRegen(session, msg.id, wrap);
-                }
-            });
-
-            swipeBar.appendChild(prevBtn);
-            swipeBar.appendChild(counter);
-            swipeBar.appendChild(nextBtn);
-
-            const delSwipeBtn = document.createElement('button');
-            delSwipeBtn.className = 'scp-swipe-btn scp-swipe-del';
-            delSwipeBtn.innerHTML = I.x;
-            delSwipeBtn.title = 'Удалить текущий вариант ответа';
-            delSwipeBtn.addEventListener('click', async () => {
-                if (state.generating) return;
-                if (wrap.classList.contains('is-editing')) { toastr.info('Сначала завершите редактирование сообщения.', EXT_DISPLAY); return; }
-                const session = getCurrentSession();
-                const msgData = session.messages.find(m => m.id === msg.id);
-                if (!msgData || (msgData.swipes?.length || 1) < 2) return;
-                const ok = await showCustomDialog({
-                    type: 'confirm',
-                    title: 'Удалить вариант',
-                    message: 'Удалить текущий вариант ответа? Остальные варианты сохранятся.'
-                });
-                if (!ok) return;
-                msgData.swipes.splice(msgData.swipeIndex ?? 0, 1);
-                msgData.swipeIndex = Math.min(msgData.swipeIndex ?? 0, msgData.swipes.length - 1);
-                msgData.content = msgData.swipes[msgData.swipeIndex].content;
-                msgData.reasoning = msgData.swipes[msgData.swipeIndex].reasoning || null;
-                saveSessionsToMetadata();
-                updateMsgCount(session);
-                _renderMsgBodyContent(wrap, msgData);
-                updateSwipeBar(wrap, session, msg.id);
-            });
-            swipeBar.appendChild(delSwipeBtn);
-            body.appendChild(swipeBar);
-        }
-
-        wrap.appendChild(header); wrap.appendChild(body);
-        _renderMsgBodyContent(wrap, msg);
-        
-        return wrap;
-    }
-
-    // ─── Swipes and Generation ──────────────────────────────────────────────────────
 
     // Facade over the ui-chat submodule split (render/msg-actions/session-view/
     // search/picker). Historical import sites (api.js, index.js, feature modules,
@@ -15486,6 +15549,901 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         document.getElementById('scp-char-close')?.addEventListener('click', () => closeCharacterManager());
     }
 
+    // Widgets: quick-prompts bar, icon picker and the shared preset dropdown /
+    // preset-manager builders. Split out of ui-widgets.js (now a re-export
+    // facade); sounds/changelog/favorites and the context inspector live in
+    // sibling submodules.
+    // ─── Quick Prompts ───────────────────────────────────────────────────────────
+
+    function renderQuickPromptsBar() {
+        const bar = document.getElementById('scp-qp-bar');
+        const toggleBtn = document.getElementById('scp-qp-toggle-btn');
+        if (!bar) return;
+        const s = getSettings();
+        const prompts = s.quickPrompts || [];
+        const visible = s.quickPromptsVisible && prompts.length > 0;
+
+        bar.innerHTML = '';
+        for (const qp of prompts) {
+            const btn = document.createElement('button');
+            btn.className = 'scp-qp-chip';
+            const truncTitle = qp.text.length > 100 ? qp.text.slice(0, 100) + '…' : qp.text;
+            btn.title = truncTitle;
+            btn.innerHTML = `<span class="scp-qp-icon">${escHtml(qp.icon || '⚡')}</span><span class="scp-qp-label">${escHtml(qp.label || '')}</span>`;
+            btn.addEventListener('click', () => {
+                const input = document.getElementById('scp-input');
+                if (!input) return;
+                input.value = qp.text;
+                autoResize(input);
+                input.focus();
+                recordStat(SM.qp);
+            });
+            bar.appendChild(btn);
+        }
+
+        if (visible) {
+            bar.classList.add('scp-qp-bar--open');
+        } else {
+            bar.classList.remove('scp-qp-bar--open');
+        }
+        if (toggleBtn) toggleBtn.classList.toggle('active', s.quickPromptsVisible);
+    }
+
+    let _qpIconPickerEl = null;
+
+    function showQPIconPicker(anchorEl, currentIcon, onSelect) {
+        if (_qpIconPickerEl && _qpIconPickerEl.__anchor === anchorEl) { 
+            _qpIconPickerEl.remove(); 
+            _qpIconPickerEl = null; 
+            return; 
+        }
+        if (_qpIconPickerEl) { _qpIconPickerEl.remove(); _qpIconPickerEl = null; }
+        
+        const pop = document.createElement('div');
+        pop.className = 'scp-qp-icon-picker';
+        pop.__anchor = anchorEl;
+
+        for (const emoji of QP_ICON_POOL) {
+            const btn = document.createElement('button');
+            btn.className = `scp-qp-icon-option${emoji === currentIcon ? ' active' : ''}`;
+            btn.textContent = emoji;
+            btn.addEventListener('click', () => { onSelect(emoji); pop.remove(); _qpIconPickerEl = null; });
+            pop.appendChild(btn);
+        }
+        document.body.appendChild(pop);
+        _qpIconPickerEl = pop;
+        const rect = anchorEl.getBoundingClientRect();
+        pop.style.cssText = `position:fixed;z-index:2147483060;top:${rect.bottom + 4}px;left:${rect.left}px`;
+        requestAnimationFrame(() => {
+            const pr = pop.getBoundingClientRect();
+            if (pr.right > window.innerWidth - 8) pop.style.left = `${window.innerWidth - pr.width - 8}px`;
+            if (pr.bottom > window.innerHeight - 8) pop.style.top = `${rect.top - pr.height - 6}px`;
+        });
+        const onOut = e => {
+            if (!pop.contains(e.target) && e.target !== anchorEl) {
+                pop.remove(); _qpIconPickerEl = null;
+                document.removeEventListener('mousedown', onOut, true);
+            }
+        };
+        setTimeout(() => document.addEventListener('mousedown', onOut, true), 0);
+    }
+
+    // ─── Preset Dropdown ───────────────────────────────────────────
+
+    let _activePresetPanel = null;
+
+    function openPresetDropdown(triggerEl, groups, onSelect, opts = {}) {
+        const { placeholder = 'Поиск…', width = 320, emptyText = 'Здесь пусто' } = opts;
+
+        if (_activePresetPanel) {
+            _activePresetPanel.remove();
+            _activePresetPanel = null;
+            triggerEl.classList.remove('open');
+            return;
+        }
+
+        triggerEl.classList.add('open');
+
+        const panel = document.createElement('div');
+        panel.className = 'scp-pdd-panel';
+        panel.style.width = `${width}px`;
+        _activePresetPanel = panel;
+
+        const allItems = groups.flatMap(g => g.items);
+
+        if (allItems.length > 6) {
+            const sw = document.createElement('div');
+            sw.className = 'scp-pdd-search-wrap';
+            const si = document.createElement('input');
+            si.type = 'text'; si.placeholder = placeholder;
+            si.className = 'scp-pdd-search';
+            si.addEventListener('input', () => renderContent(si.value.trim().toLowerCase()));
+            sw.appendChild(si);
+            panel.appendChild(sw);
+            setTimeout(() => si.focus(), 60);
+        }
+
+        const listEl = document.createElement('div');
+        listEl.className = 'scp-pdd-list';
+        panel.appendChild(listEl);
+
+        const renderContent = (q = '') => {
+            listEl.innerHTML = '';
+            let totalShown = 0;
+            groups.forEach(group => {
+                const filtered = q
+                    ? group.items.filter(it => it.name.toLowerCase().includes(q) || (it.preview || '').toLowerCase().includes(q))
+                    : group.items;
+                if (!filtered.length) return;
+                totalShown += filtered.length;
+                if (group.label) {
+                    const hdr = document.createElement('div');
+                    hdr.className = 'scp-pdd-group-label';
+                    hdr.textContent = group.label;
+                    listEl.appendChild(hdr);
+                }
+                filtered.forEach(item => {
+                    const row = document.createElement('div');
+                    row.className = 'scp-pdd-item';
+                    const top = document.createElement('div');
+                    top.className = 'scp-pdd-item-top';
+                    const name = document.createElement('span');
+                    name.className = 'scp-pdd-item-name';
+                    name.textContent = item.name;
+                    top.appendChild(name);
+                    if (item.badge) {
+                        const b = document.createElement('span');
+                        b.className = `scp-pdd-badge scp-pdd-badge--${item.badge}`;
+                        b.textContent = item.badge;
+                        top.appendChild(b);
+                    }
+                    row.appendChild(top);
+                    if (item.preview) {
+                        const prev = document.createElement('div');
+                        prev.className = 'scp-pdd-item-preview';
+                        prev.textContent = item.preview;
+                        row.appendChild(prev);
+                    }
+                    row.addEventListener('click', () => {
+                        onSelect(item.value, item.name, item);
+                        closePresetPanel();
+                    });
+                    listEl.appendChild(row);
+                });
+            });
+            if (!totalShown) {
+                const empty = document.createElement('div');
+                empty.className = 'scp-pdd-empty';
+                empty.textContent = q ? 'Нет результатов' : emptyText;
+                listEl.appendChild(empty);
+            }
+        };
+
+        renderContent();
+        document.body.appendChild(panel);
+
+        const rect = triggerEl.getBoundingClientRect();
+        panel.style.cssText += `;position:fixed;z-index:2147483060;top:${rect.bottom + 5}px;left:${rect.left}px;max-width:calc(100vw - 16px)`;
+        requestAnimationFrame(() => {
+            const pr = panel.getBoundingClientRect();
+            if (pr.right > window.innerWidth - 8) panel.style.left = `${window.innerWidth - pr.width - 8}px`;
+            if (pr.bottom > window.innerHeight - 8) panel.style.top = `${rect.top - pr.height - 5}px`;
+        });
+
+        setTimeout(() => {
+            const onOut = e => {
+                if (!panel.contains(e.target) && e.target !== triggerEl) {
+                    closePresetPanel();
+                    document.removeEventListener('mousedown', onOut, true);
+                }
+            };
+            document.addEventListener('mousedown', onOut, true);
+        }, 0);
+    }
+
+    function closePresetPanel() {
+        if (_activePresetPanel) { _activePresetPanel.remove(); _activePresetPanel = null; }
+        document.querySelectorAll('.scp-pdd-trigger.open, .scp-preset-mgr-trigger.open')
+            .forEach(el => el.classList.remove('open'));
+    }
+
+    function buildPromptPresetManager(containerEl, getTextFn, setTextFn, dictKey = 'promptPresets') {
+        if (!containerEl) return;
+        containerEl.innerHTML = '';
+        const s = getSettings();
+        if (!s[dictKey]) s[dictKey] = {};
+
+        let _activeName = '';
+        let _activeSource = '';
+
+        const bar = document.createElement('div');
+        bar.className = 'scp-preset-mgr-bar';
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'scp-preset-mgr-trigger';
+        trigger.innerHTML = `<span class="scp-pmt-label">Выберите пресет…</span><svg class="scp-pmt-chevron" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+        const labelEl = trigger.querySelector('.scp-pmt-label');
+
+        const setActive = (name, source) => {
+            _activeName = name;
+            _activeSource = source;
+            labelEl.textContent = name || 'Выберите пресет…';
+            trigger.classList.toggle('scp-pmt--has-value', !!name);
+            updateBtnStates();
+        };
+
+        const buildGroups = () => {
+            const groups = [];
+            const profileItems = Object.keys(s.profiles || {})
+                .filter(n => s.profiles[n].systemPrompt)
+                .map(n => ({
+                    name: n,
+                    value: s.profiles[n].systemPrompt,
+                    preview: (s.profiles[n].systemPrompt || '').replace(/\s+/g, ' ').slice(0, 80),
+                    badge: 'profile',
+                    _source: 'profile',
+                }));
+            if (profileItems.length) groups.push({ label: 'Из профилей', items: profileItems });
+
+            const customItems = Object.keys(s[dictKey])
+                .map(n => ({
+                    name: n,
+                    value: s[dictKey][n],
+                    preview: (s[dictKey][n] || '').replace(/\s+/g, ' ').slice(0, 80),
+                    badge: 'custom',
+                    _source: 'custom',
+                }));
+            if (customItems.length) groups.push({ label: 'Пользовательские пресеты', items: customItems });
+            return groups;
+        };
+
+        trigger.addEventListener('click', () => {
+            const groups = buildGroups();
+            openPresetDropdown(trigger, groups, (value, name, item) => {
+                setTextFn(value);
+                setActive(name, item._source || 'custom');
+            }, { placeholder: 'Поиск пресетов…', width: 360, emptyText: 'Пресеты ещё не сохранены' });
+        });
+
+        const mkBtn = (icon, title, cls, cb) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = `scp-preset-mgr-btn${cls ? ' ' + cls : ''}`;
+            b.title = title;
+            b.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
+            b.addEventListener('click', cb);
+            return b;
+        };
+
+        const saveBtn = mkBtn('floppy-disk', 'Сохранить пресет', '', async () => {
+            if (_activeName && _activeSource === 'custom') {
+                s[dictKey][_activeName] = getTextFn();
+                saveSettings$1();
+                toastr.success(`Пресет «${escHtml(_activeName)}» сохранён`, EXT_DISPLAY);
+            } else {
+                const name = await showCustomDialog({ type: 'prompt', title: 'Сохранить пресет промпта', message: 'Имя пресета:', placeholder: 'Мой пресет' });
+                if (!name?.trim()) return;
+                s[dictKey][name.trim()] = getTextFn();
+                saveSettings$1();
+                setActive(name.trim(), 'custom');
+                toastr.success(`Пресет «${escHtml(name.trim())}» сохранён`, EXT_DISPLAY);
+            }
+        });
+
+        const renameBtn = mkBtn('pen', 'Переименовать выбранный пользовательский пресет', '', async () => {
+            if (!_activeName || _activeSource !== 'custom') { toastr.info('Сначала выберите пользовательский пресет.', EXT_DISPLAY); return; }
+            const newName = await showCustomDialog({ type: 'prompt', title: 'Переименовать пресет', message: 'Новое имя:', defaultValue: _activeName });
+            if (!newName?.trim() || newName.trim() === _activeName) return;
+            s[dictKey][newName.trim()] = s[dictKey][_activeName];
+            delete s[dictKey][_activeName];
+            saveSettings$1();
+            setActive(newName.trim(), 'custom');
+        });
+
+        const deleteBtn = mkBtn('trash', 'Удалить выбранный пользовательский пресет', 'danger', async () => {
+            if (!_activeName || _activeSource !== 'custom') { toastr.info('Удалять можно только пользовательские пресеты.', EXT_DISPLAY); return; }
+            const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить пресет', message: `Удалить «${_activeName}»?` });
+            if (!ok) return;
+            delete s[dictKey][_activeName];
+            saveSettings$1();
+            setActive('', '');
+        });
+
+        const updateBtnStates = () => {
+            const isCustom = !!_activeName && _activeSource === 'custom';
+            renameBtn.disabled = !isCustom;
+            deleteBtn.disabled = !isCustom;
+            renameBtn.style.opacity = isCustom ? '1' : '0.35';
+            deleteBtn.style.opacity = isCustom ? '1' : '0.35';
+        };
+        updateBtnStates();
+
+        bar.appendChild(trigger);
+        bar.appendChild(saveBtn);
+        bar.appendChild(renameBtn);
+        bar.appendChild(deleteBtn);
+        containerEl.appendChild(bar);
+    }
+
+    function buildQPSetManager(containerEl, onSetLoaded) {
+        if (!containerEl) return;
+        containerEl.innerHTML = '';
+        const s = getSettings();
+        if (!s.quickPromptSets) s.quickPromptSets = {};
+
+        let _activeName = s.activeQuickPromptSet || '';
+
+        const bar = document.createElement('div');
+        bar.className = 'scp-preset-mgr-bar';
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'scp-preset-mgr-trigger';
+        const getLabel = name => {
+            if (!name) return 'Выберите набор…';
+            const count = (s.quickPromptSets[name] || []).length;
+            return `${name}  (${count})`;
+        };
+        trigger.innerHTML = `<span class="scp-pmt-label">${escHtml(getLabel(_activeName))}</span><svg class="scp-pmt-chevron" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+        const labelEl = trigger.querySelector('.scp-pmt-label');
+
+        const setActive = name => {
+            _activeName = name;
+            labelEl.textContent = getLabel(name);
+            trigger.classList.toggle('scp-pmt--has-value', !!name);
+            updateBtnStates();
+        };
+
+        const buildGroups = () => {
+            const items = Object.keys(s.quickPromptSets).map(name => ({
+                name,
+                value: name,
+                preview: `${(s.quickPromptSets[name] || []).length} prompts: ` +
+                    (s.quickPromptSets[name] || []).map(q => `${q.icon || '⚡'} ${q.label}`).join(', ').slice(0, 80),
+                badge: name === s.activeQuickPromptSet ? 'active' : null,
+            }));
+            return [{ label: items.length ? 'Сохранённые наборы' : null, items }];
+        };
+
+        trigger.addEventListener('click', () => {
+            openPresetDropdown(trigger, buildGroups(), (value) => {
+                if (!s.quickPromptSets[value]) return;
+                s.quickPrompts = JSON.parse(JSON.stringify(s.quickPromptSets[value]));
+                s.activeQuickPromptSet = value;
+                saveSettings$1();
+                setActive(value);
+                renderQuickPromptsBar();
+                if (onSetLoaded) onSetLoaded();
+                toastr.success(`Набор «${escHtml(value)}» загружен`, EXT_DISPLAY);
+            }, { placeholder: 'Поиск наборов…', width: 340, emptyText: 'Наборы ещё не сохранены. Сохраните один ниже.' });
+        });
+
+        const mkBtn = (icon, title, cls, cb) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = `scp-preset-mgr-btn${cls ? ' ' + cls : ''}`;
+            b.title = title;
+            b.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
+            b.addEventListener('click', cb);
+            return b;
+        };
+
+        const saveBtn = mkBtn('floppy-disk', 'Сохранить текущие промпты в активный набор (или новый)', '', async () => {
+            let name = _activeName;
+            if (!name) {
+                name = await showCustomDialog({ type: 'prompt', title: 'Сохранить набор промптов', message: 'Имя набора:', placeholder: 'Мой набор' });
+                if (!name?.trim()) return;
+                name = name.trim();
+            }
+            s.quickPromptSets[name] = JSON.parse(JSON.stringify(s.quickPrompts));
+            s.activeQuickPromptSet = name;
+            saveSettings$1();
+            setActive(name);
+            toastr.success(`Набор «${escHtml(name)}» сохранён`, EXT_DISPLAY);
+        });
+
+        const saveAsBtn = mkBtn('plus', 'Сохранить текущие промпты как новый набор', '', async () => {
+            const name = await showCustomDialog({ type: 'prompt', title: 'Новый набор промптов', message: 'Имя набора:', placeholder: 'Мой новый набор' });
+            if (!name?.trim()) return;
+            const n = name.trim();
+            s.quickPromptSets[n] = JSON.parse(JSON.stringify(s.quickPrompts));
+            s.activeQuickPromptSet = n;
+            saveSettings$1();
+            setActive(n);
+            toastr.success(`Набор «${escHtml(n)}» создан`, EXT_DISPLAY);
+        });
+
+        const renameBtn = mkBtn('pen', 'Переименовать выбранный набор', '', async () => {
+            if (!_activeName) { toastr.info('Сначала выберите набор.', EXT_DISPLAY); return; }
+            const newName = await showCustomDialog({ type: 'prompt', title: 'Переименовать набор', message: 'Новое имя:', defaultValue: _activeName });
+            if (!newName?.trim() || newName.trim() === _activeName) return;
+            const n = newName.trim();
+            s.quickPromptSets[n] = s.quickPromptSets[_activeName];
+            delete s.quickPromptSets[_activeName];
+            if (s.activeQuickPromptSet === _activeName) s.activeQuickPromptSet = n;
+            saveSettings$1();
+            setActive(n);
+        });
+
+        const deleteBtn = mkBtn('trash', 'Удалить выбранный набор', 'danger', async () => {
+            if (!_activeName) { toastr.info('Сначала выберите набор.', EXT_DISPLAY); return; }
+            const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить набор', message: `Удалить набор «${_activeName}»?` });
+            if (!ok) return;
+            delete s.quickPromptSets[_activeName];
+            if (s.activeQuickPromptSet === _activeName) s.activeQuickPromptSet = '';
+            saveSettings$1();
+            setActive('');
+        });
+
+        const updateBtnStates = () => {
+            const has = !!_activeName;
+            renameBtn.disabled = !has; renameBtn.style.opacity = has ? '1' : '0.35';
+            deleteBtn.disabled = !has; deleteBtn.style.opacity = has ? '1' : '0.35';
+        };
+        updateBtnStates();
+
+        bar.appendChild(trigger);
+        bar.appendChild(saveBtn);
+        bar.appendChild(saveAsBtn);
+        bar.appendChild(renameBtn);
+        bar.appendChild(deleteBtn);
+        containerEl.appendChild(bar);
+    }
+
+    // Widgets: completion sounds (synth + settings UI), the changelog modal and
+    // the favorites panel. Split out of ui-widgets.js (now a re-export facade);
+    // preset builders and the context inspector live in sibling submodules.
+    // ─── Sounds ─────────────────────────────────────────────────────────────
+
+    const _SOUND_PRESETS = {
+        none:    { label: 'Без звука' },
+        chime:   { label: 'Куранты' },
+        bell:    { label: 'Колокол' },
+        soft:    { label: 'Мягкий сигнал' },
+        digital: { label: 'Цифровой бип' },
+        pop:     { label: 'Поп' },
+    };
+
+    function _synthSound(type, volume = 80) {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const masterGain = ctx.createGain();
+            masterGain.gain.value = Math.max(0, Math.min(1, volume / 100));
+            masterGain.connect(ctx.destination);
+            const now = ctx.currentTime;
+
+            if (type === 'chime') {
+                [523.25, 659.25, 783.99].forEach((freq, i) => {
+                    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+                    const og = ctx.createGain();
+                    o.connect(og); og.connect(masterGain);
+                    og.gain.setValueAtTime(0, now + i * 0.12);
+                    og.gain.linearRampToValueAtTime(0.18, now + i * 0.12 + 0.02);
+                    og.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.5);
+                    o.start(now + i * 0.12); o.stop(now + i * 0.12 + 0.5);
+                });
+            } else if (type === 'bell') {
+                const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 880;
+                const og = ctx.createGain();
+                o.connect(og); og.connect(masterGain);
+                og.gain.setValueAtTime(0.25, now);
+                og.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+                o.start(now); o.stop(now + 1.2);
+            } else if (type === 'soft') {
+                const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 660;
+                const og = ctx.createGain();
+                o.connect(og); og.connect(masterGain);
+                og.gain.setValueAtTime(0, now);
+                og.gain.linearRampToValueAtTime(0.15, now + 0.05);
+                og.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                o.start(now); o.stop(now + 0.4);
+            } else if (type === 'digital') {
+                [440, 880].forEach((freq, i) => {
+                    const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = freq;
+                    const og = ctx.createGain();
+                    o.connect(og); og.connect(masterGain);
+                    og.gain.setValueAtTime(0.08, now + i * 0.07);
+                    og.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.12);
+                    o.start(now + i * 0.07); o.stop(now + i * 0.07 + 0.12);
+                });
+            } else if (type === 'pop') {
+                const o = ctx.createOscillator(); o.type = 'sine';
+                o.frequency.setValueAtTime(600, now);
+                o.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+                const og = ctx.createGain();
+                o.connect(og); og.connect(masterGain);
+                og.gain.setValueAtTime(0.22, now);
+                og.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                o.start(now); o.stop(now + 0.15);
+            }
+            setTimeout(() => ctx.close(), 2000);
+        } catch (_) {}
+    }
+
+    function playCompletionSound(force = false) {
+        const s = getSettings();
+        const soundType = s.completionSound || 'none';
+        const vol = s.completionSoundVolume ?? 80;
+        if (soundType === 'none') return;
+        if (!force && s.completionSoundOnlyWhenUnfocused && document.hasFocus()) return;
+
+        if (soundType.startsWith('custom_') && s.customSounds && s.customSounds[soundType]) {
+            try {
+                const audio = new Audio(s.customSounds[soundType].data);
+                audio.volume = vol / 100;
+                audio.play().catch(() => {});
+            } catch (_) {}
+            return;
+        }
+
+        if (soundType === 'custom' && s.completionSoundData) {
+            try {
+                const audio = new Audio(s.completionSoundData);
+                audio.volume = vol / 100;
+                audio.play().catch(() => {});
+            } catch (_) {}
+            return;
+        }
+        
+        if (_SOUND_PRESETS[soundType] && soundType !== 'none') {
+            _synthSound(soundType, vol);
+        }
+    }
+
+    // ─── Changelog ───────────────────────────────────────────────────────────────
+
+    function buildChangelogHTML() {
+        const current = CHANGELOG[0];
+        const past = CHANGELOG.slice(1);
+
+        const notesHTML = current.notes
+            .map(n => `<li>${n}</li>`)
+            .join('');
+
+        let historyHTML = '';
+        if (past.length) {
+            historyHTML = `<div class="scp-cl-history">` +
+                past.map(entry => {
+                    const li = (entry.notes || []).map(n => `<li>${n}</li>`).join('');
+                    return `<details class="scp-cl-entry">
+                    <summary class="scp-cl-entry-summary">
+                        <span class="scp-cl-entry-ver">v${escHtml(entry.version)}</span>
+                        <span style="flex:1;opacity:.5">${escHtml(entry.date || '')}</span>
+                    </summary>
+                    <div class="scp-cl-entry-body"><ul>${li}</ul></div>
+                </details>`;
+                }).join('') +
+                `</div>`;
+        }
+
+        return `<div class="scp-cl-current">
+        <div class="scp-cl-version-badge">✦ Version ${escHtml(current.version)} ${current.date ? '· ' + escHtml(current.date) : ''}</div>
+        <div class="scp-cl-notes"><ul>${notesHTML}</ul></div>
+    </div>${historyHTML}`;
+    }
+
+    function openChangelog() {
+        const modal = document.getElementById('scp-changelog-modal');
+        if (!modal) return;
+        const body = document.getElementById('scp-changelog-body');
+        if (body) body.innerHTML = buildChangelogHTML();
+        modal.style.display = 'flex';
+        Promise.resolve().then(function () { return uiWindow; }).then(m => m.bringWindowToFront());
+    }
+
+    function closeChangelog() {
+        const modal = document.getElementById('scp-changelog-modal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    function checkChangelogAutoShow() {
+        const s = getSettings();
+        const current = CHANGELOG[0];
+        const currentVersion = current?.version || '';
+        if (s.changelogAutoShow && current?.announce !== false && s.lastSeenVersion !== currentVersion) {
+            s.lastSeenVersion = currentVersion;
+            saveSettings$1();
+            setTimeout(openChangelog, 800);
+        } else if (s.lastSeenVersion !== currentVersion) {
+            s.lastSeenVersion = currentVersion;
+            saveSettings$1();
+        }
+    }
+
+    function setupChangelogListeners() {
+        const modal = document.getElementById('scp-changelog-modal');
+        if (!modal) return;
+        document.getElementById('scp-changelog-close')?.addEventListener('click', closeChangelog);
+        let _mdTarget = null;
+        modal.addEventListener('mousedown', e => { _mdTarget = e.target; });
+        modal.addEventListener('click', e => { if (e.target === modal && _mdTarget === modal) closeChangelog(); });
+    }
+
+    function renderFavoritesPanel() {
+        const listEl = document.getElementById('scp-fav-list');
+        const emptyEl = document.getElementById('scp-fav-empty');
+        if (!listEl) return;
+
+        const starredIds = getStarredMessages();
+        const session = getCurrentSession();
+        const starred = session.messages.filter(m => starredIds.includes(m.id));
+
+        listEl.querySelectorAll('.scp-fav-item').forEach(el => el.remove());
+
+        if (!starred.length) {
+            if (emptyEl) emptyEl.style.display = '';
+            return;
+        }
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        const frag = document.createDocumentFragment();
+        starred.forEach(msg => {
+            const item = document.createElement('div');
+            item.className = 'scp-fav-item';
+            item.dataset.msgId = msg.id;
+
+            const raw = msg.content.replace(/```[\s\S]*?```/g, '[code]').replace(/<[^>]+>/g, '').trim();
+            const preview = raw.length > 140 ? raw.slice(0, 140) + '…' : raw;
+            const roleLabel = msg.role === 'user' ? 'Пользователь' : 'Copilot';
+            const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            item.innerHTML = `
+            <span class="scp-fav-item-icon">${I.starFill}</span>
+            <div class="scp-fav-item-body">
+                <div class="scp-fav-item-meta">
+                    <span class="scp-fav-item-role">${escHtml(roleLabel)}</span>
+                    <span>${escHtml(time)}</span>
+                </div>
+                <div class="scp-fav-item-text">${escHtml(preview)}</div>
+            </div>
+            <button class="scp-fav-item-remove" title="Убрать из избранного">✕</button>`;
+
+            item.addEventListener('click', e => {
+                if (e.target.classList.contains('scp-fav-item-remove')) return;
+                closeFavoritesPanel();
+                const msgEl = document.querySelector(`.scp-msg[data-id="${msg.id}"]`);
+                if (!msgEl) return;
+                msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                requestAnimationFrame(() => {
+                    msgEl.classList.remove('scp-msg-flash');
+                    void msgEl.offsetWidth;
+                    msgEl.classList.add('scp-msg-flash');
+                    msgEl.addEventListener('animationend', () => msgEl.classList.remove('scp-msg-flash'), { once: true });
+                });
+            });
+
+            item.querySelector('.scp-fav-item-remove').addEventListener('click', e => {
+                e.stopPropagation();
+                toggleStarMessage(msg.id);
+                const msgEl = document.querySelector(`.scp-msg[data-id="${msg.id}"]`);
+                if (msgEl) {
+                    msgEl.classList.remove('scp-msg-starred');
+                    const btn = msgEl.querySelector('.scp-msg-btn-star');
+                    if (btn) { btn.classList.remove('starred'); btn.title = 'В избранное'; }
+                }
+                renderFavoritesPanel();
+            });
+
+            frag.appendChild(item);
+        });
+        listEl.appendChild(frag);
+    }
+
+    function openFavoritesPanel() {
+        const panel = document.getElementById('scp-fav-panel');
+        const btn = document.getElementById('scp-fav-btn');
+        if (!panel) return;
+        renderFavoritesPanel();
+        panel.style.display = 'flex';
+        btn?.classList.add('active');
+    }
+
+    function closeFavoritesPanel() {
+        const panel = document.getElementById('scp-fav-panel');
+        const btn = document.getElementById('scp-fav-btn');
+        if (panel) panel.style.display = 'none';
+        btn?.classList.remove('active');
+    }
+
+    function buildSoundSettingsUI(container) {
+        if (!container) return;
+        container.innerHTML = '';
+        const s = getSettings();
+        if (!s.customSounds) s.customSounds = {};
+
+        if (s.completionSoundData && !s.customSounds['custom_legacy']) {
+            s.customSounds['custom_legacy'] = {
+                name: s.completionSoundFileName || 'Унаследованный пользовательский звук',
+                data: s.completionSoundData
+            };
+            if (s.completionSound === 'custom') {
+                s.completionSound = 'custom_legacy';
+            }
+            delete s.completionSoundData;
+            delete s.completionSoundFileName;
+            saveSettings$1();
+        }
+
+        const isSP = container.id === 'scp-sp-sound-settings';
+
+        const typeRow = document.createElement('div');
+        typeRow.className = isSP ? 'scp-sp-field' : '';
+        if (!isSP) typeRow.style.marginTop = '10px';
+        
+        const typeLbl = document.createElement(isSP ? 'label' : 'b');
+        typeLbl.className = isSP ? 'scp-sp-label' : '';
+        if (!isSP) typeLbl.style.fontSize = '12px';
+        typeLbl.textContent = 'Звук завершения';
+        
+        const typeWrap = document.createElement('div');
+        typeWrap.style.cssText = 'display:flex;gap:6px;align-items:center';
+        if (!isSP) typeWrap.style.marginTop = '6px';
+        
+        const typeSel = document.createElement('select');
+        typeSel.className = isSP ? 'scp-sp-select text_pole' : 'text_pole';
+        typeSel.style.flex = '1';
+        
+        const renderDropdown = () => {
+            typeSel.innerHTML = '';
+            
+            const groupPreset = document.createElement('optgroup');
+            groupPreset.label = 'Пресеты';
+            for (const [key, preset] of Object.entries(_SOUND_PRESETS)) {
+                const opt = document.createElement('option');
+                opt.value = key; opt.textContent = preset.label;
+                groupPreset.appendChild(opt);
+            }
+            typeSel.appendChild(groupPreset);
+            
+            if (Object.keys(s.customSounds).length > 0) {
+                const groupCustom = document.createElement('optgroup');
+                groupCustom.label = 'Пользовательские звуки';
+                for (const [key, snd] of Object.entries(s.customSounds)) {
+                    const opt = document.createElement('option');
+                    opt.value = key; opt.textContent = snd.name;
+                    groupCustom.appendChild(opt);
+                }
+                typeSel.appendChild(groupCustom);
+            }
+            
+            typeSel.value = s.completionSound || 'none';
+            if (!typeSel.value) {
+                typeSel.value = 'none';
+                s.completionSound = 'none';
+                saveSettings$1();
+            }
+        };
+        renderDropdown();
+
+        const testBtn = document.createElement('button');
+        testBtn.className = isSP ? 'scp-action-btn' : 'menu_button interactable';
+        testBtn.innerHTML = `<i class="fa-solid fa-play"></i><span>Тест</span>`;
+        if (!isSP) testBtn.style.flex = '0 0 auto';
+        testBtn.addEventListener('click', () => playCompletionSound(true));
+        
+        typeWrap.appendChild(typeSel);
+        typeWrap.appendChild(testBtn);
+        typeRow.appendChild(typeLbl);
+        typeRow.appendChild(typeWrap);
+        container.appendChild(typeRow);
+
+        const customActionsWrap = document.createElement('div');
+        customActionsWrap.style.cssText = isSP ? 'display:flex;gap:6px;margin-top:6px' : 'display:flex;gap:6px;margin-top:6px;align-items:center';
+        
+        const uploadBtn = document.createElement('button');
+        uploadBtn.className = isSP ? 'scp-action-btn' : 'menu_button interactable';
+        uploadBtn.innerHTML = `<i class="fa-solid fa-upload"></i><span>Загрузить свой</span>`;
+        if (!isSP) uploadBtn.style.flex = '1';
+
+        uploadBtn.addEventListener('click', () => {
+            const inp = document.createElement('input');
+            inp.type = 'file'; inp.accept = 'audio/*';
+            inp.onchange = async () => {
+                const file = inp.files?.[0]; if (!file) return;
+                if (file.size > 5 * 1024 * 1024) { toastr.warning('Аудиофайл слишком большой (>5 МБ).', EXT_DISPLAY); return; }
+                
+                const { _fileToDataUrl } = await Promise.resolve().then(function () { return utilDom; });
+                const dataUrl = await _fileToDataUrl(file).catch(() => null);
+                if (!dataUrl) { toastr.error('Не удалось загрузить аудио', EXT_DISPLAY); return; }
+                
+                const s2 = getSettings();
+                const id = 'snd_' + Date.now();
+                s2.customSounds[id] = { name: file.name, data: dataUrl };
+                s2.completionSound = id;
+                saveSettings$1();
+                
+                const allContainers = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(Boolean);
+                allContainers.forEach(c => buildSoundSettingsUI(c));
+            };
+            inp.click();
+        });
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = isSP ? 'scp-action-btn scp-sp-danger-btn' : 'menu_button interactable';
+        deleteBtn.innerHTML = `<i class="fa-solid fa-trash"></i><span>Удалить</span>`;
+        if (!isSP) deleteBtn.style.flex = '1';
+
+        deleteBtn.addEventListener('click', async () => {
+            const val = typeSel.value;
+            if (val.startsWith('custom_')) {
+                const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить звук', message: 'Удалить этот пользовательский звук?' });
+                if (!ok) return;
+                const s2 = getSettings();
+                delete s2.customSounds[val];
+                s2.completionSound = 'none';
+                saveSettings$1();
+                renderDropdown();
+                updateCustomActions();
+                
+                const otherContainers = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(c => c && c !== container);
+                otherContainers.forEach(c => buildSoundSettingsUI(c));
+            }
+        });
+        
+        customActionsWrap.appendChild(uploadBtn);
+        customActionsWrap.appendChild(deleteBtn);
+        container.appendChild(customActionsWrap);
+
+        const updateCustomActions = () => {
+            deleteBtn.style.display = typeSel.value.startsWith('custom_') ? '' : 'none';
+        };
+        updateCustomActions();
+
+        typeSel.addEventListener('change', () => {
+            getSettings().completionSound = typeSel.value;
+            saveSettings$1();
+            updateCustomActions();
+            const otherContainers = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(c => c && c !== container);
+            otherContainers.forEach(c => buildSoundSettingsUI(c));
+        });
+
+        const volRow = document.createElement('div');
+        volRow.className = isSP ? 'scp-sp-field' : '';
+        volRow.style.marginTop = isSP ? '6px' : '10px';
+
+        const volLbl = document.createElement(isSP ? 'label' : 'b');
+        volLbl.className = isSP ? 'scp-sp-label' : '';
+        if (!isSP) volLbl.style.fontSize = '12px';
+        volLbl.textContent = 'Громкость';
+
+        const volWrap = document.createElement('div');
+        volWrap.className = isSP ? 'scp-sp-row' : '';
+        if (!isSP) {
+            volWrap.style.display = 'flex';
+            volWrap.style.alignItems = 'center';
+            volWrap.style.gap = '10px';
+            volWrap.style.marginTop = '6px';
+        }
+
+        const volSlider = document.createElement('input');
+        volSlider.type = 'range'; 
+        volSlider.className = isSP ? 'scp-slider scp-sp-vol-slider' : 'neo-range-slider scp-sp-vol-slider';
+        volSlider.style.flex = '1'; volSlider.min = '0'; volSlider.max = '100';
+        volSlider.value = s.completionSoundVolume ?? 80;
+
+        const volVal = document.createElement('span');
+        volVal.className = 'scp-sp-vol-val';
+        volVal.style.cssText = isSP 
+            ? 'min-width:32px;text-align:right;font-size:11px;color:var(--scp-accent)' 
+            : 'min-width:34px;text-align:right;font-size:12px;color:var(--SmartThemeQuoteColor,#a99bfb)';
+        volVal.textContent = `${volSlider.value}%`;
+        
+        volSlider.addEventListener('input', () => { volVal.textContent = `${volSlider.value}%`; });
+        volSlider.addEventListener('change', () => { 
+            getSettings().completionSoundVolume = parseInt(volSlider.value); 
+            saveSettings$1(); 
+            const otherContainers2 = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(c => c && c !== container);
+            otherContainers2.forEach(c => buildSoundSettingsUI(c));
+        });
+        
+        volWrap.appendChild(volSlider); volWrap.appendChild(volVal);
+        volRow.appendChild(volLbl); volRow.appendChild(volWrap);
+        container.appendChild(volRow);
+    }
+
     function _getSummaryceptionSummary() {
         try {
             const ctx = SillyTavern.getContext();
@@ -15951,6 +16909,388 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
     // Патчим только собственные генерационные эндпоинты ST: любой другой код
     // (основной чат, другие расширения), чей запрос попадёт в окно патча, не должен
+
+    // Widgets: the context inspector modal (highlighted prompt preview, block
+    // search, JSON/raw views). Split out of ui-widgets.js (now a re-export
+    // facade); the exported mutable _lastInspectorMessages binding lives here.
+    // ─── Context Inspector ──────────────────────────────────────────────────────
+
+    // Поиск по блокам инспектора: без текстовой хирургии по подсвеченному HTML —
+    // матчим textContent блоков, подсвечиваем блок целиком, Enter/Shift+Enter листают.
+    let _ctxSearchBound = false;
+    let _ctxSearchMatches = [];
+    let _ctxSearchIdx = -1;
+
+    function _ctxSearchApply(query) {
+        const body = document.getElementById('scp-ctx-body');
+        const countEl = document.getElementById('scp-ctx-search-count');
+        if (!body) return;
+        body.querySelectorAll('.scp-ctx-hit').forEach(el => el.classList.remove('scp-ctx-hit', 'scp-ctx-hit-current'));
+        _ctxSearchMatches = [];
+        _ctxSearchIdx = -1;
+
+        const q = (query || '').toLowerCase().trim();
+        if (q) {
+            body.querySelectorAll('.scp-ctx-block').forEach(block => {
+                if ((block.textContent || '').toLowerCase().includes(q)) {
+                    block.classList.add('scp-ctx-hit');
+                    _ctxSearchMatches.push(block);
+                }
+            });
+        }
+        if (countEl) countEl.textContent = q ? `${_ctxSearchMatches.length ? '0' : '0'}/${_ctxSearchMatches.length}` : '';
+    }
+
+    function _ctxSearchGo(dir) {
+        if (!_ctxSearchMatches.length) return;
+        _ctxSearchIdx = (_ctxSearchIdx + dir + _ctxSearchMatches.length) % _ctxSearchMatches.length;
+        _ctxSearchMatches.forEach(el => el.classList.remove('scp-ctx-hit-current'));
+        const cur = _ctxSearchMatches[_ctxSearchIdx];
+        cur.classList.add('scp-ctx-hit-current');
+        const body = document.getElementById('scp-ctx-body');
+        if (body) body.scrollTo({ top: cur.offsetTop - 8, behavior: 'smooth' });
+        const countEl = document.getElementById('scp-ctx-search-count');
+        if (countEl) countEl.textContent = `${_ctxSearchIdx + 1}/${_ctxSearchMatches.length}`;
+    }
+
+    function setupContextSearch() {
+        const input = document.getElementById('scp-ctx-search');
+        if (!input) return;
+        input.value = '';
+        _ctxSearchApply('');
+        if (_ctxSearchBound) return;
+        _ctxSearchBound = true;
+        input.addEventListener('input', () => _ctxSearchApply(input.value));
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); _ctxSearchGo(e.shiftKey ? -1 : 1); }
+        });
+        document.getElementById('scp-ctx-search-prev')?.addEventListener('click', () => _ctxSearchGo(-1));
+        document.getElementById('scp-ctx-search-next')?.addEventListener('click', () => _ctxSearchGo(1));
+    }
+
+    function _highlightContextText(raw) {
+        const masterRe = /(```[\s\S]*?(?:```|$))|(`[^`\n]*`)|(<\/?([\w:{}_-]+)[^>]*>|<!--[\s\S]*?-->)|(\{\{[^}\n]+\}\})/gi;
+        
+        let m;
+        masterRe.lastIndex = 0;
+        let tempEvents = [];
+        while ((m = masterRe.exec(raw)) !== null) {
+            if (m[1] !== undefined) tempEvents.push({ start: m.index, end: masterRe.lastIndex, type: 'code_block', match: m[1] });
+            else if (m[2] !== undefined) tempEvents.push({ start: m.index, end: masterRe.lastIndex, type: 'inline_code', match: m[2] });
+            else if (m[3] !== undefined) tempEvents.push({ start: m.index, end: masterRe.lastIndex, type: 'tag', match: m[3], tagName: m[4] });
+            else if (m[5] !== undefined) tempEvents.push({ start: m.index, end: masterRe.lastIndex, type: 'macro', match: m[5] });
+        }
+
+        const openStacks = {};
+        const validTags = new Set();
+
+        for (let i = 0; i < tempEvents.length; i++) {
+            const ev = tempEvents[i];
+            if (ev.type === 'tag') {
+                const match = ev.match;
+                if (match.startsWith('<!--') || match.endsWith('/>')) {
+                    validTags.add(ev.start);
+                } else {
+                    const isClose = match.startsWith('</');
+                    const tagName = ev.tagName;
+                    if (!tagName) continue;
+
+                    if (isClose) {
+                        if (openStacks[tagName] && openStacks[tagName].length > 0) {
+                            const openEvIndex = openStacks[tagName].pop();
+                            validTags.add(tempEvents[openEvIndex].start);
+                            validTags.add(ev.start);
+                        }
+                    } else {
+                        if (!openStacks[tagName]) openStacks[tagName] = [];
+                        openStacks[tagName].push(i);
+                    }
+                }
+            }
+        }
+
+        const events = [];
+        for (const ev of tempEvents) {
+            if (ev.type === 'tag' && !validTags.has(ev.start)) continue;
+            events.push([ev.start, ev.end, ev.type, ev.match, ev.tagName]);
+        }
+
+        let html = '', last = 0;
+        const KNOWN = new Set(['system_prompt','character_information','characters','character','lorebook_context','st_system_prompt','persistent_memory','summary_context','lorebook_management','character_management','chat_messages_editing','roleplay_context','entity_definitions','persona_configuration','operational_guidelines','{{user}}_persona', 'tool_calls_system', 'memory_system']);
+        let currentDepth = 0;
+        let emittedAnchors = new Set();
+
+        for (const [start, end, type, match, tagName] of events) {
+            if (start < last) continue;
+            html += escHtml(raw.slice(last, start));
+            
+            if (type === 'tag') {
+                const isClose = match.startsWith('</');
+                const isSelfClose = match.endsWith('/>');
+                const isComment = match.startsWith('<!--');
+
+                let applyDepth;
+                if (isComment || isSelfClose) {
+                    applyDepth = currentDepth;
+                } else if (isClose) {
+                    currentDepth = Math.max(0, currentDepth - 1);
+                    applyDepth = currentDepth;
+                } else {
+                    applyDepth = currentDepth;
+                    currentDepth++;
+                }
+
+                if (!isClose && !isComment && !isSelfClose && tagName) {
+                    if (KNOWN.has(tagName) || tagName.endsWith('_persona')) {
+                        if (!emittedAnchors.has(tagName)) {
+                            emittedAnchors.add(tagName);
+                            html += `<span id="scp-ctx-sec-${tagName}" class="scp-ctx-anchor"></span>`;
+                        }
+                    }
+                }
+                
+                const depthClass = Math.min(applyDepth, 5);
+                html += `<span class="scp-ctx-hl-tag scp-ctx-hl-tag-d${depthClass}">${escHtml(match)}</span>`;
+            } else if (type === 'macro') {
+                html += `<span class="scp-ctx-hl-macro">${escHtml(match)}</span>`;
+            } else if (type === 'code_block' || type === 'inline_code') {
+                html += escHtml(match);
+            }
+            last = end;
+        }
+        html += escHtml(raw.slice(last));
+        return html;
+    }
+
+    function _buildContextInspectorHTML(messages) {
+        const SECTION_LABELS = {
+            'system_prompt': 'Системный промпт',
+            'persistent_memory': 'Постоянная память',
+            'lorebook_context': 'Лорбук',
+            'characters': 'Персонажи',
+            '{{user}}_persona': 'Персона пользователя',
+            'memory_system': 'Управление памятью',
+            'lorebook_management': 'Управление лорбуком',
+            'character_management': 'Управление персонажами',
+            'chat_messages_editing': 'Управление чатом',
+            'tool_calls_system': 'Вызовы инструментов'
+        };
+        const KNOWN_SECS = new Set(Object.keys(SECTION_LABELS));
+        const ALIASES = {
+            'character_information': 'characters',
+            'character': 'characters'
+        };
+        const DISPLAY_ORDER = [
+            'system_prompt',
+            'persistent_memory',
+            'lorebook_context',
+            'characters',
+            '{{user}}_persona',
+            'memory_system',
+            'lorebook_management',
+            'character_management',
+            'chat_messages_editing',
+            'tool_calls_system'
+        ];
+
+        let navHtml = '', bodyHtml = '';
+        let seenSections = new Set();
+        
+        messages.forEach((msg, idx) => {
+            let raw = Array.isArray(msg.content)
+                ? msg.content.map(p => p.type === 'text' ? p.text : '[Image]').join('\n')
+                : (msg.content || '');
+
+            let displayRole = msg.role;
+            if (msg.role === 'user' && raw.includes('"type": "system_notification"')) {
+                displayRole = 'system';
+            }
+
+            const LABELS = { system:'■ SYSTEM', user:'▶ USER', assistant:'◀ ASSISTANT' };
+            const label = (LABELS[displayRole] || displayRole) + (idx > 0 ? ` #${idx}` : '');
+            const blockId = `scp-ctx-b${idx}`;
+
+            navHtml += `<button class="scp-ctx-nav-btn scp-ctx-nav-${displayRole}" data-t="${blockId}">${escHtml(label)}</button>`;
+
+            if (msg.role === 'system') {
+                const tagRe = /<([\w:{}_-]+)[^>]*>/g;
+                let tm;
+                tagRe.lastIndex = 0;
+                let foundMain = [];
+                let foundModules = [];
+
+                while ((tm = tagRe.exec(raw)) !== null) {
+                    let rawTag = tm[1];
+                    let tag = ALIASES[rawTag] ? ALIASES[rawTag] : rawTag;
+                    
+                    const isUserPersona = tag === '{{user}}_persona' || tag.endsWith('_persona');
+                    const key = isUserPersona ? '{{user}}_persona' : tag;
+
+                    if ((KNOWN_SECS.has(key) || isUserPersona) && !seenSections.has(key)) {
+                        seenSections.add(key);
+                        const secLabel = SECTION_LABELS[key] || (isUserPersona ? 'Персона пользователя' : key);
+                        const secId = `scp-ctx-sec-${rawTag}`;
+                        
+                        if (['memory_system','lorebook_management','character_management','chat_messages_editing', 'tool_calls_system'].includes(key)) {
+                            foundModules.push({ key, id: secId, label: secLabel });
+                        } else {
+                            foundMain.push({ key, id: secId, label: secLabel });
+                        }
+                    }
+                }
+
+                const sortFn = (a, b) => {
+                    let idxA = DISPLAY_ORDER.indexOf(a.key);
+                    let idxB = DISPLAY_ORDER.indexOf(b.key);
+                    if (idxA === -1) idxA = 999;
+                    if (idxB === -1) idxB = 999;
+                    return idxA - idxB;
+                };
+
+                foundMain.sort(sortFn);
+                foundModules.sort(sortFn);
+
+                foundMain.forEach(item => {
+                    navHtml += `<button class="scp-ctx-nav-btn scp-ctx-nav-sub" data-t="${item.id}">&nbsp;&nbsp;◦ ${escHtml(item.label)}</button>`;
+                });
+
+                let moduleNavs = '';
+                foundModules.forEach(item => {
+                    moduleNavs += `<button class="scp-ctx-nav-btn scp-ctx-nav-sub" data-t="${item.id}">&nbsp;&nbsp;◦ ${escHtml(item.label)}</button>`;
+                });
+
+                if (moduleNavs) {
+                     navHtml += `<details class="scp-ctx-nav-details" open><summary class="scp-ctx-nav-btn" style="color:var(--scp-text)">▼ Модули</summary>${moduleNavs}</details>`;
+                }
+            }
+
+            const highlighted = _highlightContextText(raw);
+            bodyHtml += `<div class="scp-ctx-block" id="${blockId}">`;
+            bodyHtml += `<div class="scp-ctx-block-header scp-ctx-role-${displayRole}">${escHtml(label)}</div>`;
+            bodyHtml += `<div class="scp-ctx-block-sep"></div>`;
+            bodyHtml += `<div class="scp-ctx-block-body"><pre class="scp-ctx-pre">${highlighted}</pre></div>`;
+            bodyHtml += `</div>`;
+        });
+
+        const styleHtml = `<style>
+        .scp-ctx-hl-tag-d0 { color: #eff6ff !important; }
+        .scp-ctx-hl-tag-d1 { color: #bfdbfe !important; }
+        .scp-ctx-hl-tag-d2 { color: #93c5fd !important; }
+        .scp-ctx-hl-tag-d3 { color: rgb(106, 165, 236) !important; }
+        .scp-ctx-hl-tag-d4 { color: rgb(100, 158, 253) !important; }
+        .scp-ctx-hl-tag-d5 { color: rgb(74, 120, 221) !important; }
+    </style>`;
+
+        return `<div class="scp-ctx-inspector">${styleHtml}<nav class="scp-ctx-nav">${navHtml}</nav><div class="scp-ctx-body" id="scp-ctx-body">${bodyHtml}</div></div>`;
+    }
+
+    let _lastInspectorMessages = [];
+
+    async function openInspector() {
+        const sess = getCurrentSession();
+        const { getEffectiveSettings } = await Promise.resolve().then(function () { return session; });
+        const settings = getEffectiveSettings();
+        const inputEl = document.getElementById('scp-input');
+        const pendingText = inputEl ? inputEl.value.trim() : '';
+        const processedAtts = await _processAttachmentsBeforeSend(state.pendingAttachments, true);
+        
+        const messages = await assembleMessages(sess, settings, pendingText, processedAtts);
+        _lastInspectorMessages = messages;
+
+        const fmtEl = document.getElementById('scp-ctx-formatted');
+        const jsonEl = document.getElementById('scp-ctx-json');
+        const modalEl = document.getElementById('scp-ctx-modal');
+        
+        const modal = modalEl.querySelector('.scp-modal');
+        if (modal) {
+            modal.style.height = '75vh';
+        }
+        
+        const modalBody = modalEl.querySelector('.scp-modal-body');
+        if (modalBody) {
+            modalBody.style.padding = '0';
+            modalBody.style.overflow = 'hidden';
+            modalBody.style.display = 'flex';
+            modalBody.style.flexDirection = 'column';
+            modalBody.style.height = '100%';
+        }
+
+        if (fmtEl) {
+            fmtEl.style.height = '100%';
+            fmtEl.style.flex = '1';
+            fmtEl.style.overflow = 'hidden';
+            fmtEl.style.padding = '0';
+            fmtEl.innerHTML = _buildContextInspectorHTML(messages);
+            
+            setupContextSearch();
+
+            fmtEl.querySelectorAll('.scp-ctx-nav-btn[data-t]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const t = document.getElementById(btn.dataset.t);
+                    const bodyContainer = document.getElementById('scp-ctx-body');
+                    if (t && bodyContainer) {
+                        const topPos = t.offsetTop;
+                        bodyContainer.scrollTo({ top: topPos, behavior: 'smooth' });
+                    }
+                });
+            });
+        }
+        if (jsonEl) jsonEl.textContent = JSON.stringify(messages, null, 2);
+        const lsEl = document.getElementById('scp-ctx-lastsent');
+        if (lsEl) {
+            const log = state.requestLog || [];
+            lsEl.textContent = log.length
+                ? log.slice().reverse().map(e =>
+                    `═══ ${new Date(e.ts).toLocaleTimeString()} — ${e.url} ═══\n${JSON.stringify(e.body, null, 2)}`
+                ).join('\n\n')
+                : 'Запросов ещё не было. Журнал хранит последние 5 тел запросов (секреты вымыты) и очищается при перезагрузке страницы.';
+        }
+        modalEl.style.display = 'flex';
+        Promise.resolve().then(function () { return uiWindow; }).then(m => m.bringWindowToFront());
+        
+        setTimeout(() => {
+            const isJsonActive = document.querySelector('.scp-modal-tab.active')?.dataset.tab === 'json';
+            const targetEl = isJsonActive ? jsonEl : document.getElementById('scp-ctx-body');
+            if (targetEl) {
+                const prevBehavior = targetEl.style.scrollBehavior;
+                targetEl.style.scrollBehavior = 'auto';
+                targetEl.scrollTop = targetEl.scrollHeight;
+                targetEl.style.scrollBehavior = prevBehavior;
+            }
+        }, 0);
+    }
+
+    // Facade over the ui-widgets submodule split (preset builders,
+    // sound/changelog/favorites panels, context inspector). Historical import
+    // sites (index.js, api.js, chat-shared lazy refs, ui-settings, prompt-builder,
+    // request-inspector) keep importing everything from here.
+
+    var uiWidgets = /*#__PURE__*/Object.freeze({
+        __proto__: null,
+        _SOUND_PRESETS: _SOUND_PRESETS,
+        _buildContextInspectorHTML: _buildContextInspectorHTML,
+        _highlightContextText: _highlightContextText,
+        get _lastInspectorMessages () { return _lastInspectorMessages; },
+        _synthSound: _synthSound,
+        buildChangelogHTML: buildChangelogHTML,
+        buildPromptPresetManager: buildPromptPresetManager,
+        buildQPSetManager: buildQPSetManager,
+        buildSoundSettingsUI: buildSoundSettingsUI,
+        checkChangelogAutoShow: checkChangelogAutoShow,
+        closeChangelog: closeChangelog,
+        closeFavoritesPanel: closeFavoritesPanel,
+        closePresetPanel: closePresetPanel,
+        openChangelog: openChangelog,
+        openFavoritesPanel: openFavoritesPanel,
+        openInspector: openInspector,
+        openPresetDropdown: openPresetDropdown,
+        playCompletionSound: playCompletionSound,
+        renderFavoritesPanel: renderFavoritesPanel,
+        renderQuickPromptsBar: renderQuickPromptsBar,
+        setupChangelogListeners: setupChangelogListeners,
+        setupContextSearch: setupContextSearch,
+        showQPIconPicker: showQPIconPicker
+    });
 
     // ─── Журнал «последних отправленных» запросов (инспектор) ───
     // Ключи с секретами вымываются по имени поля; длинные строки (base64-вложения)
@@ -17263,1268 +18603,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         runGenerate: runGenerate
     });
 
-    // ─── Quick Prompts ───────────────────────────────────────────────────────────
-
-    function renderQuickPromptsBar() {
-        const bar = document.getElementById('scp-qp-bar');
-        const toggleBtn = document.getElementById('scp-qp-toggle-btn');
-        if (!bar) return;
-        const s = getSettings();
-        const prompts = s.quickPrompts || [];
-        const visible = s.quickPromptsVisible && prompts.length > 0;
-
-        bar.innerHTML = '';
-        for (const qp of prompts) {
-            const btn = document.createElement('button');
-            btn.className = 'scp-qp-chip';
-            const truncTitle = qp.text.length > 100 ? qp.text.slice(0, 100) + '…' : qp.text;
-            btn.title = truncTitle;
-            btn.innerHTML = `<span class="scp-qp-icon">${escHtml(qp.icon || '⚡')}</span><span class="scp-qp-label">${escHtml(qp.label || '')}</span>`;
-            btn.addEventListener('click', () => {
-                const input = document.getElementById('scp-input');
-                if (!input) return;
-                input.value = qp.text;
-                autoResize(input);
-                input.focus();
-                recordStat(SM.qp);
-            });
-            bar.appendChild(btn);
-        }
-
-        if (visible) {
-            bar.classList.add('scp-qp-bar--open');
-        } else {
-            bar.classList.remove('scp-qp-bar--open');
-        }
-        if (toggleBtn) toggleBtn.classList.toggle('active', s.quickPromptsVisible);
-    }
-
-    let _qpIconPickerEl = null;
-
-    function showQPIconPicker(anchorEl, currentIcon, onSelect) {
-        if (_qpIconPickerEl && _qpIconPickerEl.__anchor === anchorEl) { 
-            _qpIconPickerEl.remove(); 
-            _qpIconPickerEl = null; 
-            return; 
-        }
-        if (_qpIconPickerEl) { _qpIconPickerEl.remove(); _qpIconPickerEl = null; }
-        
-        const pop = document.createElement('div');
-        pop.className = 'scp-qp-icon-picker';
-        pop.__anchor = anchorEl;
-
-        for (const emoji of QP_ICON_POOL) {
-            const btn = document.createElement('button');
-            btn.className = `scp-qp-icon-option${emoji === currentIcon ? ' active' : ''}`;
-            btn.textContent = emoji;
-            btn.addEventListener('click', () => { onSelect(emoji); pop.remove(); _qpIconPickerEl = null; });
-            pop.appendChild(btn);
-        }
-        document.body.appendChild(pop);
-        _qpIconPickerEl = pop;
-        const rect = anchorEl.getBoundingClientRect();
-        pop.style.cssText = `position:fixed;z-index:2147483060;top:${rect.bottom + 4}px;left:${rect.left}px`;
-        requestAnimationFrame(() => {
-            const pr = pop.getBoundingClientRect();
-            if (pr.right > window.innerWidth - 8) pop.style.left = `${window.innerWidth - pr.width - 8}px`;
-            if (pr.bottom > window.innerHeight - 8) pop.style.top = `${rect.top - pr.height - 6}px`;
-        });
-        const onOut = e => {
-            if (!pop.contains(e.target) && e.target !== anchorEl) {
-                pop.remove(); _qpIconPickerEl = null;
-                document.removeEventListener('mousedown', onOut, true);
-            }
-        };
-        setTimeout(() => document.addEventListener('mousedown', onOut, true), 0);
-    }
-
-    // ─── Preset Dropdown ───────────────────────────────────────────
-
-    let _activePresetPanel = null;
-
-    function openPresetDropdown(triggerEl, groups, onSelect, opts = {}) {
-        const { placeholder = 'Поиск…', width = 320, emptyText = 'Здесь пусто' } = opts;
-
-        if (_activePresetPanel) {
-            _activePresetPanel.remove();
-            _activePresetPanel = null;
-            triggerEl.classList.remove('open');
-            return;
-        }
-
-        triggerEl.classList.add('open');
-
-        const panel = document.createElement('div');
-        panel.className = 'scp-pdd-panel';
-        panel.style.width = `${width}px`;
-        _activePresetPanel = panel;
-
-        const allItems = groups.flatMap(g => g.items);
-
-        if (allItems.length > 6) {
-            const sw = document.createElement('div');
-            sw.className = 'scp-pdd-search-wrap';
-            const si = document.createElement('input');
-            si.type = 'text'; si.placeholder = placeholder;
-            si.className = 'scp-pdd-search';
-            si.addEventListener('input', () => renderContent(si.value.trim().toLowerCase()));
-            sw.appendChild(si);
-            panel.appendChild(sw);
-            setTimeout(() => si.focus(), 60);
-        }
-
-        const listEl = document.createElement('div');
-        listEl.className = 'scp-pdd-list';
-        panel.appendChild(listEl);
-
-        const renderContent = (q = '') => {
-            listEl.innerHTML = '';
-            let totalShown = 0;
-            groups.forEach(group => {
-                const filtered = q
-                    ? group.items.filter(it => it.name.toLowerCase().includes(q) || (it.preview || '').toLowerCase().includes(q))
-                    : group.items;
-                if (!filtered.length) return;
-                totalShown += filtered.length;
-                if (group.label) {
-                    const hdr = document.createElement('div');
-                    hdr.className = 'scp-pdd-group-label';
-                    hdr.textContent = group.label;
-                    listEl.appendChild(hdr);
-                }
-                filtered.forEach(item => {
-                    const row = document.createElement('div');
-                    row.className = 'scp-pdd-item';
-                    const top = document.createElement('div');
-                    top.className = 'scp-pdd-item-top';
-                    const name = document.createElement('span');
-                    name.className = 'scp-pdd-item-name';
-                    name.textContent = item.name;
-                    top.appendChild(name);
-                    if (item.badge) {
-                        const b = document.createElement('span');
-                        b.className = `scp-pdd-badge scp-pdd-badge--${item.badge}`;
-                        b.textContent = item.badge;
-                        top.appendChild(b);
-                    }
-                    row.appendChild(top);
-                    if (item.preview) {
-                        const prev = document.createElement('div');
-                        prev.className = 'scp-pdd-item-preview';
-                        prev.textContent = item.preview;
-                        row.appendChild(prev);
-                    }
-                    row.addEventListener('click', () => {
-                        onSelect(item.value, item.name, item);
-                        closePresetPanel();
-                    });
-                    listEl.appendChild(row);
-                });
-            });
-            if (!totalShown) {
-                const empty = document.createElement('div');
-                empty.className = 'scp-pdd-empty';
-                empty.textContent = q ? 'Нет результатов' : emptyText;
-                listEl.appendChild(empty);
-            }
-        };
-
-        renderContent();
-        document.body.appendChild(panel);
-
-        const rect = triggerEl.getBoundingClientRect();
-        panel.style.cssText += `;position:fixed;z-index:2147483060;top:${rect.bottom + 5}px;left:${rect.left}px;max-width:calc(100vw - 16px)`;
-        requestAnimationFrame(() => {
-            const pr = panel.getBoundingClientRect();
-            if (pr.right > window.innerWidth - 8) panel.style.left = `${window.innerWidth - pr.width - 8}px`;
-            if (pr.bottom > window.innerHeight - 8) panel.style.top = `${rect.top - pr.height - 5}px`;
-        });
-
-        setTimeout(() => {
-            const onOut = e => {
-                if (!panel.contains(e.target) && e.target !== triggerEl) {
-                    closePresetPanel();
-                    document.removeEventListener('mousedown', onOut, true);
-                }
-            };
-            document.addEventListener('mousedown', onOut, true);
-        }, 0);
-    }
-
-    function closePresetPanel() {
-        if (_activePresetPanel) { _activePresetPanel.remove(); _activePresetPanel = null; }
-        document.querySelectorAll('.scp-pdd-trigger.open, .scp-preset-mgr-trigger.open')
-            .forEach(el => el.classList.remove('open'));
-    }
-
-    function buildPromptPresetManager(containerEl, getTextFn, setTextFn, dictKey = 'promptPresets') {
-        if (!containerEl) return;
-        containerEl.innerHTML = '';
-        const s = getSettings();
-        if (!s[dictKey]) s[dictKey] = {};
-
-        let _activeName = '';
-        let _activeSource = '';
-
-        const bar = document.createElement('div');
-        bar.className = 'scp-preset-mgr-bar';
-
-        const trigger = document.createElement('button');
-        trigger.type = 'button';
-        trigger.className = 'scp-preset-mgr-trigger';
-        trigger.innerHTML = `<span class="scp-pmt-label">Выберите пресет…</span><svg class="scp-pmt-chevron" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>`;
-
-        const labelEl = trigger.querySelector('.scp-pmt-label');
-
-        const setActive = (name, source) => {
-            _activeName = name;
-            _activeSource = source;
-            labelEl.textContent = name || 'Выберите пресет…';
-            trigger.classList.toggle('scp-pmt--has-value', !!name);
-            updateBtnStates();
-        };
-
-        const buildGroups = () => {
-            const groups = [];
-            const profileItems = Object.keys(s.profiles || {})
-                .filter(n => s.profiles[n].systemPrompt)
-                .map(n => ({
-                    name: n,
-                    value: s.profiles[n].systemPrompt,
-                    preview: (s.profiles[n].systemPrompt || '').replace(/\s+/g, ' ').slice(0, 80),
-                    badge: 'profile',
-                    _source: 'profile',
-                }));
-            if (profileItems.length) groups.push({ label: 'Из профилей', items: profileItems });
-
-            const customItems = Object.keys(s[dictKey])
-                .map(n => ({
-                    name: n,
-                    value: s[dictKey][n],
-                    preview: (s[dictKey][n] || '').replace(/\s+/g, ' ').slice(0, 80),
-                    badge: 'custom',
-                    _source: 'custom',
-                }));
-            if (customItems.length) groups.push({ label: 'Пользовательские пресеты', items: customItems });
-            return groups;
-        };
-
-        trigger.addEventListener('click', () => {
-            const groups = buildGroups();
-            openPresetDropdown(trigger, groups, (value, name, item) => {
-                setTextFn(value);
-                setActive(name, item._source || 'custom');
-            }, { placeholder: 'Поиск пресетов…', width: 360, emptyText: 'Пресеты ещё не сохранены' });
-        });
-
-        const mkBtn = (icon, title, cls, cb) => {
-            const b = document.createElement('button');
-            b.type = 'button';
-            b.className = `scp-preset-mgr-btn${cls ? ' ' + cls : ''}`;
-            b.title = title;
-            b.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
-            b.addEventListener('click', cb);
-            return b;
-        };
-
-        const saveBtn = mkBtn('floppy-disk', 'Сохранить пресет', '', async () => {
-            if (_activeName && _activeSource === 'custom') {
-                s[dictKey][_activeName] = getTextFn();
-                saveSettings$1();
-                toastr.success(`Пресет «${escHtml(_activeName)}» сохранён`, EXT_DISPLAY);
-            } else {
-                const name = await showCustomDialog({ type: 'prompt', title: 'Сохранить пресет промпта', message: 'Имя пресета:', placeholder: 'Мой пресет' });
-                if (!name?.trim()) return;
-                s[dictKey][name.trim()] = getTextFn();
-                saveSettings$1();
-                setActive(name.trim(), 'custom');
-                toastr.success(`Пресет «${escHtml(name.trim())}» сохранён`, EXT_DISPLAY);
-            }
-        });
-
-        const renameBtn = mkBtn('pen', 'Переименовать выбранный пользовательский пресет', '', async () => {
-            if (!_activeName || _activeSource !== 'custom') { toastr.info('Сначала выберите пользовательский пресет.', EXT_DISPLAY); return; }
-            const newName = await showCustomDialog({ type: 'prompt', title: 'Переименовать пресет', message: 'Новое имя:', defaultValue: _activeName });
-            if (!newName?.trim() || newName.trim() === _activeName) return;
-            s[dictKey][newName.trim()] = s[dictKey][_activeName];
-            delete s[dictKey][_activeName];
-            saveSettings$1();
-            setActive(newName.trim(), 'custom');
-        });
-
-        const deleteBtn = mkBtn('trash', 'Удалить выбранный пользовательский пресет', 'danger', async () => {
-            if (!_activeName || _activeSource !== 'custom') { toastr.info('Удалять можно только пользовательские пресеты.', EXT_DISPLAY); return; }
-            const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить пресет', message: `Удалить «${_activeName}»?` });
-            if (!ok) return;
-            delete s[dictKey][_activeName];
-            saveSettings$1();
-            setActive('', '');
-        });
-
-        const updateBtnStates = () => {
-            const isCustom = !!_activeName && _activeSource === 'custom';
-            renameBtn.disabled = !isCustom;
-            deleteBtn.disabled = !isCustom;
-            renameBtn.style.opacity = isCustom ? '1' : '0.35';
-            deleteBtn.style.opacity = isCustom ? '1' : '0.35';
-        };
-        updateBtnStates();
-
-        bar.appendChild(trigger);
-        bar.appendChild(saveBtn);
-        bar.appendChild(renameBtn);
-        bar.appendChild(deleteBtn);
-        containerEl.appendChild(bar);
-    }
-
-    function buildQPSetManager(containerEl, onSetLoaded) {
-        if (!containerEl) return;
-        containerEl.innerHTML = '';
-        const s = getSettings();
-        if (!s.quickPromptSets) s.quickPromptSets = {};
-
-        let _activeName = s.activeQuickPromptSet || '';
-
-        const bar = document.createElement('div');
-        bar.className = 'scp-preset-mgr-bar';
-
-        const trigger = document.createElement('button');
-        trigger.type = 'button';
-        trigger.className = 'scp-preset-mgr-trigger';
-        const getLabel = name => {
-            if (!name) return 'Выберите набор…';
-            const count = (s.quickPromptSets[name] || []).length;
-            return `${name}  (${count})`;
-        };
-        trigger.innerHTML = `<span class="scp-pmt-label">${escHtml(getLabel(_activeName))}</span><svg class="scp-pmt-chevron" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>`;
-
-        const labelEl = trigger.querySelector('.scp-pmt-label');
-
-        const setActive = name => {
-            _activeName = name;
-            labelEl.textContent = getLabel(name);
-            trigger.classList.toggle('scp-pmt--has-value', !!name);
-            updateBtnStates();
-        };
-
-        const buildGroups = () => {
-            const items = Object.keys(s.quickPromptSets).map(name => ({
-                name,
-                value: name,
-                preview: `${(s.quickPromptSets[name] || []).length} prompts: ` +
-                    (s.quickPromptSets[name] || []).map(q => `${q.icon || '⚡'} ${q.label}`).join(', ').slice(0, 80),
-                badge: name === s.activeQuickPromptSet ? 'active' : null,
-            }));
-            return [{ label: items.length ? 'Сохранённые наборы' : null, items }];
-        };
-
-        trigger.addEventListener('click', () => {
-            openPresetDropdown(trigger, buildGroups(), (value) => {
-                if (!s.quickPromptSets[value]) return;
-                s.quickPrompts = JSON.parse(JSON.stringify(s.quickPromptSets[value]));
-                s.activeQuickPromptSet = value;
-                saveSettings$1();
-                setActive(value);
-                renderQuickPromptsBar();
-                if (onSetLoaded) onSetLoaded();
-                toastr.success(`Набор «${escHtml(value)}» загружен`, EXT_DISPLAY);
-            }, { placeholder: 'Поиск наборов…', width: 340, emptyText: 'Наборы ещё не сохранены. Сохраните один ниже.' });
-        });
-
-        const mkBtn = (icon, title, cls, cb) => {
-            const b = document.createElement('button');
-            b.type = 'button';
-            b.className = `scp-preset-mgr-btn${cls ? ' ' + cls : ''}`;
-            b.title = title;
-            b.innerHTML = `<i class="fa-solid fa-${icon}"></i>`;
-            b.addEventListener('click', cb);
-            return b;
-        };
-
-        const saveBtn = mkBtn('floppy-disk', 'Сохранить текущие промпты в активный набор (или новый)', '', async () => {
-            let name = _activeName;
-            if (!name) {
-                name = await showCustomDialog({ type: 'prompt', title: 'Сохранить набор промптов', message: 'Имя набора:', placeholder: 'Мой набор' });
-                if (!name?.trim()) return;
-                name = name.trim();
-            }
-            s.quickPromptSets[name] = JSON.parse(JSON.stringify(s.quickPrompts));
-            s.activeQuickPromptSet = name;
-            saveSettings$1();
-            setActive(name);
-            toastr.success(`Набор «${escHtml(name)}» сохранён`, EXT_DISPLAY);
-        });
-
-        const saveAsBtn = mkBtn('plus', 'Сохранить текущие промпты как новый набор', '', async () => {
-            const name = await showCustomDialog({ type: 'prompt', title: 'Новый набор промптов', message: 'Имя набора:', placeholder: 'Мой новый набор' });
-            if (!name?.trim()) return;
-            const n = name.trim();
-            s.quickPromptSets[n] = JSON.parse(JSON.stringify(s.quickPrompts));
-            s.activeQuickPromptSet = n;
-            saveSettings$1();
-            setActive(n);
-            toastr.success(`Набор «${escHtml(n)}» создан`, EXT_DISPLAY);
-        });
-
-        const renameBtn = mkBtn('pen', 'Переименовать выбранный набор', '', async () => {
-            if (!_activeName) { toastr.info('Сначала выберите набор.', EXT_DISPLAY); return; }
-            const newName = await showCustomDialog({ type: 'prompt', title: 'Переименовать набор', message: 'Новое имя:', defaultValue: _activeName });
-            if (!newName?.trim() || newName.trim() === _activeName) return;
-            const n = newName.trim();
-            s.quickPromptSets[n] = s.quickPromptSets[_activeName];
-            delete s.quickPromptSets[_activeName];
-            if (s.activeQuickPromptSet === _activeName) s.activeQuickPromptSet = n;
-            saveSettings$1();
-            setActive(n);
-        });
-
-        const deleteBtn = mkBtn('trash', 'Удалить выбранный набор', 'danger', async () => {
-            if (!_activeName) { toastr.info('Сначала выберите набор.', EXT_DISPLAY); return; }
-            const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить набор', message: `Удалить набор «${_activeName}»?` });
-            if (!ok) return;
-            delete s.quickPromptSets[_activeName];
-            if (s.activeQuickPromptSet === _activeName) s.activeQuickPromptSet = '';
-            saveSettings$1();
-            setActive('');
-        });
-
-        const updateBtnStates = () => {
-            const has = !!_activeName;
-            renameBtn.disabled = !has; renameBtn.style.opacity = has ? '1' : '0.35';
-            deleteBtn.disabled = !has; deleteBtn.style.opacity = has ? '1' : '0.35';
-        };
-        updateBtnStates();
-
-        bar.appendChild(trigger);
-        bar.appendChild(saveBtn);
-        bar.appendChild(saveAsBtn);
-        bar.appendChild(renameBtn);
-        bar.appendChild(deleteBtn);
-        containerEl.appendChild(bar);
-    }
-
-    // ─── Sounds ─────────────────────────────────────────────────────────────
-
-    const _SOUND_PRESETS = {
-        none:    { label: 'Без звука' },
-        chime:   { label: 'Куранты' },
-        bell:    { label: 'Колокол' },
-        soft:    { label: 'Мягкий сигнал' },
-        digital: { label: 'Цифровой бип' },
-        pop:     { label: 'Поп' },
-    };
-
-    function _synthSound(type, volume = 80) {
-        try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const masterGain = ctx.createGain();
-            masterGain.gain.value = Math.max(0, Math.min(1, volume / 100));
-            masterGain.connect(ctx.destination);
-            const now = ctx.currentTime;
-
-            if (type === 'chime') {
-                [523.25, 659.25, 783.99].forEach((freq, i) => {
-                    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
-                    const og = ctx.createGain();
-                    o.connect(og); og.connect(masterGain);
-                    og.gain.setValueAtTime(0, now + i * 0.12);
-                    og.gain.linearRampToValueAtTime(0.18, now + i * 0.12 + 0.02);
-                    og.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.5);
-                    o.start(now + i * 0.12); o.stop(now + i * 0.12 + 0.5);
-                });
-            } else if (type === 'bell') {
-                const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 880;
-                const og = ctx.createGain();
-                o.connect(og); og.connect(masterGain);
-                og.gain.setValueAtTime(0.25, now);
-                og.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
-                o.start(now); o.stop(now + 1.2);
-            } else if (type === 'soft') {
-                const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 660;
-                const og = ctx.createGain();
-                o.connect(og); og.connect(masterGain);
-                og.gain.setValueAtTime(0, now);
-                og.gain.linearRampToValueAtTime(0.15, now + 0.05);
-                og.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-                o.start(now); o.stop(now + 0.4);
-            } else if (type === 'digital') {
-                [440, 880].forEach((freq, i) => {
-                    const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = freq;
-                    const og = ctx.createGain();
-                    o.connect(og); og.connect(masterGain);
-                    og.gain.setValueAtTime(0.08, now + i * 0.07);
-                    og.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.12);
-                    o.start(now + i * 0.07); o.stop(now + i * 0.07 + 0.12);
-                });
-            } else if (type === 'pop') {
-                const o = ctx.createOscillator(); o.type = 'sine';
-                o.frequency.setValueAtTime(600, now);
-                o.frequency.exponentialRampToValueAtTime(200, now + 0.1);
-                const og = ctx.createGain();
-                o.connect(og); og.connect(masterGain);
-                og.gain.setValueAtTime(0.22, now);
-                og.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-                o.start(now); o.stop(now + 0.15);
-            }
-            setTimeout(() => ctx.close(), 2000);
-        } catch (_) {}
-    }
-
-    function playCompletionSound(force = false) {
-        const s = getSettings();
-        const soundType = s.completionSound || 'none';
-        const vol = s.completionSoundVolume ?? 80;
-        if (soundType === 'none') return;
-        if (!force && s.completionSoundOnlyWhenUnfocused && document.hasFocus()) return;
-
-        if (soundType.startsWith('custom_') && s.customSounds && s.customSounds[soundType]) {
-            try {
-                const audio = new Audio(s.customSounds[soundType].data);
-                audio.volume = vol / 100;
-                audio.play().catch(() => {});
-            } catch (_) {}
-            return;
-        }
-
-        if (soundType === 'custom' && s.completionSoundData) {
-            try {
-                const audio = new Audio(s.completionSoundData);
-                audio.volume = vol / 100;
-                audio.play().catch(() => {});
-            } catch (_) {}
-            return;
-        }
-        
-        if (_SOUND_PRESETS[soundType] && soundType !== 'none') {
-            _synthSound(soundType, vol);
-        }
-    }
-
-    // ─── Changelog ───────────────────────────────────────────────────────────────
-
-    function buildChangelogHTML() {
-        const current = CHANGELOG[0];
-        const past = CHANGELOG.slice(1);
-
-        const notesHTML = current.notes
-            .map(n => `<li>${n}</li>`)
-            .join('');
-
-        let historyHTML = '';
-        if (past.length) {
-            historyHTML = `<div class="scp-cl-history">` +
-                past.map(entry => {
-                    const li = (entry.notes || []).map(n => `<li>${n}</li>`).join('');
-                    return `<details class="scp-cl-entry">
-                    <summary class="scp-cl-entry-summary">
-                        <span class="scp-cl-entry-ver">v${escHtml(entry.version)}</span>
-                        <span style="flex:1;opacity:.5">${escHtml(entry.date || '')}</span>
-                    </summary>
-                    <div class="scp-cl-entry-body"><ul>${li}</ul></div>
-                </details>`;
-                }).join('') +
-                `</div>`;
-        }
-
-        return `<div class="scp-cl-current">
-        <div class="scp-cl-version-badge">✦ Version ${escHtml(current.version)} ${current.date ? '· ' + escHtml(current.date) : ''}</div>
-        <div class="scp-cl-notes"><ul>${notesHTML}</ul></div>
-    </div>${historyHTML}`;
-    }
-
-    function openChangelog() {
-        const modal = document.getElementById('scp-changelog-modal');
-        if (!modal) return;
-        const body = document.getElementById('scp-changelog-body');
-        if (body) body.innerHTML = buildChangelogHTML();
-        modal.style.display = 'flex';
-        Promise.resolve().then(function () { return uiWindow; }).then(m => m.bringWindowToFront());
-    }
-
-    function closeChangelog() {
-        const modal = document.getElementById('scp-changelog-modal');
-        if (modal) modal.style.display = 'none';
-    }
-
-    function checkChangelogAutoShow() {
-        const s = getSettings();
-        const current = CHANGELOG[0];
-        const currentVersion = current?.version || '';
-        if (s.changelogAutoShow && current?.announce !== false && s.lastSeenVersion !== currentVersion) {
-            s.lastSeenVersion = currentVersion;
-            saveSettings$1();
-            setTimeout(openChangelog, 800);
-        } else if (s.lastSeenVersion !== currentVersion) {
-            s.lastSeenVersion = currentVersion;
-            saveSettings$1();
-        }
-    }
-
-    function setupChangelogListeners() {
-        const modal = document.getElementById('scp-changelog-modal');
-        if (!modal) return;
-        document.getElementById('scp-changelog-close')?.addEventListener('click', closeChangelog);
-        let _mdTarget = null;
-        modal.addEventListener('mousedown', e => { _mdTarget = e.target; });
-        modal.addEventListener('click', e => { if (e.target === modal && _mdTarget === modal) closeChangelog(); });
-    }
-
-    function renderFavoritesPanel() {
-        const listEl = document.getElementById('scp-fav-list');
-        const emptyEl = document.getElementById('scp-fav-empty');
-        if (!listEl) return;
-
-        const starredIds = getStarredMessages();
-        const session = getCurrentSession();
-        const starred = session.messages.filter(m => starredIds.includes(m.id));
-
-        listEl.querySelectorAll('.scp-fav-item').forEach(el => el.remove());
-
-        if (!starred.length) {
-            if (emptyEl) emptyEl.style.display = '';
-            return;
-        }
-        if (emptyEl) emptyEl.style.display = 'none';
-
-        const frag = document.createDocumentFragment();
-        starred.forEach(msg => {
-            const item = document.createElement('div');
-            item.className = 'scp-fav-item';
-            item.dataset.msgId = msg.id;
-
-            const raw = msg.content.replace(/```[\s\S]*?```/g, '[code]').replace(/<[^>]+>/g, '').trim();
-            const preview = raw.length > 140 ? raw.slice(0, 140) + '…' : raw;
-            const roleLabel = msg.role === 'user' ? 'Пользователь' : 'Copilot';
-            const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-            item.innerHTML = `
-            <span class="scp-fav-item-icon">${I.starFill}</span>
-            <div class="scp-fav-item-body">
-                <div class="scp-fav-item-meta">
-                    <span class="scp-fav-item-role">${escHtml(roleLabel)}</span>
-                    <span>${escHtml(time)}</span>
-                </div>
-                <div class="scp-fav-item-text">${escHtml(preview)}</div>
-            </div>
-            <button class="scp-fav-item-remove" title="Убрать из избранного">✕</button>`;
-
-            item.addEventListener('click', e => {
-                if (e.target.classList.contains('scp-fav-item-remove')) return;
-                closeFavoritesPanel();
-                const msgEl = document.querySelector(`.scp-msg[data-id="${msg.id}"]`);
-                if (!msgEl) return;
-                msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                requestAnimationFrame(() => {
-                    msgEl.classList.remove('scp-msg-flash');
-                    void msgEl.offsetWidth;
-                    msgEl.classList.add('scp-msg-flash');
-                    msgEl.addEventListener('animationend', () => msgEl.classList.remove('scp-msg-flash'), { once: true });
-                });
-            });
-
-            item.querySelector('.scp-fav-item-remove').addEventListener('click', e => {
-                e.stopPropagation();
-                toggleStarMessage(msg.id);
-                const msgEl = document.querySelector(`.scp-msg[data-id="${msg.id}"]`);
-                if (msgEl) {
-                    msgEl.classList.remove('scp-msg-starred');
-                    const btn = msgEl.querySelector('.scp-msg-btn-star');
-                    if (btn) { btn.classList.remove('starred'); btn.title = 'В избранное'; }
-                }
-                renderFavoritesPanel();
-            });
-
-            frag.appendChild(item);
-        });
-        listEl.appendChild(frag);
-    }
-
-    function openFavoritesPanel() {
-        const panel = document.getElementById('scp-fav-panel');
-        const btn = document.getElementById('scp-fav-btn');
-        if (!panel) return;
-        renderFavoritesPanel();
-        panel.style.display = 'flex';
-        btn?.classList.add('active');
-    }
-
-    function closeFavoritesPanel() {
-        const panel = document.getElementById('scp-fav-panel');
-        const btn = document.getElementById('scp-fav-btn');
-        if (panel) panel.style.display = 'none';
-        btn?.classList.remove('active');
-    }
-
-    // ─── Context Inspector ──────────────────────────────────────────────────────
-
-    // Поиск по блокам инспектора: без текстовой хирургии по подсвеченному HTML —
-    // матчим textContent блоков, подсвечиваем блок целиком, Enter/Shift+Enter листают.
-    let _ctxSearchBound = false;
-    let _ctxSearchMatches = [];
-    let _ctxSearchIdx = -1;
-
-    function _ctxSearchApply(query) {
-        const body = document.getElementById('scp-ctx-body');
-        const countEl = document.getElementById('scp-ctx-search-count');
-        if (!body) return;
-        body.querySelectorAll('.scp-ctx-hit').forEach(el => el.classList.remove('scp-ctx-hit', 'scp-ctx-hit-current'));
-        _ctxSearchMatches = [];
-        _ctxSearchIdx = -1;
-
-        const q = (query || '').toLowerCase().trim();
-        if (q) {
-            body.querySelectorAll('.scp-ctx-block').forEach(block => {
-                if ((block.textContent || '').toLowerCase().includes(q)) {
-                    block.classList.add('scp-ctx-hit');
-                    _ctxSearchMatches.push(block);
-                }
-            });
-        }
-        if (countEl) countEl.textContent = q ? `${_ctxSearchMatches.length ? '0' : '0'}/${_ctxSearchMatches.length}` : '';
-    }
-
-    function _ctxSearchGo(dir) {
-        if (!_ctxSearchMatches.length) return;
-        _ctxSearchIdx = (_ctxSearchIdx + dir + _ctxSearchMatches.length) % _ctxSearchMatches.length;
-        _ctxSearchMatches.forEach(el => el.classList.remove('scp-ctx-hit-current'));
-        const cur = _ctxSearchMatches[_ctxSearchIdx];
-        cur.classList.add('scp-ctx-hit-current');
-        const body = document.getElementById('scp-ctx-body');
-        if (body) body.scrollTo({ top: cur.offsetTop - 8, behavior: 'smooth' });
-        const countEl = document.getElementById('scp-ctx-search-count');
-        if (countEl) countEl.textContent = `${_ctxSearchIdx + 1}/${_ctxSearchMatches.length}`;
-    }
-
-    function setupContextSearch() {
-        const input = document.getElementById('scp-ctx-search');
-        if (!input) return;
-        input.value = '';
-        _ctxSearchApply('');
-        if (_ctxSearchBound) return;
-        _ctxSearchBound = true;
-        input.addEventListener('input', () => _ctxSearchApply(input.value));
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); _ctxSearchGo(e.shiftKey ? -1 : 1); }
-        });
-        document.getElementById('scp-ctx-search-prev')?.addEventListener('click', () => _ctxSearchGo(-1));
-        document.getElementById('scp-ctx-search-next')?.addEventListener('click', () => _ctxSearchGo(1));
-    }
-
-    function _highlightContextText(raw) {
-        const masterRe = /(```[\s\S]*?(?:```|$))|(`[^`\n]*`)|(<\/?([\w:{}_-]+)[^>]*>|<!--[\s\S]*?-->)|(\{\{[^}\n]+\}\})/gi;
-        
-        let m;
-        masterRe.lastIndex = 0;
-        let tempEvents = [];
-        while ((m = masterRe.exec(raw)) !== null) {
-            if (m[1] !== undefined) tempEvents.push({ start: m.index, end: masterRe.lastIndex, type: 'code_block', match: m[1] });
-            else if (m[2] !== undefined) tempEvents.push({ start: m.index, end: masterRe.lastIndex, type: 'inline_code', match: m[2] });
-            else if (m[3] !== undefined) tempEvents.push({ start: m.index, end: masterRe.lastIndex, type: 'tag', match: m[3], tagName: m[4] });
-            else if (m[5] !== undefined) tempEvents.push({ start: m.index, end: masterRe.lastIndex, type: 'macro', match: m[5] });
-        }
-
-        const openStacks = {};
-        const validTags = new Set();
-
-        for (let i = 0; i < tempEvents.length; i++) {
-            const ev = tempEvents[i];
-            if (ev.type === 'tag') {
-                const match = ev.match;
-                if (match.startsWith('<!--') || match.endsWith('/>')) {
-                    validTags.add(ev.start);
-                } else {
-                    const isClose = match.startsWith('</');
-                    const tagName = ev.tagName;
-                    if (!tagName) continue;
-
-                    if (isClose) {
-                        if (openStacks[tagName] && openStacks[tagName].length > 0) {
-                            const openEvIndex = openStacks[tagName].pop();
-                            validTags.add(tempEvents[openEvIndex].start);
-                            validTags.add(ev.start);
-                        }
-                    } else {
-                        if (!openStacks[tagName]) openStacks[tagName] = [];
-                        openStacks[tagName].push(i);
-                    }
-                }
-            }
-        }
-
-        const events = [];
-        for (const ev of tempEvents) {
-            if (ev.type === 'tag' && !validTags.has(ev.start)) continue;
-            events.push([ev.start, ev.end, ev.type, ev.match, ev.tagName]);
-        }
-
-        let html = '', last = 0;
-        const KNOWN = new Set(['system_prompt','character_information','characters','character','lorebook_context','st_system_prompt','persistent_memory','summary_context','lorebook_management','character_management','chat_messages_editing','roleplay_context','entity_definitions','persona_configuration','operational_guidelines','{{user}}_persona', 'tool_calls_system', 'memory_system']);
-        let currentDepth = 0;
-        let emittedAnchors = new Set();
-
-        for (const [start, end, type, match, tagName] of events) {
-            if (start < last) continue;
-            html += escHtml(raw.slice(last, start));
-            
-            if (type === 'tag') {
-                const isClose = match.startsWith('</');
-                const isSelfClose = match.endsWith('/>');
-                const isComment = match.startsWith('<!--');
-
-                let applyDepth;
-                if (isComment || isSelfClose) {
-                    applyDepth = currentDepth;
-                } else if (isClose) {
-                    currentDepth = Math.max(0, currentDepth - 1);
-                    applyDepth = currentDepth;
-                } else {
-                    applyDepth = currentDepth;
-                    currentDepth++;
-                }
-
-                if (!isClose && !isComment && !isSelfClose && tagName) {
-                    if (KNOWN.has(tagName) || tagName.endsWith('_persona')) {
-                        if (!emittedAnchors.has(tagName)) {
-                            emittedAnchors.add(tagName);
-                            html += `<span id="scp-ctx-sec-${tagName}" class="scp-ctx-anchor"></span>`;
-                        }
-                    }
-                }
-                
-                const depthClass = Math.min(applyDepth, 5);
-                html += `<span class="scp-ctx-hl-tag scp-ctx-hl-tag-d${depthClass}">${escHtml(match)}</span>`;
-            } else if (type === 'macro') {
-                html += `<span class="scp-ctx-hl-macro">${escHtml(match)}</span>`;
-            } else if (type === 'code_block' || type === 'inline_code') {
-                html += escHtml(match);
-            }
-            last = end;
-        }
-        html += escHtml(raw.slice(last));
-        return html;
-    }
-
-    function _buildContextInspectorHTML(messages) {
-        const SECTION_LABELS = {
-            'system_prompt': 'Системный промпт',
-            'persistent_memory': 'Постоянная память',
-            'lorebook_context': 'Лорбук',
-            'characters': 'Персонажи',
-            '{{user}}_persona': 'Персона пользователя',
-            'memory_system': 'Управление памятью',
-            'lorebook_management': 'Управление лорбуком',
-            'character_management': 'Управление персонажами',
-            'chat_messages_editing': 'Управление чатом',
-            'tool_calls_system': 'Вызовы инструментов'
-        };
-        const KNOWN_SECS = new Set(Object.keys(SECTION_LABELS));
-        const ALIASES = {
-            'character_information': 'characters',
-            'character': 'characters'
-        };
-        const DISPLAY_ORDER = [
-            'system_prompt',
-            'persistent_memory',
-            'lorebook_context',
-            'characters',
-            '{{user}}_persona',
-            'memory_system',
-            'lorebook_management',
-            'character_management',
-            'chat_messages_editing',
-            'tool_calls_system'
-        ];
-
-        let navHtml = '', bodyHtml = '';
-        let seenSections = new Set();
-        
-        messages.forEach((msg, idx) => {
-            let raw = Array.isArray(msg.content)
-                ? msg.content.map(p => p.type === 'text' ? p.text : '[Image]').join('\n')
-                : (msg.content || '');
-
-            let displayRole = msg.role;
-            if (msg.role === 'user' && raw.includes('"type": "system_notification"')) {
-                displayRole = 'system';
-            }
-
-            const LABELS = { system:'■ SYSTEM', user:'▶ USER', assistant:'◀ ASSISTANT' };
-            const label = (LABELS[displayRole] || displayRole) + (idx > 0 ? ` #${idx}` : '');
-            const blockId = `scp-ctx-b${idx}`;
-
-            navHtml += `<button class="scp-ctx-nav-btn scp-ctx-nav-${displayRole}" data-t="${blockId}">${escHtml(label)}</button>`;
-
-            if (msg.role === 'system') {
-                const tagRe = /<([\w:{}_-]+)[^>]*>/g;
-                let tm;
-                tagRe.lastIndex = 0;
-                let foundMain = [];
-                let foundModules = [];
-
-                while ((tm = tagRe.exec(raw)) !== null) {
-                    let rawTag = tm[1];
-                    let tag = ALIASES[rawTag] ? ALIASES[rawTag] : rawTag;
-                    
-                    const isUserPersona = tag === '{{user}}_persona' || tag.endsWith('_persona');
-                    const key = isUserPersona ? '{{user}}_persona' : tag;
-
-                    if ((KNOWN_SECS.has(key) || isUserPersona) && !seenSections.has(key)) {
-                        seenSections.add(key);
-                        const secLabel = SECTION_LABELS[key] || (isUserPersona ? 'Персона пользователя' : key);
-                        const secId = `scp-ctx-sec-${rawTag}`;
-                        
-                        if (['memory_system','lorebook_management','character_management','chat_messages_editing', 'tool_calls_system'].includes(key)) {
-                            foundModules.push({ key, id: secId, label: secLabel });
-                        } else {
-                            foundMain.push({ key, id: secId, label: secLabel });
-                        }
-                    }
-                }
-
-                const sortFn = (a, b) => {
-                    let idxA = DISPLAY_ORDER.indexOf(a.key);
-                    let idxB = DISPLAY_ORDER.indexOf(b.key);
-                    if (idxA === -1) idxA = 999;
-                    if (idxB === -1) idxB = 999;
-                    return idxA - idxB;
-                };
-
-                foundMain.sort(sortFn);
-                foundModules.sort(sortFn);
-
-                foundMain.forEach(item => {
-                    navHtml += `<button class="scp-ctx-nav-btn scp-ctx-nav-sub" data-t="${item.id}">&nbsp;&nbsp;◦ ${escHtml(item.label)}</button>`;
-                });
-
-                let moduleNavs = '';
-                foundModules.forEach(item => {
-                    moduleNavs += `<button class="scp-ctx-nav-btn scp-ctx-nav-sub" data-t="${item.id}">&nbsp;&nbsp;◦ ${escHtml(item.label)}</button>`;
-                });
-
-                if (moduleNavs) {
-                     navHtml += `<details class="scp-ctx-nav-details" open><summary class="scp-ctx-nav-btn" style="color:var(--scp-text)">▼ Модули</summary>${moduleNavs}</details>`;
-                }
-            }
-
-            const highlighted = _highlightContextText(raw);
-            bodyHtml += `<div class="scp-ctx-block" id="${blockId}">`;
-            bodyHtml += `<div class="scp-ctx-block-header scp-ctx-role-${displayRole}">${escHtml(label)}</div>`;
-            bodyHtml += `<div class="scp-ctx-block-sep"></div>`;
-            bodyHtml += `<div class="scp-ctx-block-body"><pre class="scp-ctx-pre">${highlighted}</pre></div>`;
-            bodyHtml += `</div>`;
-        });
-
-        const styleHtml = `<style>
-        .scp-ctx-hl-tag-d0 { color: #eff6ff !important; }
-        .scp-ctx-hl-tag-d1 { color: #bfdbfe !important; }
-        .scp-ctx-hl-tag-d2 { color: #93c5fd !important; }
-        .scp-ctx-hl-tag-d3 { color: rgb(106, 165, 236) !important; }
-        .scp-ctx-hl-tag-d4 { color: rgb(100, 158, 253) !important; }
-        .scp-ctx-hl-tag-d5 { color: rgb(74, 120, 221) !important; }
-    </style>`;
-
-        return `<div class="scp-ctx-inspector">${styleHtml}<nav class="scp-ctx-nav">${navHtml}</nav><div class="scp-ctx-body" id="scp-ctx-body">${bodyHtml}</div></div>`;
-    }
-
-    let _lastInspectorMessages = [];
-
-    async function openInspector() {
-        const sess = getCurrentSession();
-        const { getEffectiveSettings } = await Promise.resolve().then(function () { return session; });
-        const settings = getEffectiveSettings();
-        const inputEl = document.getElementById('scp-input');
-        const pendingText = inputEl ? inputEl.value.trim() : '';
-        const processedAtts = await _processAttachmentsBeforeSend(state.pendingAttachments, true);
-        
-        const messages = await assembleMessages(sess, settings, pendingText, processedAtts);
-        _lastInspectorMessages = messages;
-
-        const fmtEl = document.getElementById('scp-ctx-formatted');
-        const jsonEl = document.getElementById('scp-ctx-json');
-        const modalEl = document.getElementById('scp-ctx-modal');
-        
-        const modal = modalEl.querySelector('.scp-modal');
-        if (modal) {
-            modal.style.height = '75vh';
-        }
-        
-        const modalBody = modalEl.querySelector('.scp-modal-body');
-        if (modalBody) {
-            modalBody.style.padding = '0';
-            modalBody.style.overflow = 'hidden';
-            modalBody.style.display = 'flex';
-            modalBody.style.flexDirection = 'column';
-            modalBody.style.height = '100%';
-        }
-
-        if (fmtEl) {
-            fmtEl.style.height = '100%';
-            fmtEl.style.flex = '1';
-            fmtEl.style.overflow = 'hidden';
-            fmtEl.style.padding = '0';
-            fmtEl.innerHTML = _buildContextInspectorHTML(messages);
-            
-            setupContextSearch();
-
-            fmtEl.querySelectorAll('.scp-ctx-nav-btn[data-t]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const t = document.getElementById(btn.dataset.t);
-                    const bodyContainer = document.getElementById('scp-ctx-body');
-                    if (t && bodyContainer) {
-                        const topPos = t.offsetTop;
-                        bodyContainer.scrollTo({ top: topPos, behavior: 'smooth' });
-                    }
-                });
-            });
-        }
-        if (jsonEl) jsonEl.textContent = JSON.stringify(messages, null, 2);
-        const lsEl = document.getElementById('scp-ctx-lastsent');
-        if (lsEl) {
-            const log = state.requestLog || [];
-            lsEl.textContent = log.length
-                ? log.slice().reverse().map(e =>
-                    `═══ ${new Date(e.ts).toLocaleTimeString()} — ${e.url} ═══\n${JSON.stringify(e.body, null, 2)}`
-                ).join('\n\n')
-                : 'Запросов ещё не было. Журнал хранит последние 5 тел запросов (секреты вымыты) и очищается при перезагрузке страницы.';
-        }
-        modalEl.style.display = 'flex';
-        Promise.resolve().then(function () { return uiWindow; }).then(m => m.bringWindowToFront());
-        
-        setTimeout(() => {
-            const isJsonActive = document.querySelector('.scp-modal-tab.active')?.dataset.tab === 'json';
-            const targetEl = isJsonActive ? jsonEl : document.getElementById('scp-ctx-body');
-            if (targetEl) {
-                const prevBehavior = targetEl.style.scrollBehavior;
-                targetEl.style.scrollBehavior = 'auto';
-                targetEl.scrollTop = targetEl.scrollHeight;
-                targetEl.style.scrollBehavior = prevBehavior;
-            }
-        }, 0);
-    }
-
-    function buildSoundSettingsUI(container) {
-        if (!container) return;
-        container.innerHTML = '';
-        const s = getSettings();
-        if (!s.customSounds) s.customSounds = {};
-
-        if (s.completionSoundData && !s.customSounds['custom_legacy']) {
-            s.customSounds['custom_legacy'] = {
-                name: s.completionSoundFileName || 'Унаследованный пользовательский звук',
-                data: s.completionSoundData
-            };
-            if (s.completionSound === 'custom') {
-                s.completionSound = 'custom_legacy';
-            }
-            delete s.completionSoundData;
-            delete s.completionSoundFileName;
-            saveSettings$1();
-        }
-
-        const isSP = container.id === 'scp-sp-sound-settings';
-
-        const typeRow = document.createElement('div');
-        typeRow.className = isSP ? 'scp-sp-field' : '';
-        if (!isSP) typeRow.style.marginTop = '10px';
-        
-        const typeLbl = document.createElement(isSP ? 'label' : 'b');
-        typeLbl.className = isSP ? 'scp-sp-label' : '';
-        if (!isSP) typeLbl.style.fontSize = '12px';
-        typeLbl.textContent = 'Звук завершения';
-        
-        const typeWrap = document.createElement('div');
-        typeWrap.style.cssText = 'display:flex;gap:6px;align-items:center';
-        if (!isSP) typeWrap.style.marginTop = '6px';
-        
-        const typeSel = document.createElement('select');
-        typeSel.className = isSP ? 'scp-sp-select text_pole' : 'text_pole';
-        typeSel.style.flex = '1';
-        
-        const renderDropdown = () => {
-            typeSel.innerHTML = '';
-            
-            const groupPreset = document.createElement('optgroup');
-            groupPreset.label = 'Пресеты';
-            for (const [key, preset] of Object.entries(_SOUND_PRESETS)) {
-                const opt = document.createElement('option');
-                opt.value = key; opt.textContent = preset.label;
-                groupPreset.appendChild(opt);
-            }
-            typeSel.appendChild(groupPreset);
-            
-            if (Object.keys(s.customSounds).length > 0) {
-                const groupCustom = document.createElement('optgroup');
-                groupCustom.label = 'Пользовательские звуки';
-                for (const [key, snd] of Object.entries(s.customSounds)) {
-                    const opt = document.createElement('option');
-                    opt.value = key; opt.textContent = snd.name;
-                    groupCustom.appendChild(opt);
-                }
-                typeSel.appendChild(groupCustom);
-            }
-            
-            typeSel.value = s.completionSound || 'none';
-            if (!typeSel.value) {
-                typeSel.value = 'none';
-                s.completionSound = 'none';
-                saveSettings$1();
-            }
-        };
-        renderDropdown();
-
-        const testBtn = document.createElement('button');
-        testBtn.className = isSP ? 'scp-action-btn' : 'menu_button interactable';
-        testBtn.innerHTML = `<i class="fa-solid fa-play"></i><span>Тест</span>`;
-        if (!isSP) testBtn.style.flex = '0 0 auto';
-        testBtn.addEventListener('click', () => playCompletionSound(true));
-        
-        typeWrap.appendChild(typeSel);
-        typeWrap.appendChild(testBtn);
-        typeRow.appendChild(typeLbl);
-        typeRow.appendChild(typeWrap);
-        container.appendChild(typeRow);
-
-        const customActionsWrap = document.createElement('div');
-        customActionsWrap.style.cssText = isSP ? 'display:flex;gap:6px;margin-top:6px' : 'display:flex;gap:6px;margin-top:6px;align-items:center';
-        
-        const uploadBtn = document.createElement('button');
-        uploadBtn.className = isSP ? 'scp-action-btn' : 'menu_button interactable';
-        uploadBtn.innerHTML = `<i class="fa-solid fa-upload"></i><span>Загрузить свой</span>`;
-        if (!isSP) uploadBtn.style.flex = '1';
-
-        uploadBtn.addEventListener('click', () => {
-            const inp = document.createElement('input');
-            inp.type = 'file'; inp.accept = 'audio/*';
-            inp.onchange = async () => {
-                const file = inp.files?.[0]; if (!file) return;
-                if (file.size > 5 * 1024 * 1024) { toastr.warning('Аудиофайл слишком большой (>5 МБ).', EXT_DISPLAY); return; }
-                
-                const { _fileToDataUrl } = await Promise.resolve().then(function () { return utilDom; });
-                const dataUrl = await _fileToDataUrl(file).catch(() => null);
-                if (!dataUrl) { toastr.error('Не удалось загрузить аудио', EXT_DISPLAY); return; }
-                
-                const s2 = getSettings();
-                const id = 'snd_' + Date.now();
-                s2.customSounds[id] = { name: file.name, data: dataUrl };
-                s2.completionSound = id;
-                saveSettings$1();
-                
-                const allContainers = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(Boolean);
-                allContainers.forEach(c => buildSoundSettingsUI(c));
-            };
-            inp.click();
-        });
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = isSP ? 'scp-action-btn scp-sp-danger-btn' : 'menu_button interactable';
-        deleteBtn.innerHTML = `<i class="fa-solid fa-trash"></i><span>Удалить</span>`;
-        if (!isSP) deleteBtn.style.flex = '1';
-
-        deleteBtn.addEventListener('click', async () => {
-            const val = typeSel.value;
-            if (val.startsWith('custom_')) {
-                const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить звук', message: 'Удалить этот пользовательский звук?' });
-                if (!ok) return;
-                const s2 = getSettings();
-                delete s2.customSounds[val];
-                s2.completionSound = 'none';
-                saveSettings$1();
-                renderDropdown();
-                updateCustomActions();
-                
-                const otherContainers = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(c => c && c !== container);
-                otherContainers.forEach(c => buildSoundSettingsUI(c));
-            }
-        });
-        
-        customActionsWrap.appendChild(uploadBtn);
-        customActionsWrap.appendChild(deleteBtn);
-        container.appendChild(customActionsWrap);
-
-        const updateCustomActions = () => {
-            deleteBtn.style.display = typeSel.value.startsWith('custom_') ? '' : 'none';
-        };
-        updateCustomActions();
-
-        typeSel.addEventListener('change', () => {
-            getSettings().completionSound = typeSel.value;
-            saveSettings$1();
-            updateCustomActions();
-            const otherContainers = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(c => c && c !== container);
-            otherContainers.forEach(c => buildSoundSettingsUI(c));
-        });
-
-        const volRow = document.createElement('div');
-        volRow.className = isSP ? 'scp-sp-field' : '';
-        volRow.style.marginTop = isSP ? '6px' : '10px';
-
-        const volLbl = document.createElement(isSP ? 'label' : 'b');
-        volLbl.className = isSP ? 'scp-sp-label' : '';
-        if (!isSP) volLbl.style.fontSize = '12px';
-        volLbl.textContent = 'Громкость';
-
-        const volWrap = document.createElement('div');
-        volWrap.className = isSP ? 'scp-sp-row' : '';
-        if (!isSP) {
-            volWrap.style.display = 'flex';
-            volWrap.style.alignItems = 'center';
-            volWrap.style.gap = '10px';
-            volWrap.style.marginTop = '6px';
-        }
-
-        const volSlider = document.createElement('input');
-        volSlider.type = 'range'; 
-        volSlider.className = isSP ? 'scp-slider scp-sp-vol-slider' : 'neo-range-slider scp-sp-vol-slider';
-        volSlider.style.flex = '1'; volSlider.min = '0'; volSlider.max = '100';
-        volSlider.value = s.completionSoundVolume ?? 80;
-
-        const volVal = document.createElement('span');
-        volVal.className = 'scp-sp-vol-val';
-        volVal.style.cssText = isSP 
-            ? 'min-width:32px;text-align:right;font-size:11px;color:var(--scp-accent)' 
-            : 'min-width:34px;text-align:right;font-size:12px;color:var(--SmartThemeQuoteColor,#a99bfb)';
-        volVal.textContent = `${volSlider.value}%`;
-        
-        volSlider.addEventListener('input', () => { volVal.textContent = `${volSlider.value}%`; });
-        volSlider.addEventListener('change', () => { 
-            getSettings().completionSoundVolume = parseInt(volSlider.value); 
-            saveSettings$1(); 
-            const otherContainers2 = [document.getElementById('scp-sound-settings'), document.getElementById('scp-sp-sound-settings')].filter(c => c && c !== container);
-            otherContainers2.forEach(c => buildSoundSettingsUI(c));
-        });
-        
-        volWrap.appendChild(volSlider); volWrap.appendChild(volVal);
-        volRow.appendChild(volLbl); volRow.appendChild(volWrap);
-        container.appendChild(volRow);
-    }
-
-    var uiWidgets = /*#__PURE__*/Object.freeze({
-        __proto__: null,
-        _SOUND_PRESETS: _SOUND_PRESETS,
-        _buildContextInspectorHTML: _buildContextInspectorHTML,
-        _highlightContextText: _highlightContextText,
-        get _lastInspectorMessages () { return _lastInspectorMessages; },
-        _synthSound: _synthSound,
-        buildChangelogHTML: buildChangelogHTML,
-        buildPromptPresetManager: buildPromptPresetManager,
-        buildQPSetManager: buildQPSetManager,
-        buildSoundSettingsUI: buildSoundSettingsUI,
-        checkChangelogAutoShow: checkChangelogAutoShow,
-        closeChangelog: closeChangelog,
-        closeFavoritesPanel: closeFavoritesPanel,
-        closePresetPanel: closePresetPanel,
-        openChangelog: openChangelog,
-        openFavoritesPanel: openFavoritesPanel,
-        openInspector: openInspector,
-        openPresetDropdown: openPresetDropdown,
-        playCompletionSound: playCompletionSound,
-        renderFavoritesPanel: renderFavoritesPanel,
-        renderQuickPromptsBar: renderQuickPromptsBar,
-        setupChangelogListeners: setupChangelogListeners,
-        setupContextSearch: setupContextSearch,
-        showQPIconPicker: showQPIconPicker
-    });
-
     exports.ST_WorldInfo = null;
     exports.ST_Utils = null;
     exports.extVersion = '?';
@@ -19117,7 +19195,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             });
             es.on(et.APP_READY || 'app_ready', () => {
                 updateProfilesList();
-                updateSPConnProfileList();
+                updateSPConnProfileList$1();
             });
 
             const cmEvents = [
@@ -19129,7 +19207,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             cmEvents.forEach(evt => {
                 es.on(evt, () => {
                     updateProfilesList();
-                    updateSPConnProfileList();
+                    updateSPConnProfileList$1();
                 });
             });
             
