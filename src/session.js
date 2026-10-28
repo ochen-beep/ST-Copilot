@@ -567,7 +567,11 @@ export function createSession(name, isTemporary = false, recordStats = true) {
 
     bucket.sessions.push(sess);
     bucket.activeSessionId = id;
-    
+    // Same contract as setActiveSession: the active session feeds getVisibleMemories,
+    // which feeds buildSystemContent. Without this the first request of the new
+    // session reuses the previous session's cached prompt (session-scoped memory leak).
+    invalidateSystemPromptCache('createSession');
+
     if (recordStats) {
         import('./features/feature-stats.js').then(m => m.recordStat(m.SM.sess));
     }
@@ -607,6 +611,7 @@ export function deleteCurrentSession() {
     const deletedId = bucket.activeSessionId;
     bucket.sessions = bucket.sessions.filter(s => s.id !== bucket.activeSessionId);
     bucket.activeSessionId = bucket.sessions.length ? bucket.sessions[bucket.sessions.length - 1].id : null;
+    invalidateSystemPromptCache('deleteCurrentSession');
     saveSessionsToMetadata();
     _dbgAdd('SESSION_DELETED', { id: deletedId });
     return getActiveSession(true);
@@ -744,6 +749,7 @@ export function importSession(onSuccessCallback) {
             imported.isTemporary = false;
             bucket.sessions.push(imported);
             bucket.activeSessionId = imported.id;
+            invalidateSystemPromptCache('importSession');
             saveSessionsToMetadata();
             toastr.success(`Сессия «${escHtml(imported.name)}» импортирована.`, EXT_DISPLAY);
             if (onSuccessCallback) onSuccessCallback();

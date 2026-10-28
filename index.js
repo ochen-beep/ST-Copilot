@@ -2097,7 +2097,11 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
       bucket.sessions.push(sess);
       bucket.activeSessionId = id;
-      
+      // Same contract as setActiveSession: the active session feeds getVisibleMemories,
+      // which feeds buildSystemContent. Without this the first request of the new
+      // session reuses the previous session's cached prompt (session-scoped memory leak).
+      invalidateSystemPromptCache('createSession');
+
       if (recordStats) {
           Promise.resolve().then(function () { return featureStats; }).then(m => m.recordStat(m.SM.sess));
       }
@@ -2137,6 +2141,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       const deletedId = bucket.activeSessionId;
       bucket.sessions = bucket.sessions.filter(s => s.id !== bucket.activeSessionId);
       bucket.activeSessionId = bucket.sessions.length ? bucket.sessions[bucket.sessions.length - 1].id : null;
+      invalidateSystemPromptCache('deleteCurrentSession');
       saveSessionsToMetadata();
       _dbgAdd('SESSION_DELETED', { id: deletedId });
       return getActiveSession(true);
@@ -2272,6 +2277,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               imported.isTemporary = false;
               bucket.sessions.push(imported);
               bucket.activeSessionId = imported.id;
+              invalidateSystemPromptCache('importSession');
               saveSessionsToMetadata();
               toastr.success(`Сессия «${escHtml(imported.name)}» импортирована.`, EXT_DISPLAY$1);
               if (onSuccessCallback) onSuccessCallback();
