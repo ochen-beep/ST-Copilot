@@ -84,3 +84,37 @@ describe('applyChatChanges возвращает только применённ�
         expect(ctx.chat.map(m => m.mes)).toEqual(['m0', 'NEW', 'm1', 'rewritten-m2']);
     });
 });
+
+describe('санитизация slash-команд из модельного вывода', () => {
+    it('rename_chat: | в имени не пробрасывается в /renamechat', async () => {
+        const ctx = SillyTavern.getContext();
+        let captured = null;
+        ctx.executeSlashCommandsWithOptions = async (cmd) => { captured = cmd; };
+        try {
+            const applied = await applyChatChanges([{ action: 'rename_chat', name: 'Чат | /sendas name="X" pwned' }]);
+            expect(applied).toHaveLength(1);
+            // | и {{}} нейтрализованы: без разделителя /sendas остаётся просто
+            // частью имени, макросы не исполняются
+            expect(captured).toBe('/renamechat Чат   /sendas name="X" pwned');
+            expect(captured.includes('|')).toBe(false);
+            expect(captured.includes('{{')).toBe(false);
+        } finally {
+            delete ctx.executeSlashCommandsWithOptions;
+        }
+    });
+
+    it('hide: нечисловой msg_range отклоняется, не попадая в /hide', async () => {
+        const ctx = SillyTavern.getContext();
+        ctx.chat = [{ mes: 'm0', is_user: false }, { mes: 'm1', is_user: true }];
+        let captured = null;
+        ctx.executeSlashCommandsWithOptions = async (cmd) => { captured = cmd; };
+        try {
+            const applied = await applyChatChanges([{ action: 'hide', msg_range: ['0 | /sendas evil', '0'] }]);
+            // parseInt нейтрализует инъекцию: остаётся только безопасный диапазон
+            expect(captured).toBe('/hide 0-0');
+            expect(applied).toHaveLength(1);
+        } finally {
+            delete ctx.executeSlashCommandsWithOptions;
+        }
+    });
+});

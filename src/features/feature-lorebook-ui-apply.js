@@ -4,6 +4,7 @@
 import { EXT_DISPLAY, I } from '../constants.js';
 import { getCurrentSession, addMessage, deleteMsg } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
+import { escHtml } from '../utils/util-dom.js';
 import { openTextDiffModal } from '../utils/util-diff.js';
 import { resolveLBChangeTarget, getActiveLorebookNames, bindNewLorebookToCharacter, wiCache, saveWorldInfoBook } from './feature-lorebook-engine.js';
 import { applyPatchToField } from '../utils/util-text.js';
@@ -296,7 +297,7 @@ async function _applyLBChangesInner(changes, afterMsgId = null) {
             for (const patch of (change.patches || [])) {
                 const { result, matched } = applyPatchToField(current, patch);
                 if (!matched) {
-                    toastr.warning(`[ЛБ] SEARCH не найдено в «${origEntry.comment}»: «${(patch.search || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 });
+                    toastr.warning(`[ЛБ] SEARCH не найдено в «${escHtml(origEntry.comment)}»: «${escHtml((patch.search || '').slice(0, 60))}»`, EXT_DISPLAY, { timeOut: 8000 });
                     allMatched = false;
                     break;
                 }

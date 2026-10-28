@@ -205,7 +205,7 @@ export function groupChangesByCharacter(changes) {
             // назвать персонажа точно; правка без адресата отклоняется.
             _dbgAdd('CHAR_EDIT_UNRESOLVED', { changeChar: change.char || null, field: change.field });
             if (typeof toastr !== 'undefined') {
-                toastr.warning(`[Карточки] Правка поля «${change.field}» пропущена: персонаж «${change.char}» не найден в группе. Назовите персонажа точно.`, EXT_DISPLAY, { timeOut: 8000 });
+                toastr.warning(`[Карточки] Правка поля «${escHtml(change.field)}» пропущена: персонаж «${escHtml(change.char)}» не найден в группе. Назовите персонажа точно.`, EXT_DISPLAY, { timeOut: 8000 });
             }
             continue;
         }

@@ -203,7 +203,11 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                 
                 try {
                     if (typeof ctx2.executeSlashCommandsWithOptions === 'function') {
-                        await ctx2.executeSlashCommandsWithOptions(`/renamechat ${newName}`);
+                        // STscript treats top-level | as a command separator and
+                        // {{...}} as macros — a model-supplied name must not
+                        // carry either past /renamechat.
+                        const safeName = newName.replace(/[|{}]/g, ' ').replace(/[\r\n]/g, ' ');
+                        await ctx2.executeSlashCommandsWithOptions(`/renamechat ${safeName}`);
                     }
                     
                     if (window.chat_file_name && window.chat_file_name !== oldFileName) {
@@ -235,9 +239,13 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                 } else {
                     let startIdx = 0, endIdx = msgs.length - 1;
                     if (Array.isArray(change.msg_range)) {
-                        startIdx = shifted(change.msg_range[0]); endIdx = shifted(change.msg_range[1]);
+                        // Range values can reach a slash command — coerce to
+                        // integers (raw model strings could carry STscript separators).
+                        startIdx = parseInt(shifted(change.msg_range[0]));
+                        endIdx = parseInt(shifted(change.msg_range[1]));
+                        if (!Number.isInteger(startIdx) || !Number.isInteger(endIdx)) continue;
                     } else if (change.msg_index !== undefined) {
-                        startIdx = shifted(change.msg_index); endIdx = startIdx;
+                        startIdx = shifted(parseInt(change.msg_index)); endIdx = startIdx;
                     }
                     if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
                         await ctx.executeSlashCommandsWithOptions(`${cmd} ${startIdx}-${endIdx}`);
@@ -277,9 +285,13 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                 } else {
                     let startIdx = 0, endIdx = msgs.length - 1;
                     if (Array.isArray(change.msg_range)) {
-                        startIdx = shifted(change.msg_range[0]); endIdx = shifted(change.msg_range[1]);
+                        // Range values can reach a slash command — coerce to
+                        // integers (raw model strings could carry STscript separators).
+                        startIdx = parseInt(shifted(change.msg_range[0]));
+                        endIdx = parseInt(shifted(change.msg_range[1]));
+                        if (!Number.isInteger(startIdx) || !Number.isInteger(endIdx)) continue;
                     } else if (change.msg_index !== undefined) {
-                        startIdx = shifted(change.msg_index); endIdx = startIdx;
+                        startIdx = shifted(parseInt(change.msg_index)); endIdx = startIdx;
                     }
                     for (let i = Math.max(0, startIdx); i <= Math.min(msgs.length - 1, endIdx); i++) targetIndices.push(i);
                 }
@@ -346,7 +358,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                         let matched = true;
                         for (const patch of (change.patches || [])) {
                             const { result, matched: m } = applyPatchToField(content, patch);
-                            if (!m) { toastr.warning(`[Редактор чата] ANCHOR не найден в #${idx}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 }); matched = false; break; }
+                            if (!m) { toastr.warning(`[Редактор чата] ANCHOR не найден в #${idx}: «${escHtml((patch.search || patch.anchor || '').slice(0, 60))}»`, EXT_DISPLAY, { timeOut: 8000 }); matched = false; break; }
                             content = result;
                         }
                         if (!matched) { allSuccess = false; continue; }
@@ -394,7 +406,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                 for (const patch of (change.patches || [])) {
                     const { result, matched } = applyPatchToField(content, patch);
                     if (!matched) {
-                        toastr.warning(`[Редактор чата] ANCHOR не найден в сообщении ${change.msg_index ?? change.msg_id}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 });
+                        toastr.warning(`[Редактор чата] ANCHOR не найден в сообщении ${change.msg_index ?? change.msg_id}: «${escHtml((patch.search || patch.anchor || '').slice(0, 60))}»`, EXT_DISPLAY, { timeOut: 8000 });
                         allMatched = false; break;
                     }
                     content = result;

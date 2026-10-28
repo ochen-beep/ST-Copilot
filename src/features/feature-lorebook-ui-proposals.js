@@ -126,7 +126,7 @@ export function renderProposalCard(changes, msgEl) {
                 const item2 = document.createElement('div');
                 item2.className = `scp-lb-proposal-world-item${name === _selectedBook ? ' active' : ''}`;
                 item2.dataset.value = name;
-                item2.innerHTML = `<span class="scp-lb-proposal-world-item-dot"></span><span>${getDisplayName(name)}</span>`;
+                item2.innerHTML = `<span class="scp-lb-proposal-world-item-dot"></span><span>${escHtml(getDisplayName(name))}</span>`;
                 item2.addEventListener('click', () => selectBook(name));
                 worldPanel.appendChild(item2);
             });

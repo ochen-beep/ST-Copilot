@@ -366,6 +366,10 @@ export async function onChatChanged() {
         // flag a zombie generation keeps issuing paid API rounds for the old chat.
         state.generationStopped = true;
         state.generating = false;
+        // Invalidate the zombie's epoch: generation B resets generationStopped,
+        // but A's round loop and tool executor also check myEpoch — without the
+        // bump A resumes rounds and hijacks B's abortController slot.
+        state.genEpoch++;
         setGeneratingState(false);
     }
     state.lastChatLen = -1;

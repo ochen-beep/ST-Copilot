@@ -786,7 +786,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 _updateLiveUI();
 
                 const execEntry = async (entry) => {
-                    if (state.generationStopped || state.abortController?.signal.aborted) {
+                    if (state.generationStopped || state.abortController?.signal.aborted || myEpoch !== state.genEpoch) {
                         entry.result = { error: 'Generation stopped by user.' };
                         entry.status = 'error';
                         return;
@@ -831,7 +831,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
                 // Stop, нажатый во время исполнения инструментов: не запускаем
                 // следующий раунд — выходим с тем, что успели накопить.
-                if (state.generationStopped) break;
+                if (state.generationStopped || myEpoch !== state.genEpoch) break;
 
                 if (nativeTools) {
                     const rawCalls = roundRawToolCalls || roundEntries.map((e, i) => ({
@@ -1031,6 +1031,16 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
     } catch (err) {
         cleanupCursor();
+        // Error path must drop the empty stream placeholder the same way the
+        // result===null path does — otherwise an assistant message with
+        // content:'' persists into the bucket on the next save.
+        if (streamMsgId) {
+            const idx = session.messages.findIndex(m => m.id === streamMsgId);
+            if (idx >= 0 && !session.messages[idx].content) {
+                session.messages.splice(idx, 1);
+                streamMsgEl?.remove();
+            }
+        }
         if (!err?._stalled && (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped')) {
             if (myEpoch === state.genEpoch) {
                 state.generating = false;

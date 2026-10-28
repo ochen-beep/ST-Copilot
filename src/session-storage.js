@@ -129,8 +129,9 @@ document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'hidden') return;
     for (const [fileId, item] of _saveQueue.entries()) {
         clearTimeout(item.timer);
-        _saveQueue.delete(fileId);
         saveSessionFile(fileId, item.payload);
+        // Entries stay queued (timers cleared): beforeunload re-sends whatever
+        // remains with keepalive — deleting here left it nothing to send.
     }
 });
 

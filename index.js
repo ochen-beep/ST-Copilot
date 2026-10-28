@@ -1847,8 +1847,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         if (document.visibilityState !== 'hidden') return;
         for (const [fileId, item] of _saveQueue.entries()) {
             clearTimeout(item.timer);
-            _saveQueue.delete(fileId);
             saveSessionFile(fileId, item.payload);
+            // Entries stay queued (timers cleared): beforeunload re-sends whatever
+            // remains with keepalive — deleting here left it nothing to send.
         }
     });
 
@@ -4326,7 +4327,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                 for (const patch of (change.patches || [])) {
                     const { result, matched } = applyPatchToField(current, patch);
                     if (!matched) {
-                        toastr.warning(`[ЛБ] SEARCH не найдено в «${origEntry.comment}»: «${(patch.search || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 });
+                        toastr.warning(`[ЛБ] SEARCH не найдено в «${escHtml(origEntry.comment)}»: «${escHtml((patch.search || '').slice(0, 60))}»`, EXT_DISPLAY, { timeOut: 8000 });
                         allMatched = false;
                         break;
                     }
@@ -4510,7 +4511,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                     const item2 = document.createElement('div');
                     item2.className = `scp-lb-proposal-world-item${name === _selectedBook ? ' active' : ''}`;
                     item2.dataset.value = name;
-                    item2.innerHTML = `<span class="scp-lb-proposal-world-item-dot"></span><span>${getDisplayName(name)}</span>`;
+                    item2.innerHTML = `<span class="scp-lb-proposal-world-item-dot"></span><span>${escHtml(getDisplayName(name))}</span>`;
                     item2.addEventListener('click', () => selectBook(name));
                     worldPanel.appendChild(item2);
                 });
@@ -5668,7 +5669,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                 // назвать персонажа точно; правка без адресата отклоняется.
                 _dbgAdd('CHAR_EDIT_UNRESOLVED', { changeChar: change.char || null, field: change.field });
                 if (typeof toastr !== 'undefined') {
-                    toastr.warning(`[Карточки] Правка поля «${change.field}» пропущена: персонаж «${change.char}» не найден в группе. Назовите персонажа точно.`, EXT_DISPLAY, { timeOut: 8000 });
+                    toastr.warning(`[Карточки] Правка поля «${escHtml(change.field)}» пропущена: персонаж «${escHtml(change.char)}» не найден в группе. Назовите персонажа точно.`, EXT_DISPLAY, { timeOut: 8000 });
                 }
                 continue;
             }
@@ -6489,7 +6490,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                     let allMatched = true;
                     for (const patch of (change.patches || [])) {
                         const { result, matched } = applyPatchToField(current, patch);
-                        if (!matched) { toastr.warning(`[Редактор персонажа] SEARCH не найдено в поле «${field}»: «${(patch.search || '').slice(0, 60)}…»`, EXT_DISPLAY, { timeOut: 8000 }); allMatched = false; break; }
+                        if (!matched) { toastr.warning(`[Редактор персонажа] SEARCH не найдено в поле «${field}»: «${escHtml((patch.search || '').slice(0, 60))}…»`, EXT_DISPLAY, { timeOut: 8000 }); allMatched = false; break; }
                         current = result;
                     }
                     if (!allMatched) continue;
@@ -8411,7 +8412,11 @@ ${scopeHtml}
                     
                     try {
                         if (typeof ctx2.executeSlashCommandsWithOptions === 'function') {
-                            await ctx2.executeSlashCommandsWithOptions(`/renamechat ${newName}`);
+                            // STscript treats top-level | as a command separator and
+                            // {{...}} as macros — a model-supplied name must not
+                            // carry either past /renamechat.
+                            const safeName = newName.replace(/[|{}]/g, ' ').replace(/[\r\n]/g, ' ');
+                            await ctx2.executeSlashCommandsWithOptions(`/renamechat ${safeName}`);
                         }
                         
                         if (window.chat_file_name && window.chat_file_name !== oldFileName) {
@@ -8443,9 +8448,13 @@ ${scopeHtml}
                     } else {
                         let startIdx = 0, endIdx = msgs.length - 1;
                         if (Array.isArray(change.msg_range)) {
-                            startIdx = shifted(change.msg_range[0]); endIdx = shifted(change.msg_range[1]);
+                            // Range values can reach a slash command — coerce to
+                            // integers (raw model strings could carry STscript separators).
+                            startIdx = parseInt(shifted(change.msg_range[0]));
+                            endIdx = parseInt(shifted(change.msg_range[1]));
+                            if (!Number.isInteger(startIdx) || !Number.isInteger(endIdx)) continue;
                         } else if (change.msg_index !== undefined) {
-                            startIdx = shifted(change.msg_index); endIdx = startIdx;
+                            startIdx = shifted(parseInt(change.msg_index)); endIdx = startIdx;
                         }
                         if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
                             await ctx.executeSlashCommandsWithOptions(`${cmd} ${startIdx}-${endIdx}`);
@@ -8485,9 +8494,13 @@ ${scopeHtml}
                     } else {
                         let startIdx = 0, endIdx = msgs.length - 1;
                         if (Array.isArray(change.msg_range)) {
-                            startIdx = shifted(change.msg_range[0]); endIdx = shifted(change.msg_range[1]);
+                            // Range values can reach a slash command — coerce to
+                            // integers (raw model strings could carry STscript separators).
+                            startIdx = parseInt(shifted(change.msg_range[0]));
+                            endIdx = parseInt(shifted(change.msg_range[1]));
+                            if (!Number.isInteger(startIdx) || !Number.isInteger(endIdx)) continue;
                         } else if (change.msg_index !== undefined) {
-                            startIdx = shifted(change.msg_index); endIdx = startIdx;
+                            startIdx = shifted(parseInt(change.msg_index)); endIdx = startIdx;
                         }
                         for (let i = Math.max(0, startIdx); i <= Math.min(msgs.length - 1, endIdx); i++) targetIndices.push(i);
                     }
@@ -8554,7 +8567,7 @@ ${scopeHtml}
                             let matched = true;
                             for (const patch of (change.patches || [])) {
                                 const { result, matched: m } = applyPatchToField(content, patch);
-                                if (!m) { toastr.warning(`[Редактор чата] ANCHOR не найден в #${idx}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 }); matched = false; break; }
+                                if (!m) { toastr.warning(`[Редактор чата] ANCHOR не найден в #${idx}: «${escHtml((patch.search || patch.anchor || '').slice(0, 60))}»`, EXT_DISPLAY, { timeOut: 8000 }); matched = false; break; }
                                 content = result;
                             }
                             if (!matched) { allSuccess = false; continue; }
@@ -8602,7 +8615,7 @@ ${scopeHtml}
                     for (const patch of (change.patches || [])) {
                         const { result, matched } = applyPatchToField(content, patch);
                         if (!matched) {
-                            toastr.warning(`[Редактор чата] ANCHOR не найден в сообщении ${change.msg_index ?? change.msg_id}: «${(patch.search || patch.anchor || '').slice(0, 60)}»`, EXT_DISPLAY, { timeOut: 8000 });
+                            toastr.warning(`[Редактор чата] ANCHOR не найден в сообщении ${change.msg_index ?? change.msg_id}: «${escHtml((patch.search || patch.anchor || '').slice(0, 60))}»`, EXT_DISPLAY, { timeOut: 8000 });
                             allMatched = false; break;
                         }
                         content = result;
@@ -12567,6 +12580,10 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
             // flag a zombie generation keeps issuing paid API rounds for the old chat.
             state.generationStopped = true;
             state.generating = false;
+            // Invalidate the zombie's epoch: generation B resets generationStopped,
+            // but A's round loop and tool executor also check myEpoch — without the
+            // bump A resumes rounds and hijacks B's abortController slot.
+            state.genEpoch++;
             setGeneratingState(false);
         }
         state.lastChatLen = -1;
@@ -18170,7 +18187,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     _updateLiveUI();
 
                     const execEntry = async (entry) => {
-                        if (state.generationStopped || state.abortController?.signal.aborted) {
+                        if (state.generationStopped || state.abortController?.signal.aborted || myEpoch !== state.genEpoch) {
                             entry.result = { error: 'Generation stopped by user.' };
                             entry.status = 'error';
                             return;
@@ -18215,7 +18232,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
                     // Stop, нажатый во время исполнения инструментов: не запускаем
                     // следующий раунд — выходим с тем, что успели накопить.
-                    if (state.generationStopped) break;
+                    if (state.generationStopped || myEpoch !== state.genEpoch) break;
 
                     if (nativeTools) {
                         const rawCalls = roundRawToolCalls || roundEntries.map((e, i) => ({
@@ -18415,6 +18432,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         } catch (err) {
             cleanupCursor();
+            // Error path must drop the empty stream placeholder the same way the
+            // result===null path does — otherwise an assistant message with
+            // content:'' persists into the bucket on the next save.
+            if (streamMsgId) {
+                const idx = session.messages.findIndex(m => m.id === streamMsgId);
+                if (idx >= 0 && !session.messages[idx].content) {
+                    session.messages.splice(idx, 1);
+                    streamMsgEl?.remove();
+                }
+            }
             if (!err?._stalled && (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped')) {
                 if (myEpoch === state.genEpoch) {
                     state.generating = false;

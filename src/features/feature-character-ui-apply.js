@@ -1,6 +1,7 @@
 import { EXT_DISPLAY } from '../constants.js';
 import { getCurrentSession, addMessage } from '../session.js';
 import { applyPatchToField } from '../utils/util-text.js';
+import { escHtml } from '../utils/util-dom.js';
 import { getCharFieldValue, saveCharacterField } from './feature-character-engine-apply.js';
 import { addHistoryToSwipe } from '../ui/ui-chat.js';
 import { appendLBHistoryEl } from './feature-lorebook-ui.js';
@@ -60,7 +61,7 @@ export async function applyCharChanges(changes, char, afterMsgId = null) {
                 let allMatched = true;
                 for (const patch of (change.patches || [])) {
                     const { result, matched } = applyPatchToField(current, patch);
-                    if (!matched) { toastr.warning(`[Редактор персонажа] SEARCH не найдено в поле «${field}»: «${(patch.search || '').slice(0, 60)}…»`, EXT_DISPLAY, { timeOut: 8000 }); allMatched = false; break; }
+                    if (!matched) { toastr.warning(`[Редактор персонажа] SEARCH не найдено в поле «${field}»: «${escHtml((patch.search || '').slice(0, 60))}…»`, EXT_DISPLAY, { timeOut: 8000 }); allMatched = false; break; }
                     current = result;
                 }
                 if (!allMatched) continue;
