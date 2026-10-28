@@ -54,3 +54,12 @@
 - **USER_GUIDE.md на EN** — правило hygiene требует RU; перевод — контентная задача (в работе).
 - **Ветка `backup/pre-filter-repo`** — держится до явного решения владельца; удалить: `git branch -D backup/pre-filter-repo` (необратимо).
 - **Пуш в GitHub** — не выполняется (local-only по решению владельца); origin остаётся позади локального main.
+
+## Тестирование (план TEST_PLAN.md, 2026-10-28)
+
+- [x] Трек A: фасад-контракты (статика+динамика), фаззинг парсеров, стресс очереди/капа/рендер-окна, injectable таймауты + тесты ask_user — 230/230 ✅
+- [x] Трек B: харнесс `tests/live/synthetic-llm.js` + валидированы pathological-stream и tool-rounds-5 (ровно 6 запросов, финал в DOM) ✅
+- [x] Найдено и починено тестами в процессе: отсутствующий импорт `_renderFromBySession`/`MSG_RENDER_WINDOW` в субмодулях (в бандле маскировался инлайнингом rollup); корневой цикл `util-debug ↔ index.js` вынесен в `src/version.js`
+- [x] `npm run check` = vitest + сборка + git diff бандла (замена CI при local-only)
+- [ ] Трек B остаток: mid-stream-drop, stall (прогоны вручную, харнесс готов)
+- [ ] Трек C: большой чат, две вкладки, соук (по запросу)
