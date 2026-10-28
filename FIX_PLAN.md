@@ -37,8 +37,10 @@
 
 ## Фаза 4 — рефакторинг монолитов (отдельные коммиты «только сплит»)
 
-- [ ] `ui-chat.js` 2288 → render/ actions/ search/ chat-picker/ chat-events
-- [ ] `style.css` 5201 → ≤800 + `styles/*.css` через `@import`
-- [ ] `api.js` 1683 → prompt-builder / generation / tool-rounds / request-inspector
-- [ ] `constants.js` (changelog → данные), `feature-lorebook-ui.js` 1344, `ui-settings.js` 1289, `ui-widgets.js` 1241, character-модули, `chatedit-ui.js` 719
-- [ ] README ≤80 строк EN + `USER_GUIDE.md` (RU)
+- [x] `style.css` 5201 → корень 20 строк + 18 упорядоченных `styles/*.css` через `@import` (каскад = порядок импортов, контент байт-в-байт) ✅ `ef8d7c0` — все 18 файлов 200 OK на таверне, стили применились
+- [x] `ui-chat.js` 2288 → фасад 72 строки + 5 модулей (render-msg 764, msg-actions 701, session-view 445, search 261, chat-picker 249) + chat-shared (модульные ссылки, окно ленивого рендера) ✅ `8761ba6` — витег 205/205, живой смоук: поиск/пикер/сессии/глубина/генерация через новые модули; пойман и починен rollup-порядок модулей (appendMsgEl→handleCopy, setGeneratingState→_refreshContinueBtns)
+- [x] `constants.js` 925 → 717: changelog-данные вынесены в `src/changelog.js` (212 строк), фасадный ре-экспорт ✅ `44e8235` — модалка changelog показывает 2.10.0 на таверне
+- [x] `api.js` 1731 → 1241 + `api/prompt-builder.js` 436 (system content, сигнатура, assemble, токены) + `api/request-inspector.js` 115 (журнал/редакция/перехват fetch) ✅ `a9b3752` — генерация сквозь все три модуля на таверне. api.js остаётся выше капа: `runGenerate` (530 строк) — одна неделимая оркестрация, дальнейший рез = редизайн, не сплит
+- [x] README 274 → 39 строк (EN, интро+таблица+установка), глубокий тур/детали установки/история версий → `USER_GUIDE.md` (251) ✅ `0dbe8d7`
+- [ ] Средние файлы за капом: `feature-lorebook-ui.js` 1360, `ui-settings.js` 1289, `ui-widgets.js` 1241, `session.js` 904, `feature-character-engine.js` 861, `feature-character-ui.js` 832, `render-msg.js` 766, `feature-chatedit-ui.js` 719, `constants.js` 717, `msg-actions.js` 701 — тем же паттерном (модуль + фасад), по мере касания
+- [ ] USER_GUIDE.md пока EN (перенос без перевода — перевод отдельной контентной задачей; правило beep-hygiene: guide на RU)

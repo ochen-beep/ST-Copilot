@@ -25,8 +25,6 @@ Enter **ST-Copilot** — an advanced Out-Of-Character (OOC) meta-assistant, crea
 
 ---
 
----
-
 ## Installation
 
 1. In SillyTavern, open **Extensions → Install extension** and use this repository URL, or clone it into `data/default-user/extensions/`.

@@ -10,21 +10,27 @@ SillyTavern-расширение «Copilot» — боковое окно-асс�
 
 ```
 index.js            — точка входа: init, CHAT_CHANGED, хоткеи, слушатели панели
+style.css           — корень: только @import-порядок; секции в styles/*.css (18 файлов)
 src/
-  session.js        — хранилище сессий: bucket-файл на чат (copilot_sess_*.json через
-                      /api/files/upload, base64), save-queue с дебаунсом 1с, epoch-guard,
-                      session overrides, системный кэш-инвалидации
-  api.js            — сборка запроса: buildSystemContent (кэш с сигнатурой),
-                      assembleMessages (system + roleplay_context + история сессии),
-                      генерация (стрим/не-стрим, custom/ConnectionManager/ST-сервисы),
-                      tool-раунды, fetch-патч нормализации тела запроса, requestLog
-  state.js          — глобальный state + кэш системного промпта (dirty-flag + сигнатура)
-  constants.js      — дефолты настроек, промпты, changelog
-  features/         — 12 модулей: memory, tools (engine/ui), lorebook (engine/ui),
-                      character (engine/ui/manager), chatedit (engine/ui), attachments, stats
-  ui/               — ui-chat (2288 строк: рендер сессии, экшены сообщений, поиск,
-                      чат-пикер), ui-window, ui-settings, ui-widgets, ui-launcher,
-                      render/ (stream-renderer + find-safe-boundary)
+  session.js        — хранилище сессий: bucket-файл на чат, save-queue, epoch-guard
+  api.js            — генерация (транспорт/стрим, tool-раунды, runGenerate/runContinue);
+  api/prompt-builder.js  — buildSystemContent + сигнатура кэша + assembleMessages + токены
+  api/request-inspector.js — журнал запросов, редакция секретов, перехват fetch
+  changelog.js      — данные changelog (вынесены из constants)
+  state.js          — глобальный state + кэш системного промпта
+  constants.js      — дефолты настроек, промпты, темы (changelog → changelog.js)
+  features/         — 12 модулей: memory, tools, lorebook, character, chatedit,
+                      attachments, stats (каждый engine/ui-парой где применимо)
+  ui/
+    ui-chat.js      — фасад (72 строки); реализация в 5 модулях:
+    render-msg.js   — markdown/HTML-блоки/tool-плейсхолдеры/тело сообщения
+    msg-actions.js  — свайпы, edit/regen/delete, скролл-хелперы, код-блоки
+    session-view.js — renderSession/appendMsgEl/updateMsgCount, onChatChanged
+    search.js       — поиск по сессии
+    chat-picker.js  — выбор сообщений основного чата
+    chat-shared.js  — общие модульные ссылки + окно ленивого рендера
+    ui-window/ui-settings/ui-widgets/ui-launcher, render/ (stream-renderer,
+    find-safe-boundary, render-window)
   integrations/     — regex, summaryception, evolutia
   utils/            — текст, ST-хелперы, хэш, DOM, дебаг
 ```
@@ -41,7 +47,7 @@ src/
 
 - Тесты: **205 / 205 проходят** (20 файлов, vitest).
 - Репозиторий: ~52 МБ на диске (46 МБ — игнорируемый node_modules); история переписана `git filter-repo` (вырезан Assets/DS, −28 МБ; `.git` 43→4,6 МБ). `.gitignore` расширен (`*.log`, `Thumbs.db`, `.DS_Store`, `dist/`).
-- Рабочее дерево: чистое; фазы 0–3 плана фиксов закоммичены.
+- Рабочее дерево: чистое; фазы 0–4 плана фиксов закоммичены (4.6 — средние файлы за капом — остаётся).
 - **Режим работы: только локально.** Пуш в GitHub (в т.ч. force-push переписанной истории) не выполняется по решению владельца; origin `Supker/ST-Copilot` остаётся позади локального main и синхронизируется вручную, когда и если понадобится. Старая история сохранена в локальной ветке `backup/pre-filter-repo` (удалить после проверки: `git branch -D backup/pre-filter-repo`).
 
 ## История недавних изменений
