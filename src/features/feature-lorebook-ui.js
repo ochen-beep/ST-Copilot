@@ -164,7 +164,17 @@ export function logLBHistoryChanges(changes, statusStr, afterMsgId = null) {
     } catch (_) {}
 }
 
-export async function applyLBChanges(changes, afterMsgId = null) {
+// Serialized: two concurrent applies clone the same base book (per-item buttons
+// vs Apply-all) and the last save silently drops the other call's edits.
+let _lbApplyQueue = Promise.resolve();
+
+export function applyLBChanges(changes, afterMsgId = null) {
+    const tail = _lbApplyQueue.then(() => _applyLBChangesInner(changes, afterMsgId));
+    _lbApplyQueue = tail.catch(() => {});
+    return tail;
+}
+
+async function _applyLBChangesInner(changes, afterMsgId = null) {
     console.log(`[${EXT_DISPLAY}] applyLBChanges: processing ${changes.length} change(s)`, JSON.parse(JSON.stringify(changes)));
     const bookCache = {};      // bookName -> рабочая копия книги (клонируется при первом касании)
     const origBooks = {};      // bookName -> исходный объект из wiCache (для отката при сбое сейва)
@@ -1165,7 +1175,12 @@ export function showEntryDetail(entry, bookName) {
             const data = await fetchWorldInfoBook(bookName);
             if (data?.entries[entry.uid] !== undefined) {
                 data.entries[entry.uid].disable = entry.disable;
-                await saveWorldInfoBook(bookName, data);
+                try {
+                    await saveWorldInfoBook(bookName, data);
+                } catch (e) {
+                    toastr.error(`[ЛБ] Не сохранено: ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
+                    return;
+                }
                 toastr.success('Статус обновлён', EXT_DISPLAY);
                 renderEntryList(bookName, state.lbSearchQuery);
             }
@@ -1200,6 +1215,7 @@ export async function saveEntryDetail() {
 
 export async function deleteEntryDetail() {
     if (!state.lbEntryDetailEntry || !state.lbEntryDetailBook) return;
+    if (state.lbEntryDetailBook === EMBEDDED_BOOK_KEY) { toastr.warning('Нельзя удалять записи встроенного лорбука персонажа.', EXT_DISPLAY); return; }
     const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить запись', message: `Удалить «${state.lbEntryDetailEntry.comment || 'эту запись'}»?` });
     if (!ok) return;
     const data = await fetchWorldInfoBook(state.lbEntryDetailBook);

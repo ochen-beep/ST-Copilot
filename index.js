@@ -2558,7 +2558,11 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
   }
 
   async function saveWorldInfoBook(name, data) {
-      if (data._embedded) { toastr.warning('Нельзя напрямую сохранять встроенные лорбуки персонажа.', EXT_DISPLAY); return; }
+      if (data._embedded) {
+          // Embedded character books live inside the card file; a WI save would be
+          // a silent no-op. Callers must see a real failure, not a fake success.
+          throw new Error('Embedded character lorebook cannot be saved directly');
+      }
       const ctx = SillyTavern.getContext();
       // Глубокая копия: в payload не должно быть живых ссылок на кэш — иначе
       // неудачный сейв оставляет кэш мутированным относительно диска.
@@ -4072,7 +4076,17 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       } catch (_) {}
   }
 
-  async function applyLBChanges(changes, afterMsgId = null) {
+  // Serialized: two concurrent applies clone the same base book (per-item buttons
+  // vs Apply-all) and the last save silently drops the other call's edits.
+  let _lbApplyQueue = Promise.resolve();
+
+  function applyLBChanges(changes, afterMsgId = null) {
+      const tail = _lbApplyQueue.then(() => _applyLBChangesInner(changes, afterMsgId));
+      _lbApplyQueue = tail.catch(() => {});
+      return tail;
+  }
+
+  async function _applyLBChangesInner(changes, afterMsgId = null) {
       console.log(`[${EXT_DISPLAY}] applyLBChanges: processing ${changes.length} change(s)`, JSON.parse(JSON.stringify(changes)));
       const bookCache = {};      // bookName -> рабочая копия книги (клонируется при первом касании)
       const origBooks = {};      // bookName -> исходный объект из wiCache (для отката при сбое сейва)
@@ -5073,7 +5087,12 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               const data = await fetchWorldInfoBook(bookName);
               if (data?.entries[entry.uid] !== undefined) {
                   data.entries[entry.uid].disable = entry.disable;
-                  await saveWorldInfoBook(bookName, data);
+                  try {
+                      await saveWorldInfoBook(bookName, data);
+                  } catch (e) {
+                      toastr.error(`[ЛБ] Не сохранено: ${e.message}`, EXT_DISPLAY, { timeOut: 10000 });
+                      return;
+                  }
                   toastr.success('Статус обновлён', EXT_DISPLAY);
                   renderEntryList(bookName, state.lbSearchQuery);
               }
@@ -5108,6 +5127,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
   async function deleteEntryDetail() {
       if (!state.lbEntryDetailEntry || !state.lbEntryDetailBook) return;
+      if (state.lbEntryDetailBook === EMBEDDED_BOOK_KEY) { toastr.warning('Нельзя удалять записи встроенного лорбука персонажа.', EXT_DISPLAY); return; }
       const ok = await showCustomDialog({ type: 'confirm', title: 'Удалить запись', message: `Удалить «${state.lbEntryDetailEntry.comment || 'эту запись'}»?` });
       if (!ok) return;
       const data = await fetchWorldInfoBook(state.lbEntryDetailBook);
@@ -6358,6 +6378,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           logCharEditHistory(successLog, 'Applied', afterMsgId, char.name);
           toastr.success(`[Редактор персонажа] Применено изменений: ${successLog.length} к «${char.name}».`, EXT_DISPLAY);
       }
+      // UI reconciles card states against this: a field that failed server-side
+      // must stay pending instead of being marked applied.
+      return successLog;
   }
 
   function logCharEditHistory(changes, statusStr, afterMsgId = null, charName = null) {
@@ -6757,21 +6780,27 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
               if (itemStates[ci] !== 'pending' || applyBtn.disabled) return;
               applyBtn.disabled = true; applyBtn.textContent = '\u2026';
 
-              const isNameField = editableChanges[ci].field === 'name';
-              if (isNameField) { itemStates[ci] = 'applied'; _syncAllCardsToMessage(msgId); }
+              editableChanges[ci].field === 'name';
 
               try {
-                  await applyCharChanges([editableChanges[ci]], char, msgId);
-                  if (!isNameField) { itemStates[ci] = 'applied'; _syncAllCardsToMessage(msgId); }
-
-                  item.classList.add('scp-lb-item-applied');
-                  btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
+                  const applied = await applyCharChanges([editableChanges[ci]], char, msgId);
+                  // Reconcile against what actually applied: a field can fail
+                  // server-side while applyCharChanges itself resolves normally.
+                  const ok = Array.isArray(applied) && applied.includes(editableChanges[ci]);
+                  itemStates[ci] = ok ? 'applied' : 'pending';
+                  _syncAllCardsToMessage(msgId);
+                  if (ok) {
+                      item.classList.add('scp-lb-item-applied');
+                      btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
+                  } else {
+                      applyBtn.disabled = false; applyBtn.textContent = '\u2713';
+                  }
                   countBadge.textContent = `${getPending()} ожидает`; updateFooter();
                   checkAllResolved();
               } catch (err) {
                   toastr.error(`Ошибка: ${err.message}`, EXT_DISPLAY);
                   applyBtn.disabled = false; applyBtn.textContent = '\u2713';
-                  if (isNameField) { itemStates[ci] = 'pending'; _syncAllCardsToMessage(msgId); }
+                  itemStates[ci] = 'pending'; _syncAllCardsToMessage(msgId);
               }
           });
 
@@ -6925,21 +6954,30 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           if (!pending.length) return;
           applyAllBtn.disabled = true; applyAllBtn.textContent = 'Применение\u2026';
 
-          const hasNameField = pending.some(c => c.field === 'name');
-          if (hasNameField) { pendingIndices.forEach(i => { itemStates[i] = 'applied'; }); _syncAllCardsToMessage(msgId); }
-
           try {
-              await applyCharChanges(pending, char, msgId);
-              if (!hasNameField) { pendingIndices.forEach(i => { itemStates[i] = 'applied'; }); _syncAllCardsToMessage(msgId); }
+              const applied = await applyCharChanges(pending, char, msgId);
+              // Per-item truth: failed fields stay pending, only really applied
+              // ones get the applied card state.
+              const appliedSet = new Set(Array.isArray(applied) ? applied : []);
               pendingIndices.forEach(i => {
-                  if (itemEls[i]) { itemEls[i].classList.add('scp-lb-item-applied'); itemEls[i].querySelectorAll('button').forEach(b => { b.disabled = true; }); }
+                  const ok = appliedSet.has(editableChanges[i]);
+                  itemStates[i] = ok ? 'applied' : 'pending';
+                  if (ok && itemEls[i]) {
+                      itemEls[i].classList.add('scp-lb-item-applied');
+                      itemEls[i].querySelectorAll('button').forEach(b => { b.disabled = true; });
+                  }
               });
+              _syncAllCardsToMessage(msgId);
+              if (pendingIndices.some(i => itemStates[i] === 'pending')) {
+                  applyAllBtn.disabled = false; applyAllBtn.textContent = 'Применить всё';
+              }
               countBadge.textContent = `${getPending()} ожидает`; updateFooter();
               checkAllResolved();
           } catch (e) {
               toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
               applyAllBtn.disabled = false; applyAllBtn.textContent = 'Применить всё';
-              if (hasNameField) { pendingIndices.forEach(i => { itemStates[i] = 'pending'; }); _syncAllCardsToMessage(msgId); }
+              pendingIndices.forEach(i => { itemStates[i] = 'pending'; });
+              _syncAllCardsToMessage(msgId);
           }
       });
       rejectAllBtn.addEventListener('click', () => {
@@ -8162,6 +8200,11 @@ ${scopeHtml}
       const msgs = ctx.chat;
       if (!msgs) { toastr.error('[Редактор чата] Нет активного чата.', EXT_DISPLAY); return; }
       const successLog = [];
+      // Changes carry indices from the pre-mutation snapshot the model saw, but
+      // deletes/inserts earlier in the batch shift live positions. indexDelta
+      // converts an original index to its live position at each step.
+      let indexDelta = 0;
+      const shifted = (i) => (typeof i === 'number' ? i + indexDelta : i);
 
       for (const change of changes) {
           try {
@@ -8194,7 +8237,7 @@ ${scopeHtml}
               if (change.action === 'hide' || change.action === 'unhide') {
                   const cmd = change.action === 'hide' ? '/hide' : '/unhide';
                   if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
-                      const valid = change.msg_indices.filter(i => i >= 0 && i < msgs.length);
+                      const valid = change.msg_indices.map(shifted).filter(i => i >= 0 && i < msgs.length);
                       if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
                           for (const idx of valid) {
                               await ctx.executeSlashCommandsWithOptions(`${cmd} ${idx}-${idx}`);
@@ -8204,9 +8247,9 @@ ${scopeHtml}
                   } else {
                       let startIdx = 0, endIdx = msgs.length - 1;
                       if (Array.isArray(change.msg_range)) {
-                          startIdx = change.msg_range[0]; endIdx = change.msg_range[1];
+                          startIdx = shifted(change.msg_range[0]); endIdx = shifted(change.msg_range[1]);
                       } else if (change.msg_index !== undefined) {
-                          startIdx = change.msg_index; endIdx = change.msg_index;
+                          startIdx = shifted(change.msg_index); endIdx = startIdx;
                       }
                       if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
                           await ctx.executeSlashCommandsWithOptions(`${cmd} ${startIdx}-${endIdx}`);
@@ -8229,9 +8272,11 @@ ${scopeHtml}
                   };
                   let insertIdx = msgs.length;
                   if (typeof change.msg_index === 'number' && change.msg_index >= 0) {
-                      insertIdx = Math.min(change.msg_index, msgs.length);
+                      insertIdx = Math.min(shifted(change.msg_index), msgs.length);
                   }
+                  const appended = insertIdx >= msgs.length;
                   msgs.splice(insertIdx, 0, newMsg);
+                  if (!appended) indexDelta += 1; // originals at/after the insert shift down
                   await _saveChatAfterDelete(ctx);
                   successLog.push(change);
                   continue;
@@ -8240,13 +8285,13 @@ ${scopeHtml}
               if (change.action === 'bulk_replace' || change.action === 'regex') {
                   let targetIndices = [];
                   if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
-                      targetIndices = change.msg_indices.filter(i => i >= 0 && i < msgs.length);
+                      targetIndices = change.msg_indices.map(shifted).filter(i => i >= 0 && i < msgs.length);
                   } else {
                       let startIdx = 0, endIdx = msgs.length - 1;
                       if (Array.isArray(change.msg_range)) {
-                          startIdx = change.msg_range[0]; endIdx = change.msg_range[1];
+                          startIdx = shifted(change.msg_range[0]); endIdx = shifted(change.msg_range[1]);
                       } else if (change.msg_index !== undefined) {
-                          startIdx = change.msg_index; endIdx = change.msg_index;
+                          startIdx = shifted(change.msg_index); endIdx = startIdx;
                       }
                       for (let i = Math.max(0, startIdx); i <= Math.min(msgs.length - 1, endIdx); i++) targetIndices.push(i);
                   }
@@ -8286,9 +8331,10 @@ ${scopeHtml}
 
               if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
                   let allSuccess = true;
-                  const sortedIndices = [...change.msg_indices].sort((a, b) =>
+                  const sortedIndices = [...change.msg_indices].map(shifted).sort((a, b) =>
                       change.action === 'delete' ? b - a : a - b
                   );
+                  let deletedCount = 0;
                   for (const idx of sortedIndices) {
                       if (idx < 0 || idx >= msgs.length) {
                           toastr.warning(`[Редактор чата] Сообщение #${idx} не найдено`, EXT_DISPLAY, { timeOut: 6000 });
@@ -8297,6 +8343,7 @@ ${scopeHtml}
                       const msg = msgs[idx];
                       if (change.action === 'delete') {
                           msgs.splice(idx, 1);
+                          deletedCount++;
                           await _saveChatAfterDelete(ctx);
                           continue;
                       }
@@ -8319,10 +8366,15 @@ ${scopeHtml}
                       msg.mes = content;
                       await _saveChatMessage(ctx, idx, msg);
                   }
+                  if (change.action === 'delete') indexDelta -= deletedCount;
                   if (allSuccess) successLog.push(change);
                   continue;
               }
 
+              if (typeof change.msg_index === 'number') {
+                  // Resolve against the live position of the original index.
+                  change.msg_index += indexDelta;
+              }
               const resolved = _resolveStMsgByIndexOrId(change);
               if (!resolved) {
                   toastr.warning(`[Редактор чата] Сообщение не найдено: Индекс ${change.msg_index ?? change.msg_id}`, EXT_DISPLAY, { timeOut: 6000 });
@@ -8336,6 +8388,7 @@ ${scopeHtml}
                   // msg_indices path). DOM + disk are handled by _refreshSTChatDOM
                   // and _persistChat after the batch loop.
                   msgs.splice(idx, 1);
+                  indexDelta -= 1;
                   await _saveChatAfterDelete(ctx);
                   successLog.push(change);
                   continue;

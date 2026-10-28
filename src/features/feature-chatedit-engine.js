@@ -188,6 +188,11 @@ export async function applyChatChanges(changes, afterMsgId = null) {
     const msgs = ctx.chat;
     if (!msgs) { toastr.error('[Редактор чата] Нет активного чата.', EXT_DISPLAY); return; }
     const successLog = [];
+    // Changes carry indices from the pre-mutation snapshot the model saw, but
+    // deletes/inserts earlier in the batch shift live positions. indexDelta
+    // converts an original index to its live position at each step.
+    let indexDelta = 0;
+    const shifted = (i) => (typeof i === 'number' ? i + indexDelta : i);
 
     for (const change of changes) {
         try {
@@ -220,7 +225,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
             if (change.action === 'hide' || change.action === 'unhide') {
                 const cmd = change.action === 'hide' ? '/hide' : '/unhide';
                 if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
-                    const valid = change.msg_indices.filter(i => i >= 0 && i < msgs.length);
+                    const valid = change.msg_indices.map(shifted).filter(i => i >= 0 && i < msgs.length);
                     if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
                         for (const idx of valid) {
                             await ctx.executeSlashCommandsWithOptions(`${cmd} ${idx}-${idx}`);
@@ -230,9 +235,9 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                 } else {
                     let startIdx = 0, endIdx = msgs.length - 1;
                     if (Array.isArray(change.msg_range)) {
-                        startIdx = change.msg_range[0]; endIdx = change.msg_range[1];
+                        startIdx = shifted(change.msg_range[0]); endIdx = shifted(change.msg_range[1]);
                     } else if (change.msg_index !== undefined) {
-                        startIdx = change.msg_index; endIdx = change.msg_index;
+                        startIdx = shifted(change.msg_index); endIdx = startIdx;
                     }
                     if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
                         await ctx.executeSlashCommandsWithOptions(`${cmd} ${startIdx}-${endIdx}`);
@@ -255,9 +260,11 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                 };
                 let insertIdx = msgs.length;
                 if (typeof change.msg_index === 'number' && change.msg_index >= 0) {
-                    insertIdx = Math.min(change.msg_index, msgs.length);
+                    insertIdx = Math.min(shifted(change.msg_index), msgs.length);
                 }
+                const appended = insertIdx >= msgs.length;
                 msgs.splice(insertIdx, 0, newMsg);
+                if (!appended) indexDelta += 1; // originals at/after the insert shift down
                 await _saveChatAfterDelete(ctx);
                 successLog.push(change);
                 continue;
@@ -266,13 +273,13 @@ export async function applyChatChanges(changes, afterMsgId = null) {
             if (change.action === 'bulk_replace' || change.action === 'regex') {
                 let targetIndices = [];
                 if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
-                    targetIndices = change.msg_indices.filter(i => i >= 0 && i < msgs.length);
+                    targetIndices = change.msg_indices.map(shifted).filter(i => i >= 0 && i < msgs.length);
                 } else {
                     let startIdx = 0, endIdx = msgs.length - 1;
                     if (Array.isArray(change.msg_range)) {
-                        startIdx = change.msg_range[0]; endIdx = change.msg_range[1];
+                        startIdx = shifted(change.msg_range[0]); endIdx = shifted(change.msg_range[1]);
                     } else if (change.msg_index !== undefined) {
-                        startIdx = change.msg_index; endIdx = change.msg_index;
+                        startIdx = shifted(change.msg_index); endIdx = startIdx;
                     }
                     for (let i = Math.max(0, startIdx); i <= Math.min(msgs.length - 1, endIdx); i++) targetIndices.push(i);
                 }
@@ -312,9 +319,10 @@ export async function applyChatChanges(changes, afterMsgId = null) {
 
             if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
                 let allSuccess = true;
-                const sortedIndices = [...change.msg_indices].sort((a, b) =>
+                const sortedIndices = [...change.msg_indices].map(shifted).sort((a, b) =>
                     change.action === 'delete' ? b - a : a - b
                 );
+                let deletedCount = 0;
                 for (const idx of sortedIndices) {
                     if (idx < 0 || idx >= msgs.length) {
                         toastr.warning(`[Редактор чата] Сообщение #${idx} не найдено`, EXT_DISPLAY, { timeOut: 6000 });
@@ -323,6 +331,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                     const msg = msgs[idx];
                     if (change.action === 'delete') {
                         msgs.splice(idx, 1);
+                        deletedCount++;
                         await _saveChatAfterDelete(ctx);
                         continue;
                     }
@@ -345,10 +354,15 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                     msg.mes = content;
                     await _saveChatMessage(ctx, idx, msg);
                 }
+                if (change.action === 'delete') indexDelta -= deletedCount;
                 if (allSuccess) successLog.push(change);
                 continue;
             }
 
+            if (typeof change.msg_index === 'number') {
+                // Resolve against the live position of the original index.
+                change.msg_index += indexDelta;
+            }
             const resolved = _resolveStMsgByIndexOrId(change);
             if (!resolved) {
                 toastr.warning(`[Редактор чата] Сообщение не найдено: Индекс ${change.msg_index ?? change.msg_id}`, EXT_DISPLAY, { timeOut: 6000 });
@@ -362,6 +376,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                 // msg_indices path). DOM + disk are handled by _refreshSTChatDOM
                 // and _persistChat after the batch loop.
                 msgs.splice(idx, 1);
+                indexDelta -= 1;
                 await _saveChatAfterDelete(ctx);
                 successLog.push(change);
                 continue;

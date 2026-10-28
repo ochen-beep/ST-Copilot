@@ -52,4 +52,35 @@ describe('applyChatChanges возвращает только применённ�
         expect(ctx.chat).toHaveLength(2);
         expect(ctx.chat.map(m => m.mes)).toEqual(['m0', 'm2']);
     });
+
+    it('delete в батче сдвигает индексы последующих изменений', async () => {
+        const ctx = SillyTavern.getContext();
+        ctx.chat = [
+            { mes: 'm0', is_user: false },
+            { mes: 'm1', is_user: true },
+            { mes: 'm2', is_user: false },
+            { mes: 'm3', is_user: true },
+        ];
+        const applied = await applyChatChanges([
+            { action: 'delete', msg_index: 1 },
+            { action: 'overwrite', msg_index: 2, content: 'rewritten-m2' },
+        ]);
+        expect(applied).toHaveLength(2);
+        expect(ctx.chat.map(m => m.mes)).toEqual(['m0', 'rewritten-m2', 'm3']);
+    });
+
+    it('add в батче сдвигает индексы последующих изменений', async () => {
+        const ctx = SillyTavern.getContext();
+        ctx.chat = [
+            { mes: 'm0', is_user: false },
+            { mes: 'm1', is_user: true },
+            { mes: 'm2', is_user: false },
+        ];
+        const applied = await applyChatChanges([
+            { action: 'add', msg_index: 1, role: 'user', content: 'NEW' },
+            { action: 'overwrite', msg_index: 2, content: 'rewritten-m2' },
+        ]);
+        expect(applied).toHaveLength(2);
+        expect(ctx.chat.map(m => m.mes)).toEqual(['m0', 'NEW', 'm1', 'rewritten-m2']);
+    });
 });

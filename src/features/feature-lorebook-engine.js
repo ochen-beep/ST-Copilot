@@ -132,7 +132,11 @@ export function getEmbeddedCharBook() {
 }
 
 export async function saveWorldInfoBook(name, data) {
-    if (data._embedded) { toastr.warning('Нельзя напрямую сохранять встроенные лорбуки персонажа.', EXT_DISPLAY); return; }
+    if (data._embedded) {
+        // Embedded character books live inside the card file; a WI save would be
+        // a silent no-op. Callers must see a real failure, not a fake success.
+        throw new Error('Embedded character lorebook cannot be saved directly');
+    }
     const ctx = SillyTavern.getContext();
     // Глубокая копия: в payload не должно быть живых ссылок на кэш — иначе
     // неудачный сейв оставляет кэш мутированным относительно диска.

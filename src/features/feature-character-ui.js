@@ -197,6 +197,9 @@ export async function applyCharChanges(changes, char, afterMsgId = null) {
         logCharEditHistory(successLog, 'Applied', afterMsgId, char.name);
         toastr.success(`[Редактор персонажа] Применено изменений: ${successLog.length} к «${char.name}».`, EXT_DISPLAY);
     }
+    // UI reconciles card states against this: a field that failed server-side
+    // must stay pending instead of being marked applied.
+    return successLog;
 }
 
 export function logCharEditHistory(changes, statusStr, afterMsgId = null, charName = null) {
@@ -597,20 +600,26 @@ function _buildCharProposalCardForCharacter(changes, msgEl, char) {
             applyBtn.disabled = true; applyBtn.textContent = '\u2026';
 
             const isNameField = editableChanges[ci].field === 'name';
-            if (isNameField) { itemStates[ci] = 'applied'; _syncAllCardsToMessage(msgId); }
 
             try {
-                await applyCharChanges([editableChanges[ci]], char, msgId);
-                if (!isNameField) { itemStates[ci] = 'applied'; _syncAllCardsToMessage(msgId); }
-
-                item.classList.add('scp-lb-item-applied');
-                btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
+                const applied = await applyCharChanges([editableChanges[ci]], char, msgId);
+                // Reconcile against what actually applied: a field can fail
+                // server-side while applyCharChanges itself resolves normally.
+                const ok = Array.isArray(applied) && applied.includes(editableChanges[ci]);
+                itemStates[ci] = ok ? 'applied' : 'pending';
+                _syncAllCardsToMessage(msgId);
+                if (ok) {
+                    item.classList.add('scp-lb-item-applied');
+                    btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
+                } else {
+                    applyBtn.disabled = false; applyBtn.textContent = '\u2713';
+                }
                 countBadge.textContent = `${getPending()} ожидает`; updateFooter();
                 checkAllResolved();
             } catch (err) {
                 toastr.error(`Ошибка: ${err.message}`, EXT_DISPLAY);
                 applyBtn.disabled = false; applyBtn.textContent = '\u2713';
-                if (isNameField) { itemStates[ci] = 'pending'; _syncAllCardsToMessage(msgId); }
+                itemStates[ci] = 'pending'; _syncAllCardsToMessage(msgId);
             }
         });
 
@@ -764,21 +773,30 @@ function _buildCharProposalCardForCharacter(changes, msgEl, char) {
         if (!pending.length) return;
         applyAllBtn.disabled = true; applyAllBtn.textContent = 'Применение\u2026';
 
-        const hasNameField = pending.some(c => c.field === 'name');
-        if (hasNameField) { pendingIndices.forEach(i => { itemStates[i] = 'applied'; }); _syncAllCardsToMessage(msgId); }
-
         try {
-            await applyCharChanges(pending, char, msgId);
-            if (!hasNameField) { pendingIndices.forEach(i => { itemStates[i] = 'applied'; }); _syncAllCardsToMessage(msgId); }
+            const applied = await applyCharChanges(pending, char, msgId);
+            // Per-item truth: failed fields stay pending, only really applied
+            // ones get the applied card state.
+            const appliedSet = new Set(Array.isArray(applied) ? applied : []);
             pendingIndices.forEach(i => {
-                if (itemEls[i]) { itemEls[i].classList.add('scp-lb-item-applied'); itemEls[i].querySelectorAll('button').forEach(b => { b.disabled = true; }); }
+                const ok = appliedSet.has(editableChanges[i]);
+                itemStates[i] = ok ? 'applied' : 'pending';
+                if (ok && itemEls[i]) {
+                    itemEls[i].classList.add('scp-lb-item-applied');
+                    itemEls[i].querySelectorAll('button').forEach(b => { b.disabled = true; });
+                }
             });
+            _syncAllCardsToMessage(msgId);
+            if (pendingIndices.some(i => itemStates[i] === 'pending')) {
+                applyAllBtn.disabled = false; applyAllBtn.textContent = 'Применить всё';
+            }
             countBadge.textContent = `${getPending()} ожидает`; updateFooter();
             checkAllResolved();
         } catch (e) {
             toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
             applyAllBtn.disabled = false; applyAllBtn.textContent = 'Применить всё';
-            if (hasNameField) { pendingIndices.forEach(i => { itemStates[i] = 'pending'; }); _syncAllCardsToMessage(msgId); }
+            pendingIndices.forEach(i => { itemStates[i] = 'pending'; });
+            _syncAllCardsToMessage(msgId);
         }
     });
     rejectAllBtn.addEventListener('click', () => {
