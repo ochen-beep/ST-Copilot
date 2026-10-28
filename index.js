@@ -15566,13 +15566,29 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           const groupId = (ctx && ctx.groupId != null) ? String(ctx.groupId) : '';
           const name1 = (ctx && ctx.name1 != null) ? String(ctx.name1) : '';
           const name2 = (ctx && ctx.name2 != null) ? String(ctx.name2) : '';
-          // JSON.stringify(settings) — bounded (~десятки KB для типового эффективного settings),
-          // FNV-1a по этой строке = O(N) раз в buildSystemContent; приемлемо т.к. кэш режет
-          // количество вызовов до 1 за эпоху.
-          const settingsJson = (settings && typeof settings === 'object')
-              ? JSON.stringify(settings)
-              : '';
-          return fnv1a32(`${charId}|${groupId}|${name1}|${name2}|${activeWi}|${settingsJson}`);
+          // settings.stats mutate on every generation (recordStat) and never enter
+          // the prompt: hashing them busts the cache each turn and masks real input
+          // changes. Everything else in settings keeps its dirty-flag net.
+          let settingsJson = '';
+          if (settings && typeof settings === 'object') {
+              const { stats, ...rest } = settings;
+              settingsJson = JSON.stringify(rest);
+          }
+          // Live inputs read at build time with no invalidation hook of their own.
+          const sysPrompt = (settings?.includeSystemPrompt && ctx.chatCompletionSettings?.system_prompt) || '';
+          const persona = getUserPersona() || '';
+          let groupMembers = '';
+          if (groupId && Array.isArray(ctx.groups)) {
+              const g = ctx.groups.find(gr => gr.id === ctx.groupId);
+              if (g && Array.isArray(g.members)) groupMembers = g.members.join(',');
+          }
+          // roleplay_context / lorebook keyword scan read the live chat slice.
+          let sliceSig = '';
+          try {
+              const depth = Math.max(0, parseInt(settings?.contextDepth) || 0);
+              sliceSig = getMainChatSlice(depth).map(m => m.content).join('\u0000');
+          } catch (_) {}
+          return fnv1a32(`${charId}|${groupId}|${name1}|${name2}|${activeWi}|${sysPrompt}|${persona}|${groupMembers}|${sliceSig}|${settingsJson}`);
       } catch (_) {
           return '';
       }
