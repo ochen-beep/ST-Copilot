@@ -46,7 +46,11 @@ function withTimeout(promise, ms = TOOL_TIMEOUT_MS) {
     });
 }
 
-async function awaitAskUserAnswer(askPromise) {
+// Таймауты генерации в конфиг-объекте: фаззинг/соук-тесты сжимают их вместо
+// трёхминутных ожиданий; дефолты = прежние константы (ask_user 5 мин, stall 3 мин).
+export const _genTimeouts = { askUserMs: 300000, stallMs: 180000 };
+
+export async function awaitAskUserAnswer(askPromise) {
     return new Promise((resolve) => {
         let settled = false;
         const finish = (v) => {
@@ -56,7 +60,7 @@ async function awaitAskUserAnswer(askPromise) {
             clearInterval(poll);
             resolve(v);
         };
-        const timer = setTimeout(() => finish({ __ask_timeout: true }), ASK_USER_TIMEOUT_MS);
+        const timer = setTimeout(() => finish({ __ask_timeout: true }), _genTimeouts.askUserMs);
         const poll = setInterval(() => {
             if (state.generationStopped) finish({ __ask_cancelled: true });
         }, 500);
@@ -493,7 +497,7 @@ async function _callGenerateInner(session, settings, pendingText, onChunk, nativ
 // Watchdog тишины: открытое SSE-соединение без чанков раньше держало генерацию
 // бесконечно (снималась только ручным Stop). Таймер петится на каждом чанке;
 // срабатывание = abort + помеченная ошибка, чтобы UI показал её, а не молчал.
-const STALL_TIMEOUT_MS = 180000;
+
 
 export async function callGenerate(session, settings, pendingText, onChunk, nativeTools = false) {
     let stalled = false;
@@ -502,9 +506,9 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
         clearTimeout(stallTimer);
         stallTimer = setTimeout(() => {
             stalled = true;
-            _dbgAdd('GEN_STALL_TIMEOUT', { timeoutMs: STALL_TIMEOUT_MS });
+            _dbgAdd('GEN_STALL_TIMEOUT', { timeoutMs: _genTimeouts.stallMs });
             try { state.abortController?.abort(); } catch (_) {}
-        }, STALL_TIMEOUT_MS);
+        }, _genTimeouts.stallMs);
     };
     pet();
     try {
@@ -512,7 +516,7 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
             typeof onChunk === 'function' ? (...a) => { pet(); onChunk(...a); } : onChunk,
             nativeTools);
         if (result === null && stalled && !state.generationStopped) {
-            const err = new Error(`Генерация зависла: провайдер не присылал данные ${Math.round(STALL_TIMEOUT_MS / 1000)} с подряд. Запрос прерван — проверьте соединение и повторите.`);
+            const err = new Error(`Генерация зависла: провайдер не присылал данные ${Math.round(_genTimeouts.stallMs / 1000)} с подряд. Запрос прерван — проверьте соединение и повторите.`);
             err._stalled = true;
             throw err;
         }
