@@ -507,6 +507,17 @@ async function init() {
     // плодить второе окно и второй комплект слушателей.
     if (_initDone) return;
     _initDone = true;
+    try {
+        await _initInner();
+    } catch (e) {
+        // A transient failure (template fetch hiccup, etc.) must not brick the
+        // extension until reload: release the latch so the next init() retries.
+        _initDone = false;
+        console.error(`[${EXT_DISPLAY}] init failed, will retry on next trigger:`, e);
+    }
+}
+
+async function _initInner() {
     _dbgSetupGlobalErrorHandlers();
     
     try { ST_WorldInfo = await import('/scripts/world-info.js'); } catch(e) { console.warn('ST-Copilot: Could not import world-info.js'); }

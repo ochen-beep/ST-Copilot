@@ -33,6 +33,24 @@ export function _toDateKey(d) {
     return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// Day-keyed buckets persist in settings forever without pruning; YYYYMMDD keys
+// sort lexicographically, so "oldest" is a plain sort-shift.
+const STATS_MAX_DAYS = 120;
+
+function _pruneDateObj(obj) {
+    const keys = Object.keys(obj).sort();
+    for (let i = 0; i < keys.length - STATS_MAX_DAYS; i++) delete obj[keys[i]];
+}
+
+function _pruneStatsIfNeeded(st) {
+    // Hysteresis: full sweep (all char/chat buckets) only when the global
+    // bucket drifted well past the cap, not on every record.
+    if (Object.keys(st.g).length <= STATS_MAX_DAYS + 30) return;
+    _pruneDateObj(st.g);
+    for (const b of Object.values(st.c)) _pruneDateObj(b);
+    for (const b of Object.values(st.ch)) _pruneDateObj(b);
+}
+
 export function recordStat(metricIdx, value = 1) {
     try {
         if (metricIdx < 0 || metricIdx >= _STAT_N || !value) return;
@@ -49,6 +67,7 @@ export function recordStat(metricIdx, value = 1) {
         inc(st.c[charId]);
         if (!st.ch[chk]) st.ch[chk] = {};
         inc(st.ch[chk]);
+        _pruneStatsIfNeeded(st);
         saveSettings({ quiet: true });
     } catch(_) {}
 }

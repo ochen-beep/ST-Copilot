@@ -1,9 +1,12 @@
 import { getEffectiveSettings } from '../session.js';
 
-let _regexModule = false;
+let _regexModule = false; // false = not tried yet; null = previous attempt failed
 
 export async function loadRegexModule() {
-    if (_regexModule !== false) return _regexModule;
+    // null retries on every call: a failed import() resolves from the module
+    // map cache, so this stays cheap, and it recovers when the regex extension
+    // appears mid-session after a load-order race.
+    if (_regexModule) return _regexModule;
     try {
         _regexModule = await import('/scripts/extensions/regex/engine.js');
     } catch (e) {

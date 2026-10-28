@@ -3524,6 +3524,24 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
   }
 
+  // Day-keyed buckets persist in settings forever without pruning; YYYYMMDD keys
+  // sort lexicographically, so "oldest" is a plain sort-shift.
+  const STATS_MAX_DAYS = 120;
+
+  function _pruneDateObj(obj) {
+      const keys = Object.keys(obj).sort();
+      for (let i = 0; i < keys.length - STATS_MAX_DAYS; i++) delete obj[keys[i]];
+  }
+
+  function _pruneStatsIfNeeded(st) {
+      // Hysteresis: full sweep (all char/chat buckets) only when the global
+      // bucket drifted well past the cap, not on every record.
+      if (Object.keys(st.g).length <= STATS_MAX_DAYS + 30) return;
+      _pruneDateObj(st.g);
+      for (const b of Object.values(st.c)) _pruneDateObj(b);
+      for (const b of Object.values(st.ch)) _pruneDateObj(b);
+  }
+
   function recordStat(metricIdx, value = 1) {
       try {
           if (metricIdx < 0 || metricIdx >= _STAT_N || !value) return;
@@ -3540,6 +3558,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           inc(st.c[charId]);
           if (!st.ch[chk]) st.ch[chk] = {};
           inc(st.ch[chk]);
+          _pruneStatsIfNeeded(st);
           saveSettings$1({ quiet: true });
       } catch(_) {}
   }
@@ -15478,15 +15497,20 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           if (!snippets.length) return null;
           const summaryText = snippets.join(' ');
           const template = ctx.extensionSettings?.summaryception?.injectionTemplate || '<summary>\n{{summary}}\n</summary>';
-          return template.replace('{{summary}}', summaryText).trim();
+          // Function replacer: '$' sequences in summary text ($&, $', $`) must not
+          // be interpreted as replacement patterns.
+          return template.replace('{{summary}}', () => summaryText).trim();
       } catch(_) {}
       return null;
   }
 
-  let _regexModule = false;
+  let _regexModule = false; // false = not tried yet; null = previous attempt failed
 
   async function loadRegexModule() {
-      if (_regexModule !== false) return _regexModule;
+      // null retries on every call: a failed import() resolves from the module
+      // map cache, so this stays cheap, and it recovers when the regex extension
+      // appears mid-session after a load-order race.
+      if (_regexModule) return _regexModule;
       try {
           _regexModule = await import('/scripts/extensions/regex/engine.js');
       } catch (e) {
@@ -18987,6 +19011,17 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       // плодить второе окно и второй комплект слушателей.
       if (_initDone) return;
       _initDone = true;
+      try {
+          await _initInner();
+      } catch (e) {
+          // A transient failure (template fetch hiccup, etc.) must not brick the
+          // extension until reload: release the latch so the next init() retries.
+          _initDone = false;
+          console.error(`[${EXT_DISPLAY}] init failed, will retry on next trigger:`, e);
+      }
+  }
+
+  async function _initInner() {
       _dbgSetupGlobalErrorHandlers();
       
       try { exports.ST_WorldInfo = await import('/scripts/world-info.js'); } catch(e) { console.warn('ST-Copilot: Could not import world-info.js'); }

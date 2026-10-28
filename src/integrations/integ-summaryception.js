@@ -15,7 +15,9 @@ export function _getSummaryceptionSummary() {
         if (!snippets.length) return null;
         const summaryText = snippets.join(' ');
         const template = ctx.extensionSettings?.summaryception?.injectionTemplate || '<summary>\n{{summary}}\n</summary>';
-        return template.replace('{{summary}}', summaryText).trim();
+        // Function replacer: '$' sequences in summary text ($&, $', $`) must not
+        // be interpreted as replacement patterns.
+        return template.replace('{{summary}}', () => summaryText).trim();
     } catch(_) {}
     return null;
 }
