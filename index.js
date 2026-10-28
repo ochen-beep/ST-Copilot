@@ -5861,7 +5861,10 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           if (!f) throw new Error(`Aspect persona field "${aeName}" not found`);
           
           f.content = newValue;
-          
+
+          // Persona fields feed <{{user}}_persona> in the cached system prompt, but
+          // saveSettingsDebounced bypasses the extension wrapper that invalidates it.
+          invalidateSystemPromptCache('char_edit:evolutia_user');
           if (typeof ctx.saveSettingsDebounced === 'function') ctx.saveSettingsDebounced();
           else if (typeof window.saveSettingsDebounced === 'function') window.saveSettingsDebounced();
           return;
@@ -5931,7 +5934,10 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
           } else {
               pu.persona_description = newValue;
           }
-          
+
+          // Persona description feeds <{{user}}_persona>; debounced ST save does not
+          // invalidate the cached system prompt.
+          invalidateSystemPromptCache('char_edit:user_persona');
           if (typeof ctx.saveSettingsDebounced === 'function') ctx.saveSettingsDebounced();
           else if (typeof window.saveSettingsDebounced === 'function') window.saveSettingsDebounced();
           
@@ -5945,6 +5951,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
       if (fieldId === 'authors_note') {
           ctx.chatMetadata = ctx.chatMetadata || {};
           ctx.chatMetadata.note_prompt = newValue;
+          // note_prompt is baked into the cached <authors_note> block; saveMetadata
+          // does not go through the extension save wrapper, so invalidate here.
+          invalidateSystemPromptCache('char_edit:authors_note');
           if (typeof ctx.saveMetadata === 'function') ctx.saveMetadata();
           else saveSettings();
           

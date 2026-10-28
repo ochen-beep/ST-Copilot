@@ -1,5 +1,6 @@
 import { CHAR_EDIT_FORMAT_BLOCK, CHAR_CREATE_FORMAT_BLOCK, DEFAULT_CHAR_EDIT_DIRECTIVE, EXT_DISPLAY } from '../constants.js';
 import { getSettings } from '../session.js';
+import { invalidateSystemPromptCache } from '../state.js';
 import { _dbgAdd } from '../utils/util-debug.js';
 import { escHtml } from '../utils/util-dom.js';
 import { _sanitizeProposedTags, _repairJSON, _ensureWrapped, levenshtein } from '../utils/util-text.js';
@@ -551,7 +552,10 @@ export async function saveCharacterField(char, fieldId, newValue) {
         if (!f) throw new Error(`Aspect persona field "${aeName}" not found`);
         
         f.content = newValue;
-        
+
+        // Persona fields feed <{{user}}_persona> in the cached system prompt, but
+        // saveSettingsDebounced bypasses the extension wrapper that invalidates it.
+        invalidateSystemPromptCache('char_edit:evolutia_user');
         if (typeof ctx.saveSettingsDebounced === 'function') ctx.saveSettingsDebounced();
         else if (typeof window.saveSettingsDebounced === 'function') window.saveSettingsDebounced();
         return;
@@ -621,7 +625,10 @@ export async function saveCharacterField(char, fieldId, newValue) {
         } else {
             pu.persona_description = newValue;
         }
-        
+
+        // Persona description feeds <{{user}}_persona>; debounced ST save does not
+        // invalidate the cached system prompt.
+        invalidateSystemPromptCache('char_edit:user_persona');
         if (typeof ctx.saveSettingsDebounced === 'function') ctx.saveSettingsDebounced();
         else if (typeof window.saveSettingsDebounced === 'function') window.saveSettingsDebounced();
         
@@ -635,6 +642,9 @@ export async function saveCharacterField(char, fieldId, newValue) {
     if (fieldId === 'authors_note') {
         ctx.chatMetadata = ctx.chatMetadata || {};
         ctx.chatMetadata.note_prompt = newValue;
+        // note_prompt is baked into the cached <authors_note> block; saveMetadata
+        // does not go through the extension save wrapper, so invalidate here.
+        invalidateSystemPromptCache('char_edit:authors_note');
         if (typeof ctx.saveMetadata === 'function') ctx.saveMetadata();
         else saveSettings();
         
