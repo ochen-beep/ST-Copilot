@@ -958,7 +958,10 @@ export async function _runSwipeRegen(session, msgId, wrapEl) {
         if (!apiMod) throw new Error("API module not loaded");
         
         const builtMessages = await apiMod.assembleMessages(tempSession, settings, null);
-        const fullPromptText = builtMessages.map(m => m.content).join('\n');
+        // Same text-only flattening as runGenerate: array content (attachments)
+        // would string-join as "[object Object]" and poison the token cache.
+        const fullPromptText = builtMessages.map(m => typeof m.content === 'string' ? m.content
+            : (Array.isArray(m.content) ? m.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : '')).join('\n');
         const tokensIn = await apiMod.estimateTokens(fullPromptText);
 
         const result = await apiMod.callGenerate(tempSession, settings, null, onChunk);
@@ -1483,6 +1486,9 @@ export function renderSession(session, opts = {}) {
             const prev = _renderFromBySession.get(session.id) ?? 0;
             _renderFromBySession.set(session.id, Math.max(0, prev - MSG_RENDER_WINDOW));
             renderSession(session, { keepScroll: true });
+            // renderSession resets search state and wiped the highlights; with a
+            // search open, re-run it so the expanded render stays highlighted.
+            if (state.searchQuery.trim()) performSearch();
         });
         c.appendChild(loadOlder);
     }

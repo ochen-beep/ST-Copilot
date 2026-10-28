@@ -8021,9 +8021,12 @@ ${scopeHtml}
               try { onPostProcess(targetEl); } catch (e) { /* ignore */ }
           }
 
-          // Добавляем курсор в конец, если ещё что-то копим.
-          if (cursorEl && pendingTail) {
-              targetEl.appendChild(cursorEl);
+          // Курсор всегда в конце targetEl: коммит, съевший весь хвост, иначе
+          // оставлял бы курсор ПЕРЕД свежезакоммиченным блоком до следующего
+          // чанка; при пустом хвосте курсор гаснет до следующего push.
+          if (cursorEl) {
+              cursorEl.remove();
+              if (pendingTail) targetEl.appendChild(cursorEl);
           }
 
           if (pendingTail) _scheduleFlush();
@@ -8056,6 +8059,14 @@ ${scopeHtml}
               // Нормальный случай: displayText растёт. pendingTail = дельта от
               // последнего зафиксированного в DOM.
               if (displayText !== lastFullDisplayText) {
+                  // Only the tail may silently differ: a rewrite/normalization that
+                  // changed the already-committed prefix while keeping (or growing)
+                  // the length slips past the shrink check above — force a full
+                  // re-render for that case too.
+                  if (displayText.slice(0, renderedLen) !== lastFullDisplayText.slice(0, renderedLen)) {
+                      renderedLen = 0;
+                      openFenceCodeEl = null;
+                  }
                   pendingTail = displayText.slice(renderedLen);
                   lastFullDisplayText = displayText;
                   _scheduleFlush();
@@ -12558,7 +12569,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           if (!apiMod) throw new Error("API module not loaded");
           
           const builtMessages = await apiMod.assembleMessages(tempSession, settings, null);
-          const fullPromptText = builtMessages.map(m => m.content).join('\n');
+          // Same text-only flattening as runGenerate: array content (attachments)
+          // would string-join as "[object Object]" and poison the token cache.
+          const fullPromptText = builtMessages.map(m => typeof m.content === 'string' ? m.content
+              : (Array.isArray(m.content) ? m.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : '')).join('\n');
           const tokensIn = await apiMod.estimateTokens(fullPromptText);
 
           const result = await apiMod.callGenerate(tempSession, settings, null, onChunk);
@@ -13083,6 +13097,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
               const prev = _renderFromBySession.get(session.id) ?? 0;
               _renderFromBySession.set(session.id, Math.max(0, prev - MSG_RENDER_WINDOW));
               renderSession(session, { keepScroll: true });
+              // renderSession resets search state and wiped the highlights; with a
+              // search open, re-run it so the expanded render stays highlighted.
+              if (state.searchQuery.trim()) performSearch();
           });
           c.appendChild(loadOlder);
       }
@@ -13999,6 +14016,13 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
       }
   }
 
+  // Same threshold everywhere mobile layout is decided; computed live at every
+  // call — a one-shot capture went stale after rotation/resize across the
+  // breakpoint (handles lost on desktop, resize fighting fullscreen on mobile).
+  function isMobileViewport$1() {
+      return window.innerWidth <= 900 || ('ontouchstart' in window && window.innerWidth <= 1366);
+  }
+
   function makeDraggable(handle, target) {
       // v2.10.0: simplified to straight drag — no wobble/spring physics (performance).
       let active = false, offsetX = 0, offsetY = 0;
@@ -14007,8 +14031,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
           if (e.target.closest('.scp-hbtn,.scp-tbtn,select,input,button,.scp-opacity-wrap,.scp-rh,.scp-sess-dropdown,.scp-sess-wrap,.scp-menu-dropdown,.scp-pick-wrap,.scp-ctx-widget,.scp-depth-clickable,.scp-char-badge,.scp-pick-badge')) return;
 
           // Skip drag on mobile — window is fullscreen there.
-          const isMobile = window.innerWidth <= 900 || ('ontouchstart' in window && window.innerWidth <= 1366);
-          if (isMobile) return;
+          if (isMobileViewport$1()) return;
 
           const r = target.getBoundingClientRect();
           offsetX = e.clientX - r.left;
@@ -14043,11 +14066,17 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
   function makeResizable(target) {
       const MIN_W = 320, MIN_H = 300;
       // v2.10.0: resize disabled on mobile — window is fullscreen there.
-      const isMobile = window.innerWidth <= 900 || ('ontouchstart' in window && window.innerWidth <= 1366);
-      if (isMobile) {
-          target.querySelectorAll('.scp-rh').forEach(h => { h.style.display = 'none'; });
-          return;
-      }
+      const handles = target.querySelectorAll('.scp-rh');
+      const syncHandleVisibility = () => {
+          const mobile = isMobileViewport$1();
+          handles.forEach(h => { h.style.display = mobile ? 'none' : ''; });
+          return mobile;
+      };
+      // Handlers stay bound even when mobile hides the handles (unreachable
+      // while hidden); the resize re-check restores them after rotation/resize
+      // across the breakpoint instead of the one-shot capture that went stale.
+      if (syncHandleVisibility()) return;
+      window.addEventListener('resize', () => syncHandleVisibility(), { passive: true });
       target.querySelectorAll('.scp-rh').forEach(h => {
           const dir = [...h.classList].find(c => /^scp-rh-\w/.test(c))?.replace('scp-rh-', '') || '';
           let active = false, sw, sh, sl, st, sx, sy, _rafId = null, _s = {};
@@ -14176,7 +14205,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
   function restoreWindowState(windowEl) {
       const s = getSettings(); if (!windowEl) return;
-      const isMobile = window.innerWidth <= 900 || ('ontouchstart' in window && window.innerWidth <= 1366);
+      const isMobile = isMobileViewport$1();
 
       let w = 440;
       let h = 600;
@@ -14355,6 +14384,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     applyWindowBackground: applyWindowBackground,
     bringWindowToFront: bringWindowToFront,
     hideWindow: hideWindow,
+    isMobileViewport: isMobileViewport$1,
     makeDraggable: makeDraggable,
     makeResizable: makeResizable,
     minimize: minimize,

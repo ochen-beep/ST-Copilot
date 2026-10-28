@@ -151,9 +151,12 @@ export function createStreamRenderer(opts = {}) {
             try { onPostProcess(targetEl); } catch (e) { /* ignore */ }
         }
 
-        // Добавляем курсор в конец, если ещё что-то копим.
-        if (cursorEl && pendingTail) {
-            targetEl.appendChild(cursorEl);
+        // Курсор всегда в конце targetEl: коммит, съевший весь хвост, иначе
+        // оставлял бы курсор ПЕРЕД свежезакоммиченным блоком до следующего
+        // чанка; при пустом хвосте курсор гаснет до следующего push.
+        if (cursorEl) {
+            cursorEl.remove();
+            if (pendingTail) targetEl.appendChild(cursorEl);
         }
 
         if (pendingTail) _scheduleFlush();
@@ -186,6 +189,14 @@ export function createStreamRenderer(opts = {}) {
             // Нормальный случай: displayText растёт. pendingTail = дельта от
             // последнего зафиксированного в DOM.
             if (displayText !== lastFullDisplayText) {
+                // Only the tail may silently differ: a rewrite/normalization that
+                // changed the already-committed prefix while keeping (or growing)
+                // the length slips past the shrink check above — force a full
+                // re-render for that case too.
+                if (displayText.slice(0, renderedLen) !== lastFullDisplayText.slice(0, renderedLen)) {
+                    renderedLen = 0;
+                    openFenceCodeEl = null;
+                }
                 pendingTail = displayText.slice(renderedLen);
                 lastFullDisplayText = displayText;
                 _scheduleFlush();
