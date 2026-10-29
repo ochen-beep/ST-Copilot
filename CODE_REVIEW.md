@@ -163,3 +163,6 @@
 ### Постскриптум: багрепорт из поля (2026-10-29, до фикса рефакторинга)
 
 - ✅ **[P1, данные] Лорбуки в legacy/embedded массивном формате портились копилотом** (`feature-lorebook-engine.js`): загрузка не нормализовала `entries` (массив vs объект), `delete data.entries[uid]` на массиве оставлял дыру → `JSON.stringify` писал `null` → `entries[0] = null` ронял весь WI-пайплайн ST. Фикс: `_normalizeWIBook` на границе load и перед save (`391f2cf`), регресс-тесты `tests/lorebook-format.test.js` (4 шт.).
+  - Верифицировано по исходникам SillyTavern (2026-10-29): серверные `/api/worldinfo/get|edit` — verbatim passthrough (`src/endpoints/worldinfo.js`), клиентская `loadWorldInfo` не конвертирует (`world-info.js:2036`); нативный редактор работает объектно (`data.entries[uid]` всюду) — массивный формат приходит только из импортов/старья.
+  - Механизм blast radius: WI-скан чата (`world-info.js:6050`, `Object.values(entries).reduce(entry => entry.displayIndex)`) падает TypeError на null-элементе → весь скан мёртв для всех книг. Одна испорченная книга в активном списке = полный отказ WI.
+  - Остаток: книги, испорченные ранее и которых копилот больше не касается, остаются испорченными (чинятся удалением null-элементов из entries или повторным сейвом через копилот — нормализация на загрузке отбрасывает null-дыры).
