@@ -54,6 +54,7 @@ export async function fetchWorldInfoBook(name) {
             }
             if (!data) return null;
             data._ts = Date.now();
+            _normalizeWIBook(data);
             wiCache[name] = data;
             return data;
         } catch (e) {
@@ -66,6 +67,24 @@ export async function fetchWorldInfoBook(name) {
     })();
 
     return wiPromises[name];
+}
+
+// Lorebook files come in two shapes: modern { entries: { uid: entry } } and the
+// legacy/embedded array form { entries: [entry, ...] }. All write paths below use
+// object semantics (entries[uid], delete entries[uid]) — on an array that leaves
+// holes which JSON.stringify saves as `null` (seen in the wild: corrupted
+// entries[0] = null killed the whole WI pipeline). Normalize once at the load
+// boundary so every consumer sees the object shape.
+export function _normalizeWIBook(data) {
+    if (!data || !Array.isArray(data.entries)) return;
+    const obj = {};
+    data.entries.forEach((e, idx) => {
+        if (!e || typeof e !== 'object') return;
+        const uid = e.uid ?? e.id ?? idx;
+        if (e.uid === undefined) e.uid = uid;
+        obj[uid] = e;
+    });
+    data.entries = obj;
 }
 
 export function getEmbeddedCharBook() {
@@ -142,6 +161,7 @@ export async function saveWorldInfoBook(name, data) {
     // неудачный сейв оставляет кэш мутированным относительно диска.
     const payload = structuredClone(data);
     delete payload._ts;
+    _normalizeWIBook(payload);
     try {
         if (typeof ctx.saveWorldInfo === 'function') {
             // overwrite=true: без флага часть сборок ST мержит, а не перезаписывает.

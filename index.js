@@ -2573,6 +2573,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                 }
                 if (!data) return null;
                 data._ts = Date.now();
+                _normalizeWIBook(data);
                 wiCache[name] = data;
                 return data;
             } catch (e) {
@@ -2585,6 +2586,24 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         })();
 
         return wiPromises[name];
+    }
+
+    // Lorebook files come in two shapes: modern { entries: { uid: entry } } and the
+    // legacy/embedded array form { entries: [entry, ...] }. All write paths below use
+    // object semantics (entries[uid], delete entries[uid]) — on an array that leaves
+    // holes which JSON.stringify saves as `null` (seen in the wild: corrupted
+    // entries[0] = null killed the whole WI pipeline). Normalize once at the load
+    // boundary so every consumer sees the object shape.
+    function _normalizeWIBook(data) {
+        if (!data || !Array.isArray(data.entries)) return;
+        const obj = {};
+        data.entries.forEach((e, idx) => {
+            if (!e || typeof e !== 'object') return;
+            const uid = e.uid ?? e.id ?? idx;
+            if (e.uid === undefined) e.uid = uid;
+            obj[uid] = e;
+        });
+        data.entries = obj;
     }
 
     function getEmbeddedCharBook() {
@@ -2661,6 +2680,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         // неудачный сейв оставляет кэш мутированным относительно диска.
         const payload = structuredClone(data);
         delete payload._ts;
+        _normalizeWIBook(payload);
         try {
             if (typeof ctx.saveWorldInfo === 'function') {
                 // overwrite=true: без флага часть сборок ST мержит, а не перезаписывает.
@@ -3215,6 +3235,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
     var featureLorebookEngine = /*#__PURE__*/Object.freeze({
         __proto__: null,
+        _normalizeWIBook: _normalizeWIBook,
         _parseLBDiffPatch: _parseLBDiffPatch,
         _sanitizeLBChanges: _sanitizeLBChanges,
         bindNewLorebookToCharacter: bindNewLorebookToCharacter,
