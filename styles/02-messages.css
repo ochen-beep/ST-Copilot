@@ -317,3 +317,20 @@
 .scp-send-btn:active { transform: scale(0.93); }
 .scp-send-btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 
+
+/* Touch devices: a slow drag over selectable text flips Chrome into
+   text-selection mode instead of scrolling, so the chat feels glued to
+   the bottom edge. Selection is disabled on touch; copying stays via the
+   message copy button and the code-block copy button. */
+@media (pointer: coarse) {
+    .scp-messages,
+    .scp-messages * {
+        -webkit-user-select: none;
+        user-select: none;
+    }
+    .scp-messages textarea,
+    .scp-messages input {
+        -webkit-user-select: text;
+        user-select: text;
+    }
+}
