@@ -719,6 +719,10 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
             let roundRawToolCalls = result.rawToolCalls || null;
             let extraHistory = [];
             let nativeHistory = [];
+            // Анти-цикл: фингерпринты успешно исполненных вызовов за генерацию.
+            // Повтор с теми же аргументами не исполняется — модель получает заметку
+            // и должна уточнить запрос или ответить. Ошибки в Set не попадают: ретрай легален.
+            const executedToolFingerprints = new Set();
 
             let accumulatedText = roundText;
             let accumulatedReasoning = roundReasoning || null;
@@ -796,6 +800,13 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                         return;
                     }
                     try {
+                        const fingerprint = `${entry.name}:${JSON.stringify(entry.input)}`;
+                        if (executedToolFingerprints.has(fingerprint)) {
+                            _dbgAdd('TOOL_CALL_DUPLICATE_SKIPPED', { toolName: entry.name });
+                            entry.result = { note: 'This exact call was already executed this generation — the result is above in context. Refine the arguments or answer the user now.' };
+                            entry.status = 'done';
+                            return;
+                        }
                         const res = await withTimeout(executeTool(entry.name, entry.input));
                         if (res?.__ask_user) {
                             if (!streamMsgEl) {
@@ -818,6 +829,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                             entry.result = res;
                             entry.status = 'done';
                         }
+                        if (entry.status === 'done') executedToolFingerprints.add(fingerprint);
                     } catch (e) {
                         _dbgAdd('TOOL_EXECUTION_FAILED', { toolName: entry.name, error: e.message });
                         entry.result = { error: e.message };
