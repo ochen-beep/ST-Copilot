@@ -119,6 +119,17 @@ describe('lorebook tools respect excluded books and disabled entries', () => {
         expect(r.found).toBe(0);
     });
 
+    it('get_lorebooks book_name matches by substring and reports not-found clearly', async () => {
+        seedSettings({ lorebookExcludedBooks: [] });
+        window.selected_world_info = ['ToolBook'];
+        const r = await engine.executeTool('get_lorebooks', { include_entries: true, book_name: 'ool' });
+        expect(Object.keys(r.lorebooks)).toContain('ToolBook');
+
+        const miss = await engine.executeTool('get_lorebooks', { include_entries: true, book_name: 'zzz-nonexistent' });
+        expect(miss.error).toContain('zzz-nonexistent');
+        expect(miss.error).toContain('ToolBook');
+    });
+
     it('full=true returns complete entry content; default preview carries a hint', async () => {
         seedSettings({ lorebookExcludedBooks: [] });
         const long = 'X'.repeat(300) + ' EXACT TAIL';

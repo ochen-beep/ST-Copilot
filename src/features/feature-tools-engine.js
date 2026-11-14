@@ -4,7 +4,7 @@ import { state } from '../state.js';
 import { _ensureWrapped } from '../utils/util-text.js';
 import { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut } from '../utils/util-tool-parse.js';
 import { getCharInfo, getTagsForCharacter, isMsgHidden } from '../utils/util-st.js';
-import { fetchWorldInfoBook, getDisplayName, getActiveLorebookNames, wiEntriesToArray, isBookVisibleToTools, isEntryVisibleToTools } from './feature-lorebook-engine.js';
+import { fetchWorldInfoBook, getDisplayName, getActiveLorebookNames, wiEntriesToArray, isBookVisibleToTools, isEntryVisibleToTools, bookNameEq } from './feature-lorebook-engine.js';
 
 export { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut };
 
@@ -171,9 +171,15 @@ export async function executeTool(toolName, toolInput) {
                     total: activeBooks.length,
                 };
             }
+            // Same fuzzy match as search_lorebook_entry; exact matches preferred implicitly.
             const booksToProcess = specificBook
-                ? activeBooks.filter(n => n === specificBook || getDisplayName(n) === specificBook)
+                ? activeBooks.filter(n => bookNameEq(n, specificBook) || bookNameEq(getDisplayName(n), specificBook)
+                    || n.toLowerCase().includes(specificBook.toLowerCase())
+                    || getDisplayName(n).toLowerCase().includes(specificBook.toLowerCase()))
                 : activeBooks;
+            if (specificBook && !booksToProcess.length) {
+                return { error: `No active lorebook matches "${specificBook}". Active lorebooks: ${activeBooks.map(b => getDisplayName(b)).join(', ') || 'none'}. Call get_lorebooks without book_name to list them.` };
+            }
             const result = {};
             for (const name of booksToProcess) {
                 const data = await fetchWorldInfoBook(name).catch(() => null);
