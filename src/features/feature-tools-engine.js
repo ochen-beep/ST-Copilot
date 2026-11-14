@@ -1,15 +1,15 @@
 import { DEFAULT_TOOLS_PROMPT, TOOL_CALL_FORMAT_BLOCK, TOOL_DEFINITIONS } from '../constants.js';
-import { getSettings } from '../session.js';
+import { getSettings, getEffectiveSettings } from '../session.js';
 import { state } from '../state.js';
 import { _ensureWrapped } from '../utils/util-text.js';
 import { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut } from '../utils/util-tool-parse.js';
-import { getCharInfo, getTagsForCharacter } from '../utils/util-st.js';
+import { getCharInfo, getTagsForCharacter, isMsgHidden } from '../utils/util-st.js';
 import { fetchWorldInfoBook, getDisplayName, getActiveLorebookNames, wiEntriesToArray } from './feature-lorebook-engine.js';
 
 export { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut };
 
 export function getEnabledTools() {
-    const s = getSettings();
+    const s = getEffectiveSettings();
     if (!s.toolsEnabled) return [];
     return TOOL_DEFINITIONS.filter(t => s[t.settingKey] !== false);
 }
@@ -19,6 +19,8 @@ export async function executeTool(toolName, toolInput) {
     switch (toolName) {
         case 'search_chat': {
             const msgs = ctx.chat || [];
+            // Same visibility contract as roleplay_context assembly.
+            const incHidden = !!getEffectiveSettings().includeHiddenMessages;
             let rawQueries = Array.isArray(toolInput.queries) ? toolInput.queries : (Array.isArray(toolInput.query) ? toolInput.query : [toolInput.query || '']);
             const parsedQueries = rawQueries.map(q => {
                 const s = String(q);
@@ -33,10 +35,11 @@ export async function executeTool(toolName, toolInput) {
             const toIdx = toolInput.to_index ?? msgs.length - 1;
             const maxResults = Math.min(toolInput.max_results ?? 10, 50);
             const includeContent = toolInput.include_content !== false;
-            
+
             const results = [];
             for (let i = Math.max(0, fromIdx); i <= Math.min(msgs.length - 1, toIdx); i++) {
                 const m = msgs[i];
+                if (isMsgHidden(m, incHidden)) continue;
                 if (role === 'user' && !m.is_user) continue;
                 if (role === 'assistant' && m.is_user) continue;
                 const text = m.mes || '';
@@ -250,7 +253,8 @@ export async function executeTool(toolName, toolInput) {
             return result;
         }
         case 'get_chat_stats': {
-            const msgs = ctx.chat || [];
+            const incHidden = !!getEffectiveSettings().includeHiddenMessages;
+            const msgs = (ctx.chat || []).filter(m => !isMsgHidden(m, incHidden));
             const userMsgs = msgs.filter(m => m.is_user);
             const asMsgs = msgs.filter(m => !m.is_user);
             const totalChars = msgs.reduce((s, m) => s + (m.mes || '').length, 0);
@@ -266,13 +270,13 @@ export async function executeTool(toolName, toolInput) {
             };
         }
         case 'get_recent_messages': {
-            const msgs = ctx.chat || [];
+            const incHidden = !!getEffectiveSettings().includeHiddenMessages;
             const count = Math.min(toolInput.count ?? 10, 50);
             const fromEnd = toolInput.from_end !== false;
             const role = toolInput.role || 'all';
             // full=true: модель обязана видеть точный текст перед правкой (якоря дословные).
             const maxLen = toolInput.full ? 20000 : 600;
-            let filtered = msgs.map((m, i) => ({ ...m, _idx: i }));
+            let filtered = (ctx.chat || []).map((m, i) => ({ ...m, _idx: i })).filter(m => !isMsgHidden(m, incHidden));
             if (role === 'user') filtered = filtered.filter(m => m.is_user);
             if (role === 'assistant') filtered = filtered.filter(m => !m.is_user);
             if (fromEnd) filtered = filtered.slice(-count);

@@ -5,7 +5,7 @@ import { _dbgAdd } from '.././utils/util-debug.js';
 import { escHtml } from '.././utils/util-dom.js';
 import { _ensureWrapped, normalizeCharNamesInBlock } from '.././utils/util-text.js';
 import { cacheKey, fnv1a32 } from '.././utils/util-hash.js';
-import { getCharInfo, getUserPersona, getGenStamp } from '.././utils/util-st.js';
+import { getCharInfo, getUserPersona, getGenStamp, isMsgHidden } from '.././utils/util-st.js';
 import { recordStat, SM } from '.././features/feature-stats.js';
 import { _mergeContent } from '.././features/feature-attachments.js';
 
@@ -225,7 +225,7 @@ export function getMainChatSlice(depth) {
         name: m.is_user ? (ctx.name1 || 'User') : (m.name || getCharInfo()?.name || 'Character'),
         content: typeof m.mes === 'string' ? m.mes : '',
         chatIndex: i,
-        is_hidden: (!_incHidden && (!!m.is_system || !!m.is_hidden || !!(m.extra && m.extra.is_hidden))) || !!(m.extra?.sc_ghosted)
+        is_hidden: isMsgHidden(m, _incHidden)
     });
 
     try {

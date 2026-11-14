@@ -2,6 +2,7 @@ import { EXT_DISPLAY, EMBEDDED_BOOK_KEY, DEFAULT_LB_MANAGE_PROMPT, LB_FORMAT_BLO
 import { getCurrentSession, saveSettings, expandMacros } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
 import { ST_WorldInfo, ST_Utils } from '../version.js';
+import { isMsgHidden } from '../utils/util-st.js';
 import { _repairJSON } from '../utils/util-text.js';
 import { invalidateSystemPromptCache } from '../state.js';
 
@@ -298,24 +299,25 @@ export async function buildLorebookContextBlock(settings) {
     if (settings.lorebookAutoKeyword) {
         const ctx = SillyTavern.getContext();
         const msgs = ctx.chat || [];
+        const incHidden = !!settings.includeHiddenMessages;
         let lastUser = '', lastChar = '';
 
         try {
             const session = getCurrentSession();
             const picked = session.pickedChatIndices;
             if (picked && picked.length > 0) {
-                const pickedMsgs = picked.filter(i => i >= 0 && i < msgs.length).map(i => msgs[i]);
+                const pickedMsgs = picked.filter(i => i >= 0 && i < msgs.length).map(i => msgs[i]).filter(m => !isMsgHidden(m, incHidden));
                 lastUser = pickedMsgs.filter(m => m.is_user).map(m => m.mes).join('\n');
                 lastChar = pickedMsgs.filter(m => !m.is_user).map(m => m.mes).join('\n');
             } else {
                 const stDepth = Math.max(1, settings.lorebookSTScanDepth ?? 5);
-                const recentMsgs = msgs.slice(-stDepth);
+                const recentMsgs = msgs.filter(m => !isMsgHidden(m, incHidden)).slice(-stDepth);
                 lastUser = recentMsgs.filter(m => m.is_user).map(m => m.mes).join('\n');
                 lastChar = recentMsgs.filter(m => !m.is_user).map(m => m.mes).join('\n');
             }
         } catch (_) {
             const stDepth = Math.max(1, settings.lorebookSTScanDepth ?? 5);
-            const recentMsgs = msgs.slice(-stDepth);
+            const recentMsgs = msgs.filter(m => !isMsgHidden(m, incHidden)).slice(-stDepth);
             lastUser = recentMsgs.filter(m => m.is_user).map(m => m.mes).join('\n');
             lastChar = recentMsgs.filter(m => !m.is_user).map(m => m.mes).join('\n');
         }

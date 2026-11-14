@@ -1,5 +1,13 @@
 import { expandMacros } from '../session.js';
 
+// Single source of truth for message visibility across prompt assembly, tools
+// and lorebook scanning. ST's /hide marks messages as is_system; sc_ghosted
+// (extension's own ghosting) stays hidden even when includeHiddenMessages is on.
+export function isMsgHidden(m, includeHidden) {
+    if (!m) return false;
+    return (!includeHidden && (!!m.is_system || !!m.is_hidden || !!(m.extra && m.extra.is_hidden))) || !!(m.extra?.sc_ghosted);
+}
+
 export function getTagsForCharacter(char) {
     if (!char) return [];
     const ctx = SillyTavern.getContext();

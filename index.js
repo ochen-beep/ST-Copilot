@@ -2533,6 +2533,128 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         truncateFrom: truncateFrom
     });
 
+    // Single source of truth for message visibility across prompt assembly, tools
+    // and lorebook scanning. ST's /hide marks messages as is_system; sc_ghosted
+    // (extension's own ghosting) stays hidden even when includeHiddenMessages is on.
+    function isMsgHidden(m, includeHidden) {
+        if (!m) return false;
+        return (!includeHidden && (!!m.is_system || !!m.is_hidden || !!(m.extra && m.extra.is_hidden))) || !!(m.extra?.sc_ghosted);
+    }
+
+    function getTagsForCharacter(char) {
+        if (!char) return [];
+        const ctx = SillyTavern.getContext();
+        const avatar = char.avatar;
+        if (!avatar) return [];
+        
+        const tagMap = ctx.tagMap || {};
+        const tagIds = tagMap[avatar];
+        if (!Array.isArray(tagIds)) return [];
+        
+        const allTags = ctx.tags || [];
+        return tagIds.map(id => {
+            const found = allTags.find(t => t.id === id);
+            return found ? found.name : null;
+        }).filter(Boolean);
+    }
+
+    function getCharInfo() {
+        const ctx = SillyTavern.getContext();
+        const char = ctx.characters?.[ctx.characterId];
+        if (!char) return null;
+        
+        const d = char.data || {};
+        const ov = ctx.chatMetadata?.character_overrides || {};
+        
+        const get = (field, macro) => {
+            if (ov[field]) return ov[field];
+            if (macro) {
+                try { const r = expandMacros(macro); if (r && r !== macro) return r; } catch(_) {}
+            }
+            return d[field] || char[field] || '';
+        };
+
+        const getCharNote = () => {
+            if (ov.depth_prompt && ov.depth_prompt.prompt) return ov.depth_prompt.prompt;
+            return d.extensions?.depth_prompt?.prompt || char.extensions?.depth_prompt?.prompt || '';
+        };
+
+        return {
+            name: char.name || 'Unknown',
+            description: get('description', '{{description}}'),
+            personality: get('personality', '{{personality}}'),
+            scenario: get('scenario', '{{scenario}}'),
+            mes_example: get('mes_example', '{{mesExamples}}'),
+            character_note: getCharNote(),
+            creator_notes: get('creator_notes'),
+            system_prompt: get('system_prompt'),
+            post_history_instructions: get('post_history_instructions'),
+        };
+    }
+
+    function getUserPersona() {
+        const ctx = SillyTavern.getContext();
+        
+        try {
+            let expanded = '';
+            if (typeof ctx.substituteParams === 'function') {
+                expanded = ctx.substituteParams('{{persona}}');
+            } else if (typeof window.substituteParams === 'function') {
+                expanded = window.substituteParams('{{persona}}');
+            }
+            if (expanded && expanded !== '{{persona}}') return expanded;
+        } catch (_) {}
+
+        try {
+            const pu = window.power_user || ctx.powerUserSettings || {};
+            let personaId = window.user_avatar || ctx.user_avatar || ctx.userAvatar || ctx.personaId || ctx.activePersonaId || ctx.active_persona_id;
+            if (!personaId && typeof document !== 'undefined') {
+                const selected = document.querySelector('#user_avatar_block .avatar-container.selected, #persona_container .avatar-container.selected, .persona_selected');
+                if (selected) personaId = selected.getAttribute('data-avatar-id') || selected.dataset?.avatarId;
+            }
+            if (typeof personaId === 'object' && personaId !== null) {
+                personaId = personaId.avatarId || personaId.avatar_id || personaId.user_avatar || personaId.userAvatar || personaId.id;
+            }
+
+            if (personaId && pu.persona_descriptions) {
+                const pd = pu.persona_descriptions[personaId];
+                if (typeof pd === 'string') return pd;
+                if (typeof pd === 'object' && pd.description) return pd.description;
+            }
+            if (typeof pu.persona_description === 'string' && pu.persona_description) return pu.persona_description;
+        } catch (_) {}
+
+        return ctx.persona || ctx.userPersona || ctx.user_persona || '';
+    }
+
+    function getAuthorsNote() {
+        const ctx = SillyTavern.getContext();
+        return ctx.chatMetadata?.note_prompt || ctx.authorsNote || ctx.authors_note || '';
+    }
+    // Подпись генерации для мета-строки сообщения: какой профиль/модель отвечал.
+    function getGenStamp(settings) {
+        try {
+            const ctx = SillyTavern.getContext();
+            if (settings.connectionSource === 'profile' && settings.connectionProfileId) {
+                const service = ctx.ConnectionManagerRequestService;
+                const profiles = service?.getSupportedProfiles?.() ?? ctx.extensionSettings?.connectionManager?.profiles ?? [];
+                const p = profiles.find(x => x.id === settings.connectionProfileId);
+                if (p) return p.model ? `${p.name} · ${p.model}` : p.name;
+                return null;
+            }
+            // st-context отдаёт mainApi (camelCase); window.main_api в современном ST —
+            // DOM-селект, а не строка. Строку берём только из строковых источников.
+            let mainApi = typeof ctx.mainApi === 'string' ? ctx.mainApi : null;
+            if (!mainApi) mainApi = document.getElementById('main_api')?.value || null;
+            if (mainApi === 'openai') {
+                const oai = ctx.chatCompletionSettings || (typeof window.oai_settings === 'object' ? window.oai_settings : null);
+                return oai?.model || 'Chat Completion';
+            }
+            if (mainApi === 'textgenerationwebui') return 'Text Completion';
+            return mainApi || null;
+        } catch (_) { return null; }
+    }
+
     const wiCache = {};
     const wiPromises = {};
     let lastActiveEntries = [];
@@ -2826,24 +2948,25 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         if (settings.lorebookAutoKeyword) {
             const ctx = SillyTavern.getContext();
             const msgs = ctx.chat || [];
+            const incHidden = !!settings.includeHiddenMessages;
             let lastUser = '', lastChar = '';
 
             try {
                 const session = getCurrentSession();
                 const picked = session.pickedChatIndices;
                 if (picked && picked.length > 0) {
-                    const pickedMsgs = picked.filter(i => i >= 0 && i < msgs.length).map(i => msgs[i]);
+                    const pickedMsgs = picked.filter(i => i >= 0 && i < msgs.length).map(i => msgs[i]).filter(m => !isMsgHidden(m, incHidden));
                     lastUser = pickedMsgs.filter(m => m.is_user).map(m => m.mes).join('\n');
                     lastChar = pickedMsgs.filter(m => !m.is_user).map(m => m.mes).join('\n');
                 } else {
                     const stDepth = Math.max(1, settings.lorebookSTScanDepth ?? 5);
-                    const recentMsgs = msgs.slice(-stDepth);
+                    const recentMsgs = msgs.filter(m => !isMsgHidden(m, incHidden)).slice(-stDepth);
                     lastUser = recentMsgs.filter(m => m.is_user).map(m => m.mes).join('\n');
                     lastChar = recentMsgs.filter(m => !m.is_user).map(m => m.mes).join('\n');
                 }
             } catch (_) {
                 const stDepth = Math.max(1, settings.lorebookSTScanDepth ?? 5);
-                const recentMsgs = msgs.slice(-stDepth);
+                const recentMsgs = msgs.filter(m => !isMsgHidden(m, incHidden)).slice(-stDepth);
                 lastUser = recentMsgs.filter(m => m.is_user).map(m => m.mes).join('\n');
                 lastChar = recentMsgs.filter(m => !m.is_user).map(m => m.mes).join('\n');
             }
@@ -3268,120 +3391,6 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         wiEntriesToArray: wiEntriesToArray,
         wiPromises: wiPromises
     });
-
-    function getTagsForCharacter(char) {
-        if (!char) return [];
-        const ctx = SillyTavern.getContext();
-        const avatar = char.avatar;
-        if (!avatar) return [];
-        
-        const tagMap = ctx.tagMap || {};
-        const tagIds = tagMap[avatar];
-        if (!Array.isArray(tagIds)) return [];
-        
-        const allTags = ctx.tags || [];
-        return tagIds.map(id => {
-            const found = allTags.find(t => t.id === id);
-            return found ? found.name : null;
-        }).filter(Boolean);
-    }
-
-    function getCharInfo() {
-        const ctx = SillyTavern.getContext();
-        const char = ctx.characters?.[ctx.characterId];
-        if (!char) return null;
-        
-        const d = char.data || {};
-        const ov = ctx.chatMetadata?.character_overrides || {};
-        
-        const get = (field, macro) => {
-            if (ov[field]) return ov[field];
-            if (macro) {
-                try { const r = expandMacros(macro); if (r && r !== macro) return r; } catch(_) {}
-            }
-            return d[field] || char[field] || '';
-        };
-
-        const getCharNote = () => {
-            if (ov.depth_prompt && ov.depth_prompt.prompt) return ov.depth_prompt.prompt;
-            return d.extensions?.depth_prompt?.prompt || char.extensions?.depth_prompt?.prompt || '';
-        };
-
-        return {
-            name: char.name || 'Unknown',
-            description: get('description', '{{description}}'),
-            personality: get('personality', '{{personality}}'),
-            scenario: get('scenario', '{{scenario}}'),
-            mes_example: get('mes_example', '{{mesExamples}}'),
-            character_note: getCharNote(),
-            creator_notes: get('creator_notes'),
-            system_prompt: get('system_prompt'),
-            post_history_instructions: get('post_history_instructions'),
-        };
-    }
-
-    function getUserPersona() {
-        const ctx = SillyTavern.getContext();
-        
-        try {
-            let expanded = '';
-            if (typeof ctx.substituteParams === 'function') {
-                expanded = ctx.substituteParams('{{persona}}');
-            } else if (typeof window.substituteParams === 'function') {
-                expanded = window.substituteParams('{{persona}}');
-            }
-            if (expanded && expanded !== '{{persona}}') return expanded;
-        } catch (_) {}
-
-        try {
-            const pu = window.power_user || ctx.powerUserSettings || {};
-            let personaId = window.user_avatar || ctx.user_avatar || ctx.userAvatar || ctx.personaId || ctx.activePersonaId || ctx.active_persona_id;
-            if (!personaId && typeof document !== 'undefined') {
-                const selected = document.querySelector('#user_avatar_block .avatar-container.selected, #persona_container .avatar-container.selected, .persona_selected');
-                if (selected) personaId = selected.getAttribute('data-avatar-id') || selected.dataset?.avatarId;
-            }
-            if (typeof personaId === 'object' && personaId !== null) {
-                personaId = personaId.avatarId || personaId.avatar_id || personaId.user_avatar || personaId.userAvatar || personaId.id;
-            }
-
-            if (personaId && pu.persona_descriptions) {
-                const pd = pu.persona_descriptions[personaId];
-                if (typeof pd === 'string') return pd;
-                if (typeof pd === 'object' && pd.description) return pd.description;
-            }
-            if (typeof pu.persona_description === 'string' && pu.persona_description) return pu.persona_description;
-        } catch (_) {}
-
-        return ctx.persona || ctx.userPersona || ctx.user_persona || '';
-    }
-
-    function getAuthorsNote() {
-        const ctx = SillyTavern.getContext();
-        return ctx.chatMetadata?.note_prompt || ctx.authorsNote || ctx.authors_note || '';
-    }
-    // Подпись генерации для мета-строки сообщения: какой профиль/модель отвечал.
-    function getGenStamp(settings) {
-        try {
-            const ctx = SillyTavern.getContext();
-            if (settings.connectionSource === 'profile' && settings.connectionProfileId) {
-                const service = ctx.ConnectionManagerRequestService;
-                const profiles = service?.getSupportedProfiles?.() ?? ctx.extensionSettings?.connectionManager?.profiles ?? [];
-                const p = profiles.find(x => x.id === settings.connectionProfileId);
-                if (p) return p.model ? `${p.name} · ${p.model}` : p.name;
-                return null;
-            }
-            // st-context отдаёт mainApi (camelCase); window.main_api в современном ST —
-            // DOM-селект, а не строка. Строку берём только из строковых источников.
-            let mainApi = typeof ctx.mainApi === 'string' ? ctx.mainApi : null;
-            if (!mainApi) mainApi = document.getElementById('main_api')?.value || null;
-            if (mainApi === 'openai') {
-                const oai = ctx.chatCompletionSettings || (typeof window.oai_settings === 'object' ? window.oai_settings : null);
-                return oai?.model || 'Chat Completion';
-            }
-            if (mainApi === 'textgenerationwebui') return 'Text Completion';
-            return mainApi || null;
-        } catch (_) { return null; }
-    }
 
     function computeLCS(a, b) {
         const m = a.length, n = b.length;
@@ -9526,7 +9535,7 @@ ${scopeHtml}
     }
 
     function getEnabledTools() {
-        const s = getSettings();
+        const s = getEffectiveSettings();
         if (!s.toolsEnabled) return [];
         return TOOL_DEFINITIONS.filter(t => s[t.settingKey] !== false);
     }
@@ -9536,6 +9545,8 @@ ${scopeHtml}
         switch (toolName) {
             case 'search_chat': {
                 const msgs = ctx.chat || [];
+                // Same visibility contract as roleplay_context assembly.
+                const incHidden = !!getEffectiveSettings().includeHiddenMessages;
                 let rawQueries = Array.isArray(toolInput.queries) ? toolInput.queries : (Array.isArray(toolInput.query) ? toolInput.query : [toolInput.query || '']);
                 const parsedQueries = rawQueries.map(q => {
                     const s = String(q);
@@ -9550,10 +9561,11 @@ ${scopeHtml}
                 const toIdx = toolInput.to_index ?? msgs.length - 1;
                 const maxResults = Math.min(toolInput.max_results ?? 10, 50);
                 const includeContent = toolInput.include_content !== false;
-                
+
                 const results = [];
                 for (let i = Math.max(0, fromIdx); i <= Math.min(msgs.length - 1, toIdx); i++) {
                     const m = msgs[i];
+                    if (isMsgHidden(m, incHidden)) continue;
                     if (role === 'user' && !m.is_user) continue;
                     if (role === 'assistant' && m.is_user) continue;
                     const text = m.mes || '';
@@ -9767,7 +9779,8 @@ ${scopeHtml}
                 return result;
             }
             case 'get_chat_stats': {
-                const msgs = ctx.chat || [];
+                const incHidden = !!getEffectiveSettings().includeHiddenMessages;
+                const msgs = (ctx.chat || []).filter(m => !isMsgHidden(m, incHidden));
                 const userMsgs = msgs.filter(m => m.is_user);
                 const asMsgs = msgs.filter(m => !m.is_user);
                 const totalChars = msgs.reduce((s, m) => s + (m.mes || '').length, 0);
@@ -9783,13 +9796,13 @@ ${scopeHtml}
                 };
             }
             case 'get_recent_messages': {
-                const msgs = ctx.chat || [];
+                const incHidden = !!getEffectiveSettings().includeHiddenMessages;
                 const count = Math.min(toolInput.count ?? 10, 50);
                 const fromEnd = toolInput.from_end !== false;
                 const role = toolInput.role || 'all';
                 // full=true: модель обязана видеть точный текст перед правкой (якоря дословные).
                 const maxLen = toolInput.full ? 20000 : 600;
-                let filtered = msgs.map((m, i) => ({ ...m, _idx: i }));
+                let filtered = (ctx.chat || []).map((m, i) => ({ ...m, _idx: i })).filter(m => !isMsgHidden(m, incHidden));
                 if (role === 'user') filtered = filtered.filter(m => m.is_user);
                 if (role === 'assistant') filtered = filtered.filter(m => !m.is_user);
                 if (fromEnd) filtered = filtered.slice(-count);
@@ -16739,7 +16752,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             name: m.is_user ? (ctx.name1 || 'User') : (m.name || getCharInfo()?.name || 'Character'),
             content: typeof m.mes === 'string' ? m.mes : '',
             chatIndex: i,
-            is_hidden: (!_incHidden && (!!m.is_system || !!m.is_hidden || !!(m.extra && m.extra.is_hidden))) || !!(m.extra?.sc_ghosted)
+            is_hidden: isMsgHidden(m, _incHidden)
         });
 
         try {
