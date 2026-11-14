@@ -248,13 +248,28 @@ export function wiEntriesToArray(data) {
 // the Copilot. Excluded books and ST-disabled entries never reach the model
 // unless the entry was explicitly forced on via lorebookEntryOverrides === true.
 export function isBookVisibleToTools(name, settings) {
-    return !(settings.lorebookExcludedBooks || []).includes(name);
+    return !bookListHas(settings.lorebookExcludedBooks, name);
 }
 
 export function isEntryVisibleToTools(bookName, entry, settings) {
     if (!entry.disable) return true;
     const overrides = settings.lorebookEntryOverrides || {};
     return overrides[getEntryOverrideKey(bookName, entry)] === true;
+}
+
+// Book names may carry stray leading/trailing spaces from manual edits or old
+// exports; real names can also legally contain spaces ("Grid "), so stored
+// data is never mutated — only comparisons are normalized on both sides.
+export function bookNameEq(a, b) {
+    return String(a).trim() === String(b).trim();
+}
+
+export function bookListHas(list, name) {
+    return (list || []).some(b => bookNameEq(b, name));
+}
+
+export function bookListRemove(list, name) {
+    return (list || []).filter(b => !bookNameEq(b, name));
 }
 
 export function keywordMatchEntry(keys, text) {
@@ -293,7 +308,6 @@ export function getEntryOverrideKey(bookName, entry) {
 export async function buildLorebookContextBlock(settings) {
     lastActiveEntries = [];
     const selectedBooks = settings.lorebookSelectedBooks || [];
-    const excludedBooks = new Set(settings.lorebookExcludedBooks || []);
     const overrides = settings.lorebookEntryOverrides || {};
     const loadedBooks = {};
     const _activeNamesSet = new Set(getActiveLorebookNames());
@@ -301,7 +315,7 @@ export async function buildLorebookContextBlock(settings) {
     if (!_activeNamesSet.size) return '';
 
     await Promise.all([..._activeNamesSet].map(async name => {
-        if (excludedBooks.has(name)) return;
+        if (bookListHas(settings.lorebookExcludedBooks, name)) return;
         const data = await fetchWorldInfoBook(name);
         if (data) loadedBooks[name] = data;
     }));
@@ -370,7 +384,7 @@ export async function buildLorebookContextBlock(settings) {
             if (override === false) continue;
 
             const isConstant = !!entry.constant && !entry.disable;
-            const manualInclude = selectedBooks.includes(bookName);
+            const manualInclude = bookListHas(selectedBooks, bookName);
             const keywordInclude = keywordEntries[bookName]?.some(e => e.uid === entry.uid);
 
             if (override === true || isConstant || manualInclude || keywordInclude) {
@@ -435,12 +449,11 @@ export async function buildLorebookContextBlock(settings) {
 
 export function buildLBAIInstructions(settings) {
     if (!settings.lorebookAIManageEnabled) return '';
-    const excludedBooks = new Set(settings.lorebookExcludedBooks || []);
     // Активны = книги, реально подключённые к чату (глобальные/персонажа/чата/персоны),
     // а не только те, из которых сработали записи. Иначе пустая или несработавшая книга
     // невидима для модели, и она предлагает создать новую вместо использования существующей.
     const activeBooks = getActiveLorebookNames()
-        .filter(b => !excludedBooks.has(b))
+        .filter(b => !bookListHas(settings.lorebookExcludedBooks, b))
         .map(b => getDisplayName(b));
     const activeBooksStr = activeBooks.length > 0 ? activeBooks.map(b => `"${b}"`).join(', ') : 'None';
     

@@ -6,7 +6,7 @@ import { state } from '../state.js';
 import { getSettings, saveSettings, getCurrentSession } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
 import { escHtml, showCustomDialog, copyText } from '../utils/util-dom.js';
-import { fetchWorldInfoBook, saveWorldInfoBook, wiEntriesToArray, getDisplayName, getActiveLorebookNames, getEntryOverrideKey, buildLorebookContextBlock, wiCache, lastActiveEntries } from './feature-lorebook-engine.js';
+import { fetchWorldInfoBook, saveWorldInfoBook, wiEntriesToArray, getDisplayName, getActiveLorebookNames, getEntryOverrideKey, buildLorebookContextBlock, wiCache, lastActiveEntries, bookNameEq, bookListHas, bookListRemove } from './feature-lorebook-engine.js';
 import { applyCustomTheme, bringWindowToFront } from '../ui/ui-window.js';
 import { updateMsgCount } from '../ui/ui-chat.js';
 export async function openLorebookManager() {
@@ -33,8 +33,8 @@ export function closeLorebookManager() {
 }
 
 export function _applyLBBookCheckState(item, name, s) {
-    const isSelected = s.lorebookSelectedBooks.includes(name);
-    const isExcluded = (s.lorebookExcludedBooks || []).includes(name);
+    const isSelected = bookListHas(s.lorebookSelectedBooks, name);
+    const isExcluded = bookListHas(s.lorebookExcludedBooks, name);
     const check = item.querySelector('.scp-lb-book-check');
     if (!check) return;
     check.classList.remove('checked', 'excluded');
@@ -124,8 +124,8 @@ export async function refreshLorebookList() {
     const frag = document.createDocumentFragment();
     for (const name of activeNamesArray) {
         const displayName = getDisplayName(name);
-        const isSelected = s.lorebookSelectedBooks.includes(name);
-        const isExcluded = (s.lorebookExcludedBooks || []).includes(name);
+        const isSelected = bookListHas(s.lorebookSelectedBooks, name);
+        const isExcluded = bookListHas(s.lorebookExcludedBooks, name);
         const item = document.createElement('div');
         item.className = `scp-lb-book-item${isSelected ? ' selected' : ''}${isExcluded ? ' lb-excluded' : ''}${state.lbActiveBook === name ? ' lb-book-open' : ''}`;
         item.dataset.name = name;
@@ -155,18 +155,18 @@ export async function refreshLorebookList() {
 
 export async function toggleLorebookSelection(name) {
     const s = getSettings();
-    const isSelected = s.lorebookSelectedBooks.includes(name);
-    const isExcluded = (s.lorebookExcludedBooks || []).includes(name);
+    const isSelected = bookListHas(s.lorebookSelectedBooks, name);
+    const isExcluded = bookListHas(s.lorebookExcludedBooks, name);
 
     if (!isSelected && !isExcluded) {
         s.lorebookSelectedBooks.push(name);
-        s.lorebookExcludedBooks = (s.lorebookExcludedBooks || []).filter(b => b !== name);
+        s.lorebookExcludedBooks = bookListRemove(s.lorebookExcludedBooks, name);
     } else if (isSelected) {
-        s.lorebookSelectedBooks = s.lorebookSelectedBooks.filter(b => b !== name);
+        s.lorebookSelectedBooks = bookListRemove(s.lorebookSelectedBooks, name);
         if (!s.lorebookExcludedBooks) s.lorebookExcludedBooks = [];
         s.lorebookExcludedBooks.push(name);
     } else {
-        s.lorebookExcludedBooks = s.lorebookExcludedBooks.filter(b => b !== name);
+        s.lorebookExcludedBooks = bookListRemove(s.lorebookExcludedBooks, name);
     }
     saveSettings();
     await buildLorebookContextBlock(s);
@@ -185,7 +185,7 @@ export async function viewLorebookEntries(name) {
     document.getElementById('scp-lb-entry-detail').style.display = 'none';
     document.getElementById('scp-lb-entries').style.display = '';
     const s = getSettings();
-    const isForced = s.lorebookSelectedBooks.includes(name) || (s.lorebookExcludedBooks || []).includes(name);
+    const isForced = bookListHas(s.lorebookSelectedBooks, name) || bookListHas(s.lorebookExcludedBooks, name);
     const entriesEl = document.getElementById('scp-lb-entries');
     if (entriesEl) entriesEl.classList.toggle('lb-entries-dimmed', isForced);
     await renderEntryList(name, state.lbSearchQuery);
@@ -392,8 +392,8 @@ export function updateLBFooterInfo() {
     const activeNames = getActiveLorebookNames() || [];
     const s = getSettings();
     
-    const count = (s.lorebookSelectedBooks || []).filter(b => activeNames.includes(b)).length;
-    const excCount = (s.lorebookExcludedBooks || []).filter(b => activeNames.includes(b)).length;
+    const count = (s.lorebookSelectedBooks || []).filter(b => activeNames.some(n => bookNameEq(n, b))).length;
+    const excCount = (s.lorebookExcludedBooks || []).filter(b => activeNames.some(n => bookNameEq(n, b))).length;
     
     const kwOn = s.lorebookAutoKeyword;
     const parts = [];

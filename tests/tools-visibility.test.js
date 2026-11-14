@@ -112,4 +112,10 @@ describe('lorebook tools respect excluded books and disabled entries', () => {
         expect(entryNames).toContain('Enabled');
         expect(entryNames).not.toContain('DisabledLore');
     });
+
+    it('excluded book matches despite stray spaces in the stored name', async () => {
+        seedSettings({ lorebookExcludedBooks: [' ExcludedBook '] });
+        const r = await engine.executeTool('search_lorebook_entry', { queries: ['excluded book lore'] });
+        expect(r.found).toBe(0);
+    });
 });

@@ -2897,13 +2897,28 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
     // the Copilot. Excluded books and ST-disabled entries never reach the model
     // unless the entry was explicitly forced on via lorebookEntryOverrides === true.
     function isBookVisibleToTools(name, settings) {
-        return !(settings.lorebookExcludedBooks || []).includes(name);
+        return !bookListHas(settings.lorebookExcludedBooks, name);
     }
 
     function isEntryVisibleToTools(bookName, entry, settings) {
         if (!entry.disable) return true;
         const overrides = settings.lorebookEntryOverrides || {};
         return overrides[getEntryOverrideKey(bookName, entry)] === true;
+    }
+
+    // Book names may carry stray leading/trailing spaces from manual edits or old
+    // exports; real names can also legally contain spaces ("Grid "), so stored
+    // data is never mutated — only comparisons are normalized on both sides.
+    function bookNameEq(a, b) {
+        return String(a).trim() === String(b).trim();
+    }
+
+    function bookListHas(list, name) {
+        return (list || []).some(b => bookNameEq(b, name));
+    }
+
+    function bookListRemove(list, name) {
+        return (list || []).filter(b => !bookNameEq(b, name));
     }
 
     function keywordMatchEntry(keys, text) {
@@ -2942,7 +2957,6 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
     async function buildLorebookContextBlock(settings) {
         lastActiveEntries = [];
         const selectedBooks = settings.lorebookSelectedBooks || [];
-        const excludedBooks = new Set(settings.lorebookExcludedBooks || []);
         const overrides = settings.lorebookEntryOverrides || {};
         const loadedBooks = {};
         const _activeNamesSet = new Set(getActiveLorebookNames());
@@ -2950,7 +2964,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         if (!_activeNamesSet.size) return '';
 
         await Promise.all([..._activeNamesSet].map(async name => {
-            if (excludedBooks.has(name)) return;
+            if (bookListHas(settings.lorebookExcludedBooks, name)) return;
             const data = await fetchWorldInfoBook(name);
             if (data) loadedBooks[name] = data;
         }));
@@ -3019,7 +3033,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                 if (override === false) continue;
 
                 const isConstant = !!entry.constant && !entry.disable;
-                const manualInclude = selectedBooks.includes(bookName);
+                const manualInclude = bookListHas(selectedBooks, bookName);
                 const keywordInclude = keywordEntries[bookName]?.some(e => e.uid === entry.uid);
 
                 if (override === true || isConstant || manualInclude || keywordInclude) {
@@ -3084,12 +3098,11 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
     function buildLBAIInstructions(settings) {
         if (!settings.lorebookAIManageEnabled) return '';
-        const excludedBooks = new Set(settings.lorebookExcludedBooks || []);
         // Активны = книги, реально подключённые к чату (глобальные/персонажа/чата/персоны),
         // а не только те, из которых сработали записи. Иначе пустая или несработавшая книга
         // невидима для модели, и она предлагает создать новую вместо использования существующей.
         const activeBooks = getActiveLorebookNames()
-            .filter(b => !excludedBooks.has(b))
+            .filter(b => !bookListHas(settings.lorebookExcludedBooks, b))
             .map(b => getDisplayName(b));
         const activeBooksStr = activeBooks.length > 0 ? activeBooks.map(b => `"${b}"`).join(', ') : 'None';
         
@@ -3384,6 +3397,9 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         _parseLBDiffPatch: _parseLBDiffPatch,
         _sanitizeLBChanges: _sanitizeLBChanges,
         bindNewLorebookToCharacter: bindNewLorebookToCharacter,
+        bookListHas: bookListHas,
+        bookListRemove: bookListRemove,
+        bookNameEq: bookNameEq,
         buildLBAIInstructions: buildLBAIInstructions,
         buildLorebookContextBlock: buildLorebookContextBlock,
         expandOutletsAsync: expandOutletsAsync,
@@ -4991,8 +5007,8 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
     }
 
     function _applyLBBookCheckState(item, name, s) {
-        const isSelected = s.lorebookSelectedBooks.includes(name);
-        const isExcluded = (s.lorebookExcludedBooks || []).includes(name);
+        const isSelected = bookListHas(s.lorebookSelectedBooks, name);
+        const isExcluded = bookListHas(s.lorebookExcludedBooks, name);
         const check = item.querySelector('.scp-lb-book-check');
         if (!check) return;
         check.classList.remove('checked', 'excluded');
@@ -5082,8 +5098,8 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         const frag = document.createDocumentFragment();
         for (const name of activeNamesArray) {
             const displayName = getDisplayName(name);
-            const isSelected = s.lorebookSelectedBooks.includes(name);
-            const isExcluded = (s.lorebookExcludedBooks || []).includes(name);
+            const isSelected = bookListHas(s.lorebookSelectedBooks, name);
+            const isExcluded = bookListHas(s.lorebookExcludedBooks, name);
             const item = document.createElement('div');
             item.className = `scp-lb-book-item${isSelected ? ' selected' : ''}${isExcluded ? ' lb-excluded' : ''}${state.lbActiveBook === name ? ' lb-book-open' : ''}`;
             item.dataset.name = name;
@@ -5113,18 +5129,18 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
 
     async function toggleLorebookSelection(name) {
         const s = getSettings();
-        const isSelected = s.lorebookSelectedBooks.includes(name);
-        const isExcluded = (s.lorebookExcludedBooks || []).includes(name);
+        const isSelected = bookListHas(s.lorebookSelectedBooks, name);
+        const isExcluded = bookListHas(s.lorebookExcludedBooks, name);
 
         if (!isSelected && !isExcluded) {
             s.lorebookSelectedBooks.push(name);
-            s.lorebookExcludedBooks = (s.lorebookExcludedBooks || []).filter(b => b !== name);
+            s.lorebookExcludedBooks = bookListRemove(s.lorebookExcludedBooks, name);
         } else if (isSelected) {
-            s.lorebookSelectedBooks = s.lorebookSelectedBooks.filter(b => b !== name);
+            s.lorebookSelectedBooks = bookListRemove(s.lorebookSelectedBooks, name);
             if (!s.lorebookExcludedBooks) s.lorebookExcludedBooks = [];
             s.lorebookExcludedBooks.push(name);
         } else {
-            s.lorebookExcludedBooks = s.lorebookExcludedBooks.filter(b => b !== name);
+            s.lorebookExcludedBooks = bookListRemove(s.lorebookExcludedBooks, name);
         }
         saveSettings$1();
         await buildLorebookContextBlock(s);
@@ -5143,7 +5159,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         document.getElementById('scp-lb-entry-detail').style.display = 'none';
         document.getElementById('scp-lb-entries').style.display = '';
         const s = getSettings();
-        const isForced = s.lorebookSelectedBooks.includes(name) || (s.lorebookExcludedBooks || []).includes(name);
+        const isForced = bookListHas(s.lorebookSelectedBooks, name) || bookListHas(s.lorebookExcludedBooks, name);
         const entriesEl = document.getElementById('scp-lb-entries');
         if (entriesEl) entriesEl.classList.toggle('lb-entries-dimmed', isForced);
         await renderEntryList(name, state.lbSearchQuery);
@@ -5350,8 +5366,8 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         const activeNames = getActiveLorebookNames() || [];
         const s = getSettings();
         
-        const count = (s.lorebookSelectedBooks || []).filter(b => activeNames.includes(b)).length;
-        const excCount = (s.lorebookExcludedBooks || []).filter(b => activeNames.includes(b)).length;
+        const count = (s.lorebookSelectedBooks || []).filter(b => activeNames.some(n => bookNameEq(n, b))).length;
+        const excCount = (s.lorebookExcludedBooks || []).filter(b => activeNames.some(n => bookNameEq(n, b))).length;
         
         const kwOn = s.lorebookAutoKeyword;
         const parts = [];
