@@ -540,6 +540,7 @@ export const TOOL_DEFINITIONS = [
                     search_in: { type: 'string', enum: ['all', 'name', 'keys', 'content'], description: 'Where to search (default: all)' },
                     only_constant: { type: 'boolean', description: 'If true, return only constant (always-active) entries' },
                     only_outlet: { type: 'boolean', description: 'If true, return only outlet entries (injected via {{outlet::name}} macro)' },
+                    full: { type: 'boolean', description: 'Return full untruncated entry content instead of a 200-char preview. REQUIRED before proposing edits — patch anchors must quote the exact text (default false)' },
                 },
                 required: ['queries'],
             },

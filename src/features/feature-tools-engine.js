@@ -82,6 +82,8 @@ export async function executeTool(toolName, toolInput) {
             const searchIn = toolInput.search_in || 'all';
             const onlyConstant = !!toolInput.only_constant;
             const onlyOutlet = !!toolInput.only_outlet;
+            // full=true: модель обязана видеть точный текст перед правкой (якоря дословные).
+            const fullContent = !!toolInput.full;
             const results = [];
             for (const bookName of activeBooks) {
                 if (!isBookVisibleToTools(bookName, lbSettings)) continue;
@@ -131,17 +133,21 @@ export async function executeTool(toolName, toolInput) {
                         if (matched) break;
                     }
                     
-                    if (matched) results.push({
-                        book: getDisplayName(bookName),
-                        uid: entry.uid,
-                        name: entry.comment || `Entry #${entry.uid}`,
-                        keys: entry.key || [],
-                        content_preview: (entry.content || '').slice(0, 200) + ((entry.content || '').length > 200 ? '...' : ''),
-                        is_constant: !!entry.constant,
-                        is_outlet: isEntryOutlet,
-                        outlet_name: outletField || null,
-                        disabled: !!entry.disable,
-                    });
+                    if (matched) {
+                        const result = {
+                            book: getDisplayName(bookName),
+                            uid: entry.uid,
+                            name: entry.comment || `Entry #${entry.uid}`,
+                            keys: entry.key || [],
+                            is_constant: !!entry.constant,
+                            is_outlet: isEntryOutlet,
+                            outlet_name: outletField || null,
+                            disabled: !!entry.disable,
+                        };
+                        if (fullContent) result.content = entry.content || '';
+                        else result.content_preview = (entry.content || '').slice(0, 200) + ((entry.content || '').length > 200 ? '...[truncated — pass full:true for exact text]' : '');
+                        results.push(result);
+                    }
                     if (results.length >= 20) break;
                 }
                 if (results.length >= 20) break;

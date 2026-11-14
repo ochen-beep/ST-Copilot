@@ -118,6 +118,24 @@ describe('lorebook tools respect excluded books and disabled entries', () => {
         const r = await engine.executeTool('search_lorebook_entry', { queries: ['excluded book lore'] });
         expect(r.found).toBe(0);
     });
+
+    it('full=true returns complete entry content; default preview carries a hint', async () => {
+        seedSettings({ lorebookExcludedBooks: [] });
+        const long = 'X'.repeat(300) + ' EXACT TAIL';
+        // уникальное имя книги: wiCache живёт 30 с и переживает соседние тесты
+        ctx.loadWorldInfo = async (name) => name === 'FullContentBook' ? { name, entries: {
+            0: { uid: 0, comment: 'LongEntry', content: long, key: ['e'], disable: false },
+        } } : null;
+        window.selected_world_info = ['FullContentBook'];
+        const preview = await engine.executeTool('search_lorebook_entry', { queries: ['LongEntry'] });
+        expect(preview.results[0].content_preview).toContain('truncated');
+        expect(preview.results[0].content_preview).not.toContain('EXACT TAIL');
+        expect(preview.results[0].content_preview).toContain('full:true');
+
+        const full = await engine.executeTool('search_lorebook_entry', { queries: ['LongEntry'], full: true });
+        expect(full.results[0].content).toBe(long);
+        expect(full.results[0].content_preview).toBeUndefined();
+    });
 });
 
 describe('context builder: book-level include must not resurrect ST-disabled entries', () => {

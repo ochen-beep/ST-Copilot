@@ -776,6 +776,7 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
                         search_in: { type: 'string', enum: ['all', 'name', 'keys', 'content'], description: 'Where to search (default: all)' },
                         only_constant: { type: 'boolean', description: 'If true, return only constant (always-active) entries' },
                         only_outlet: { type: 'boolean', description: 'If true, return only outlet entries (injected via {{outlet::name}} macro)' },
+                        full: { type: 'boolean', description: 'Return full untruncated entry content instead of a 200-char preview. REQUIRED before proposing edits — patch anchors must quote the exact text (default false)' },
                     },
                     required: ['queries'],
                 },
@@ -9641,6 +9642,8 @@ ${scopeHtml}
                 const searchIn = toolInput.search_in || 'all';
                 const onlyConstant = !!toolInput.only_constant;
                 const onlyOutlet = !!toolInput.only_outlet;
+                // full=true: модель обязана видеть точный текст перед правкой (якоря дословные).
+                const fullContent = !!toolInput.full;
                 const results = [];
                 for (const bookName of activeBooks) {
                     if (!isBookVisibleToTools(bookName, lbSettings)) continue;
@@ -9690,17 +9693,21 @@ ${scopeHtml}
                             if (matched) break;
                         }
                         
-                        if (matched) results.push({
-                            book: getDisplayName(bookName),
-                            uid: entry.uid,
-                            name: entry.comment || `Entry #${entry.uid}`,
-                            keys: entry.key || [],
-                            content_preview: (entry.content || '').slice(0, 200) + ((entry.content || '').length > 200 ? '...' : ''),
-                            is_constant: !!entry.constant,
-                            is_outlet: isEntryOutlet,
-                            outlet_name: outletField || null,
-                            disabled: !!entry.disable,
-                        });
+                        if (matched) {
+                            const result = {
+                                book: getDisplayName(bookName),
+                                uid: entry.uid,
+                                name: entry.comment || `Entry #${entry.uid}`,
+                                keys: entry.key || [],
+                                is_constant: !!entry.constant,
+                                is_outlet: isEntryOutlet,
+                                outlet_name: outletField || null,
+                                disabled: !!entry.disable,
+                            };
+                            if (fullContent) result.content = entry.content || '';
+                            else result.content_preview = (entry.content || '').slice(0, 200) + ((entry.content || '').length > 200 ? '...[truncated — pass full:true for exact text]' : '');
+                            results.push(result);
+                        }
                         if (results.length >= 20) break;
                     }
                     if (results.length >= 20) break;
