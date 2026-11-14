@@ -67,3 +67,49 @@ describe('chat tools respect message visibility', () => {
         expect(r.found).toBe(1);
     });
 });
+
+describe('lorebook tools respect excluded books and disabled entries', () => {
+    beforeEach(() => {
+        window.selected_world_info = ['ToolBook', 'ExcludedBook'];
+        ctx.loadWorldInfo = async (name) => {
+            if (name === 'ToolBook') return { name, entries: {
+                0: { uid: 0, comment: 'Enabled', content: 'enabled lore text', key: ['e'], disable: false },
+                1: { uid: 1, comment: 'DisabledLore', content: 'secret disabled lore', key: ['d'], disable: true },
+            } };
+            if (name === 'ExcludedBook') return { name, entries: {
+                0: { uid: 0, comment: 'ExcludedLore', content: 'excluded book lore', key: ['x'], disable: false },
+            } };
+            return null;
+        };
+    });
+
+    it('search_lorebook_entry skips disabled entries and excluded books', async () => {
+        seedSettings({ lorebookExcludedBooks: ['ExcludedBook'] });
+        const r = await engine.executeTool('search_lorebook_entry', { queries: ['lore'] });
+        const names = r.results.map(x => x.name);
+        expect(names).toContain('Enabled');
+        expect(names).not.toContain('DisabledLore');
+        expect(names).not.toContain('ExcludedLore');
+    });
+
+    it('search_lorebook_entry returns disabled entry when user forced it on', async () => {
+        seedSettings({ lorebookExcludedBooks: [], lorebookEntryOverrides: { 'ToolBook_DisabledLore': true } });
+        const r = await engine.executeTool('search_lorebook_entry', { queries: ['secret disabled'] });
+        expect(r.found).toBe(1);
+        expect(r.results[0].name).toBe('DisabledLore');
+        expect(r.results[0].disabled).toBe(true);
+    });
+
+    it('get_lorebooks hides excluded books and disabled entries', async () => {
+        seedSettings({ lorebookExcludedBooks: ['ExcludedBook'] });
+        const r = await engine.executeTool('get_lorebooks', {});
+        const names = r.lorebooks.map(b => b.name);
+        expect(names).toContain('ToolBook');
+        expect(names).not.toContain('ExcludedBook');
+
+        const r2 = await engine.executeTool('get_lorebooks', { include_entries: true, book_name: 'ToolBook' });
+        const entryNames = r2.lorebooks['ToolBook'].map(e => e.name);
+        expect(entryNames).toContain('Enabled');
+        expect(entryNames).not.toContain('DisabledLore');
+    });
+});

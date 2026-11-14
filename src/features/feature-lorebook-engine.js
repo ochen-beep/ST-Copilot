@@ -244,6 +244,19 @@ export function wiEntriesToArray(data) {
     return Object.values(data.entries).sort((a, b) => (a.displayIndex ?? a.uid) - (b.displayIndex ?? b.uid));
 }
 
+// Tool-facing visibility: tools must see exactly what the user configured for
+// the Copilot. Excluded books and ST-disabled entries never reach the model
+// unless the entry was explicitly forced on via lorebookEntryOverrides === true.
+export function isBookVisibleToTools(name, settings) {
+    return !(settings.lorebookExcludedBooks || []).includes(name);
+}
+
+export function isEntryVisibleToTools(bookName, entry, settings) {
+    if (!entry.disable) return true;
+    const overrides = settings.lorebookEntryOverrides || {};
+    return overrides[getEntryOverrideKey(bookName, entry)] === true;
+}
+
 export function keywordMatchEntry(keys, text) {
     if (!keys?.length || !text) return false;
     const lower = text.toLowerCase();

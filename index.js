@@ -2893,6 +2893,19 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         return Object.values(data.entries).sort((a, b) => (a.displayIndex ?? a.uid) - (b.displayIndex ?? b.uid));
     }
 
+    // Tool-facing visibility: tools must see exactly what the user configured for
+    // the Copilot. Excluded books and ST-disabled entries never reach the model
+    // unless the entry was explicitly forced on via lorebookEntryOverrides === true.
+    function isBookVisibleToTools(name, settings) {
+        return !(settings.lorebookExcludedBooks || []).includes(name);
+    }
+
+    function isEntryVisibleToTools(bookName, entry, settings) {
+        if (!entry.disable) return true;
+        const overrides = settings.lorebookEntryOverrides || {};
+        return overrides[getEntryOverrideKey(bookName, entry)] === true;
+    }
+
     function keywordMatchEntry(keys, text) {
         if (!keys?.length || !text) return false;
         const lower = text.toLowerCase();
@@ -3380,6 +3393,8 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         getEmbeddedCharBook: getEmbeddedCharBook,
         getEntryOverrideKey: getEntryOverrideKey,
         getKeywordTriggeredEntries: getKeywordTriggeredEntries,
+        isBookVisibleToTools: isBookVisibleToTools,
+        isEntryVisibleToTools: isEntryVisibleToTools,
         keywordMatchEntry: keywordMatchEntry,
         get lastActiveEntries () { return lastActiveEntries; },
         parseLBChangesFromText: parseLBChangesFromText,
@@ -9593,6 +9608,7 @@ ${scopeHtml}
             }
             case 'search_lorebook_entry': {
                 const activeBooks = getActiveLorebookNames();
+                const lbSettings = getEffectiveSettings();
                 let rawQueries = Array.isArray(toolInput.queries) ? toolInput.queries : (Array.isArray(toolInput.query) ? toolInput.query : [toolInput.query || '']);
                 const parsedQueries = rawQueries.map(q => {
                     const s = String(q);
@@ -9609,10 +9625,12 @@ ${scopeHtml}
                 const onlyOutlet = !!toolInput.only_outlet;
                 const results = [];
                 for (const bookName of activeBooks) {
+                    if (!isBookVisibleToTools(bookName, lbSettings)) continue;
                     if (targetBook && !bookName.toLowerCase().includes(targetBook.toLowerCase())) continue;
                     const data = await fetchWorldInfoBook(bookName).catch(() => null);
                     if (!data) continue;
                     for (const entry of wiEntriesToArray(data)) {
+                        if (!isEntryVisibleToTools(bookName, entry, lbSettings)) continue;
                         const outletField = (entry.outlet || entry.outlet_name || entry.outletName || entry.automation_id || entry.automationId || '').trim();
                         const isOutletPos = String(entry.position) === '7' || String(entry.position).toLowerCase() === 'outlet';
                         const isEntryOutlet = isOutletPos || outletField !== '';
@@ -9672,7 +9690,8 @@ ${scopeHtml}
                 return { found: results.length, results };
             }
             case 'get_lorebooks': {
-                const activeBooks = getActiveLorebookNames();
+                const lbSettings = getEffectiveSettings();
+                const activeBooks = getActiveLorebookNames().filter(n => isBookVisibleToTools(n, lbSettings));
                 const includeEntries = !!toolInput.include_entries;
                 const specificBook = toolInput.book_name;
                 if (!includeEntries) {
@@ -9688,7 +9707,9 @@ ${scopeHtml}
                 for (const name of booksToProcess) {
                     const data = await fetchWorldInfoBook(name).catch(() => null);
                     if (!data) { result[getDisplayName(name)] = []; continue; }
-                    result[getDisplayName(name)] = wiEntriesToArray(data).map(e => {
+                    result[getDisplayName(name)] = wiEntriesToArray(data)
+                        .filter(e => isEntryVisibleToTools(name, e, lbSettings))
+                        .map(e => {
                         const outletField = (e.outlet || e.outlet_name || e.outletName || e.automation_id || e.automationId || '').trim();
                         const isOutletPos = String(e.position) === '7' || String(e.position).toLowerCase() === 'outlet';
                         return {

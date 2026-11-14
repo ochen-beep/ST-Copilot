@@ -4,7 +4,7 @@ import { state } from '../state.js';
 import { _ensureWrapped } from '../utils/util-text.js';
 import { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut } from '../utils/util-tool-parse.js';
 import { getCharInfo, getTagsForCharacter, isMsgHidden } from '../utils/util-st.js';
-import { fetchWorldInfoBook, getDisplayName, getActiveLorebookNames, wiEntriesToArray } from './feature-lorebook-engine.js';
+import { fetchWorldInfoBook, getDisplayName, getActiveLorebookNames, wiEntriesToArray, isBookVisibleToTools, isEntryVisibleToTools } from './feature-lorebook-engine.js';
 
 export { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut };
 
@@ -67,6 +67,7 @@ export async function executeTool(toolName, toolInput) {
         }
         case 'search_lorebook_entry': {
             const activeBooks = getActiveLorebookNames();
+            const lbSettings = getEffectiveSettings();
             let rawQueries = Array.isArray(toolInput.queries) ? toolInput.queries : (Array.isArray(toolInput.query) ? toolInput.query : [toolInput.query || '']);
             const parsedQueries = rawQueries.map(q => {
                 const s = String(q);
@@ -83,10 +84,12 @@ export async function executeTool(toolName, toolInput) {
             const onlyOutlet = !!toolInput.only_outlet;
             const results = [];
             for (const bookName of activeBooks) {
+                if (!isBookVisibleToTools(bookName, lbSettings)) continue;
                 if (targetBook && !bookName.toLowerCase().includes(targetBook.toLowerCase())) continue;
                 const data = await fetchWorldInfoBook(bookName).catch(() => null);
                 if (!data) continue;
                 for (const entry of wiEntriesToArray(data)) {
+                    if (!isEntryVisibleToTools(bookName, entry, lbSettings)) continue;
                     const outletField = (entry.outlet || entry.outlet_name || entry.outletName || entry.automation_id || entry.automationId || '').trim();
                     const isOutletPos = String(entry.position) === '7' || String(entry.position).toLowerCase() === 'outlet';
                     const isEntryOutlet = isOutletPos || outletField !== '';
@@ -146,7 +149,8 @@ export async function executeTool(toolName, toolInput) {
             return { found: results.length, results };
         }
         case 'get_lorebooks': {
-            const activeBooks = getActiveLorebookNames();
+            const lbSettings = getEffectiveSettings();
+            const activeBooks = getActiveLorebookNames().filter(n => isBookVisibleToTools(n, lbSettings));
             const includeEntries = !!toolInput.include_entries;
             const specificBook = toolInput.book_name;
             if (!includeEntries) {
@@ -162,7 +166,9 @@ export async function executeTool(toolName, toolInput) {
             for (const name of booksToProcess) {
                 const data = await fetchWorldInfoBook(name).catch(() => null);
                 if (!data) { result[getDisplayName(name)] = []; continue; }
-                result[getDisplayName(name)] = wiEntriesToArray(data).map(e => {
+                result[getDisplayName(name)] = wiEntriesToArray(data)
+                    .filter(e => isEntryVisibleToTools(name, e, lbSettings))
+                    .map(e => {
                     const outletField = (e.outlet || e.outlet_name || e.outletName || e.automation_id || e.automationId || '').trim();
                     const isOutletPos = String(e.position) === '7' || String(e.position).toLowerCase() === 'outlet';
                     return {
