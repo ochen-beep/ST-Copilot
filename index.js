@@ -6,6 +6,18 @@ var STCopilot = (function (exports) {
         // ─── Changelog Data ──────────────────────────────────────────────────────────
     const CHANGELOG = [
         {
+            version: '2.10.1',
+            date: '11/10/2026',
+            announce: true,
+            notes: [
+                '<strong>Исправлена «тихая смерть» запроса</strong> — если соединение обрывалось без команды пользователя, генерация завершалась молча. Теперь показывается диалог ошибки, а настримленный фрагмент сохраняется как сообщение.',
+                '<strong>Watchdog увеличен до 5 минут</strong> — генерация прерывается по тишине провайдера через 300 секунд вместо 180.',
+                '<strong>Окно не уезжает за экран</strong> — восстановленные размер и позиция окна подрезаются под текущий вьюпорт.',
+                '<strong>Ghost Mode удалён</strong> — режим призрака и его настройки убраны из интерфейса.',
+                '<strong>Убрана кнопка «Свернуть»</strong> — оставлена только «Скрыть».'
+            ],
+        },
+        {
             version: '2.10.0',
             date: '7/5/2026',
             announce: true,
@@ -909,7 +921,6 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             send: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
             search: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
             refresh: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`,
-            minus: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
             x: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
             plus: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
             bot: `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7" /><ellipse cx="12" cy="12" rx="11" ry="3" transform="rotate(-25 12 12)" /><circle cx="21.5" cy="7.5" r="1.5" fill="currentColor" stroke="none" /></svg>`,
@@ -919,7 +930,6 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             check: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
             chevron: `<svg class="scp-sess-chevron" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>`,
             gear: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
-            ghost: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01M15 10h.01M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/></svg>`,
             lightning: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
             pick: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="9" y2="10" stroke-width="3" stroke-linecap="round"/><line x1="12" y1="10" x2="12" y2="10" stroke-width="3" stroke-linecap="round"/><line x1="15" y1="10" x2="15" y2="10" stroke-width="3" stroke-linecap="round"/></svg>`,
             star: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
@@ -1283,9 +1293,8 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         lorebookCopilotScanDepth: 6,
         floatingIconPersistent: false,
         reasoningTrimStrings: '',
-        ghostModeOpacity: 15,
-        ghostModeHotkey: 'Alt+Shift+G',
-        ghostModeHotkeyEnabled: true,
+        // Ghost Mode выпилен (продуктовое решение 2026-11-10): старые ключи
+        // ghostMode* в сохранённых настройках безвредно игнорируются.
         quickPromptsVisible: false,
         quickPrompts: [
             { id: 'qp_d1', label: 'Анализ', icon: '🔍', text: 'Analyze the current scene and character motivations in detail.' },
@@ -10312,10 +10321,6 @@ ${scopeHtml}
         { key: 'wobbleWindow',   stId: 'scp-wobble-window',  spId: 'scp-sp-wobble-window', type: 'checkbox', fromSetting: s => s.wobbleWindow !== false },
         { key: 'performanceMode', stId: 'scp-perf-mode', spId: 'scp-sp-perf-mode', type: 'checkbox',
           onChange: () => Promise.resolve().then(function () { return uiWindow; }).then(m => m.applyCustomTheme(getSettings().customTheme || THEME_PRESETS.default)) },
-        { key: 'ghostModeHotkeyEnabled', stId: 'scp-ghost-hotkey-enabled', spId: 'scp-sp-ghost-hotkey-enabled', type: 'checkbox',
-          onChange: () => Promise.resolve().then(function () { return uiWindow; }).then(m => m.setupGhostHotkey()) },
-        { key: 'ghostModeHotkey', stId: 'scp-ghost-hotkey', spId: 'scp-sp-ghost-hotkey', type: 'input',
-          onChange: () => Promise.resolve().then(function () { return uiWindow; }).then(m => m.setupGhostHotkey()) },
         { key: 'changelogAutoShow',    stId: null, spId: 'scp-sp-changelog-auto', type: 'checkbox' },
         { key: 'includeSummaryception', stId: 'scp-include-summaryception', spId: 'scp-sp-include-summaryception', type: 'checkbox', fromSetting: s => s.includeSummaryception !== false },
         { key: 'useAspectEvolutia',    stId: 'scp-use-aspect-evolutia',    spId: 'scp-sp-use-aspect-evolutia',    type: 'checkbox', fromSetting: s => s.useAspectEvolutia !== false },
@@ -10326,10 +10331,7 @@ ${scopeHtml}
         // ── Sliders ───────────────────────────────────────────────────────────────
         { key: 'opacity', stId: 'scp-opacity-slider', spId: 'scp-sp-opacity-slider', type: 'slider', toVal: Number,
           stValId: 'scp-opacity-val', spValId: 'scp-sp-opacity-val', valFmt: v => `${v}%`,
-          onChange: val => { const w = document.getElementById('scp-window'); if (w && !state.ghostModeActive) w.style.opacity = (val / 100).toString(); } },
-        { key: 'ghostModeOpacity', stId: 'scp-ghost-opacity', spId: 'scp-sp-ghost-opacity', type: 'slider', toVal: Number,
-          stValId: 'scp-ghost-opacity-val', spValId: 'scp-sp-ghost-opacity-val', valFmt: v => `${v}%`,
-          onChange: val => { const w = document.getElementById('scp-window'); if (w && state.ghostModeActive) w.style.opacity = (val / 100).toString(); } },
+          onChange: val => { const w = document.getElementById('scp-window'); if (w) w.style.opacity = (val / 100).toString(); } },
 
         // ── Connection ────────────────────────────────────────────────────────────
         { key: 'connectionSource',  stId: 'scp-conn-source',  spId: 'scp-sp-conn-source',  type: 'select', profileKey: true, onChange: _applyConnectionSourceVisibility },
@@ -14410,42 +14412,28 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             }
         }
 
+        // Кламп размера и позиции к текущему вьюпорту (BUG-5): сохранённая
+        // геометрия с другого монитора/разрешения раньше применялась как есть —
+        // окно становилось шире экрана, инпут и заголовок уезжали за пределы.
+        const maxW = window.innerWidth, maxH = window.innerHeight;
         if (isMobile) {
-            windowEl.style.width = `${Math.min(w, Math.floor(window.innerWidth * 0.94), 560)}px`;
-            windowEl.style.height = `${Math.min(h, Math.floor(window.innerHeight * 0.82), 700)}px`;
+            w = Math.min(w, Math.floor(maxW * 0.94), 560);
+            h = Math.min(h, Math.floor(maxH * 0.82), 700);
         } else {
-            windowEl.style.width = `${w}px`;
-            windowEl.style.height = `${h}px`;
+            w = Math.max(380, Math.min(w, maxW)); // 380 = CSS min-width (.scp-window)
+            h = Math.max(300, Math.min(h, maxH));
         }
-        // v2.10.0: window is always solid (opacity 1) for performance; opacity only used by Ghost Mode.
+        windowEl.style.width = `${w}px`;
+        windowEl.style.height = `${h}px`;
+        // Позицию переклампливаем уже по финальному размеру окна.
+        const curLeft = parseFloat(windowEl.style.left);
+        if (!Number.isNaN(curLeft)) windowEl.style.left = `${Math.max(0, Math.min(curLeft, Math.max(0, maxW - w)))}px`;
+        const curTop = parseFloat(windowEl.style.top);
+        if (!Number.isNaN(curTop)) windowEl.style.top = `${Math.max(0, Math.min(curTop, Math.max(0, maxH - 40)))}px`;
+        // v2.10.0: окно всегда непрозрачное (opacity 1) — Ghost Mode выпилен.
         windowEl.style.opacity = '1';
         applyCustomTheme(s.customTheme || THEME_PRESETS.default);
         applyWindowBackground();
-    }
-
-    function setGhostMode(enabled) {
-        const windowEl = document.getElementById(WIN_ID);
-        state.ghostModeActive = enabled;
-        if (!windowEl) return;
-        const s = getSettings();
-        const ghostBtn = document.getElementById('scp-ghost-btn');
-
-        if (enabled) {
-            const opacity = Math.max(15, Math.min(50, s.ghostModeOpacity ?? 15)) / 100;
-            windowEl.classList.add('scp-ghost-mode');
-            windowEl.style.opacity = opacity.toString();
-            ghostBtn?.classList.add('active');
-        } else {
-            windowEl.classList.remove('scp-ghost-mode');
-            windowEl.style.opacity = '1';
-            ghostBtn?.classList.remove('active');
-        }
-    }
-
-    function toggleGhostMode() {
-        const windowEl = document.getElementById(WIN_ID);
-        if (!windowEl || windowEl.style.display === 'none') return;
-        setGhostMode(!state.ghostModeActive);
     }
 
     let _hotkeyHandler = null;
@@ -14468,31 +14456,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         document.addEventListener('keydown', _hotkeyHandler);
     }
 
-    let _ghostHotkeyHandler = null;
-    function setupGhostHotkey() {
-        if (_ghostHotkeyHandler) document.removeEventListener('keydown', _ghostHotkeyHandler);
-        _ghostHotkeyHandler = null;
-        const s = getSettings();
-        if (!s.ghostModeHotkeyEnabled || !s.ghostModeHotkey) return;
-        const parts = s.ghostModeHotkey.toLowerCase().split('+').map(p => p.trim());
-        const key = parts[parts.length - 1];
-        const needAlt = parts.includes('alt');
-        const needCtrl = parts.includes('ctrl') || parts.includes('control');
-        const needShift = parts.includes('shift');
-        const needMeta = parts.includes('meta') || parts.includes('cmd');
-        _ghostHotkeyHandler = e => {
-            if (e.key.toLowerCase() !== key) return;
-            if (needAlt !== e.altKey || needCtrl !== e.ctrlKey || needShift !== e.shiftKey || needMeta !== e.metaKey) return;
-            e.preventDefault();
-            toggleGhostMode();
-        };
-        document.addEventListener('keydown', _ghostHotkeyHandler);
-    }
-
     function minimize() {
         saveScrollPosition();
         const windowEl = document.getElementById(WIN_ID);
-        setGhostMode(false);
         const s = getSettings();
         s.minimized = true;
         if(windowEl) windowEl.style.display = 'none';
@@ -14504,7 +14470,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     function hideWindow() {
         saveScrollPosition();
         const windowEl = document.getElementById(WIN_ID);
-        setGhostMode(false);
         const s = getSettings();
         s.windowVisible = false;
         s.minimized = false;
@@ -14555,11 +14520,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         minimize: minimize,
         restoreWindowState: restoreWindowState,
         saveWindowState: saveWindowState,
-        setGhostMode: setGhostMode,
-        setupGhostHotkey: setupGhostHotkey,
         setupHotkey: setupHotkey,
         showWindow: showWindow,
-        toggleGhostMode: toggleGhostMode,
         toggleVisibility: toggleVisibility
     });
 
@@ -17469,8 +17431,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     }
 
     // Таймауты генерации в конфиг-объекте: фаззинг/соук-тесты сжимают их вместо
-    // трёхминутных ожиданий; дефолты = прежние константы (ask_user 5 мин, stall 3 мин).
-    const _genTimeouts = { askUserMs: 300000, stallMs: 180000 };
+    // минутных ожиданий; дефолты: ask_user 5 мин, stall 5 мин (продуктовое решение
+    // владельца 2026-11-10: 180 с мало для медленных/бесплатных провайдеров).
+    const _genTimeouts = { askUserMs: 300000, stallMs: 300000 };
 
     async function awaitAskUserAnswer(askPromise) {
         return new Promise((resolve) => {
@@ -17675,7 +17638,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 }
             } catch (e) {
                 if (state.abortController === abort) state.abortController = null;
-                if (abort.signal.aborted || e?.name === 'AbortError') return null;
+                // Чужой AbortError (сеть/браузер оборвали fetch без нашего сигнала)
+                // не глотаем — пробрасываем в обработчик ошибок, иначе запрос умирал
+                // молча (BUG-6: ни ответа, ни диалога, частичный текст терялся из вида).
+                if (abort.signal.aborted) return null;
                 throw e;
             }
 
@@ -17795,13 +17761,13 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     }
                 } catch (err2) {
                 if (state.abortController === abort) state.abortController = null;
-                    if (abort.signal.aborted || err2?.name === 'AbortError' || err2?.message === 'userStopped') return null;
+                    if (abort.signal.aborted || err2?.message === 'userStopped') return null;
                     if (err2.cause) err2.message = `${err2.message} — CAUSE: ${err2.cause.message || String(err2.cause)}`;
                     throw err2;
                 }
             } else {
                 if (state.abortController === abort) state.abortController = null;
-                if (abort.signal.aborted || e?.name === 'AbortError' || e?.message === 'userStopped') return null;
+                if (abort.signal.aborted || e?.message === 'userStopped') return null;
                 if (e.cause) e.message = `${e.message} — CAUSE: ${e.cause.message || String(e.cause)}`;
                 throw e;
             }
@@ -17905,7 +17871,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         } catch (e) {
             if (state.abortController === abort) state.abortController = null;
             if (tcCutAt !== null) { const c = cutResult(); if (c) return c; }
-            if (abort.signal.aborted || e?.name === 'AbortError' || e?.message === 'userStopped') return null;
+            if (abort.signal.aborted || e?.message === 'userStopped') return null;
             throw e;
         }
 
@@ -18458,6 +18424,18 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             // content:'' persists into the bucket on the next save.
             if (streamMsgId) {
                 const idx = session.messages.findIndex(m => m.id === streamMsgId);
+                // BUG-6: при обрыве соединения (чужой AbortError) частичный ответ
+                // сохраняем как сообщение — паритет со Stop и watchdog, чтобы
+                // настримленный текст не пропадал вместе с плейсхолдером.
+                if (idx >= 0 && !session.messages[idx].content && streamAccumText) {
+                    session.messages[idx].content = streamAccumText;
+                    session.messages[idx].reasoning = streamAccumReasoning || null;
+                    saveSessionsToMetadata();
+                    if (streamContentEl) {
+                        streamContentEl.innerHTML = renderMarkdown(streamAccumText);
+                        postProcessHTMLBlocks(streamContentEl);
+                    }
+                }
                 if (idx >= 0 && !session.messages[idx].content) {
                     session.messages.splice(idx, 1);
                     streamMsgEl?.remove();
@@ -18887,11 +18865,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             }, 150);
         });
 
-        document.getElementById('scp-min-btn')?.addEventListener('click', () => minimize());
         document.getElementById('scp-close-btn')?.addEventListener('click', () => hideWindow());
         document.getElementById('scp-ext-settings-btn')?.addEventListener('click', () => openSettingsPanel());
-
-        document.getElementById('scp-ghost-btn')?.addEventListener('click', () => toggleGhostMode());
 
         // Session dropdown
         document.getElementById('scp-sess-trigger')?.addEventListener('click', e => {
@@ -19223,7 +19198,6 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         setupChatPickerListeners(); 
         setupChangelogListeners();
         setupSearchHotkey();
-        setupGhostHotkey();
         setupHotkey();
         setupMessagesScrollTracking();
         setupCodeBlockActions();

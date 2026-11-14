@@ -253,42 +253,28 @@ export function restoreWindowState(windowEl) {
         }
     }
 
+    // Кламп размера и позиции к текущему вьюпорту (BUG-5): сохранённая
+    // геометрия с другого монитора/разрешения раньше применялась как есть —
+    // окно становилось шире экрана, инпут и заголовок уезжали за пределы.
+    const maxW = window.innerWidth, maxH = window.innerHeight;
     if (isMobile) {
-        windowEl.style.width = `${Math.min(w, Math.floor(window.innerWidth * 0.94), 560)}px`;
-        windowEl.style.height = `${Math.min(h, Math.floor(window.innerHeight * 0.82), 700)}px`;
+        w = Math.min(w, Math.floor(maxW * 0.94), 560);
+        h = Math.min(h, Math.floor(maxH * 0.82), 700);
     } else {
-        windowEl.style.width = `${w}px`;
-        windowEl.style.height = `${h}px`;
+        w = Math.max(380, Math.min(w, maxW)); // 380 = CSS min-width (.scp-window)
+        h = Math.max(300, Math.min(h, maxH));
     }
-    // v2.10.0: window is always solid (opacity 1) for performance; opacity only used by Ghost Mode.
+    windowEl.style.width = `${w}px`;
+    windowEl.style.height = `${h}px`;
+    // Позицию переклампливаем уже по финальному размеру окна.
+    const curLeft = parseFloat(windowEl.style.left);
+    if (!Number.isNaN(curLeft)) windowEl.style.left = `${Math.max(0, Math.min(curLeft, Math.max(0, maxW - w)))}px`;
+    const curTop = parseFloat(windowEl.style.top);
+    if (!Number.isNaN(curTop)) windowEl.style.top = `${Math.max(0, Math.min(curTop, Math.max(0, maxH - 40)))}px`;
+    // v2.10.0: окно всегда непрозрачное (opacity 1) — Ghost Mode выпилен.
     windowEl.style.opacity = '1';
     applyCustomTheme(s.customTheme || THEME_PRESETS.default);
     applyWindowBackground();
-}
-
-export function setGhostMode(enabled) {
-    const windowEl = document.getElementById(WIN_ID);
-    state.ghostModeActive = enabled;
-    if (!windowEl) return;
-    const s = getSettings();
-    const ghostBtn = document.getElementById('scp-ghost-btn');
-
-    if (enabled) {
-        const opacity = Math.max(15, Math.min(50, s.ghostModeOpacity ?? 15)) / 100;
-        windowEl.classList.add('scp-ghost-mode');
-        windowEl.style.opacity = opacity.toString();
-        ghostBtn?.classList.add('active');
-    } else {
-        windowEl.classList.remove('scp-ghost-mode');
-        windowEl.style.opacity = '1';
-        ghostBtn?.classList.remove('active');
-    }
-}
-
-export function toggleGhostMode() {
-    const windowEl = document.getElementById(WIN_ID);
-    if (!windowEl || windowEl.style.display === 'none') return;
-    setGhostMode(!state.ghostModeActive);
 }
 
 let _hotkeyHandler = null;
@@ -311,31 +297,9 @@ export function setupHotkey() {
     document.addEventListener('keydown', _hotkeyHandler);
 }
 
-let _ghostHotkeyHandler = null;
-export function setupGhostHotkey() {
-    if (_ghostHotkeyHandler) document.removeEventListener('keydown', _ghostHotkeyHandler);
-    _ghostHotkeyHandler = null;
-    const s = getSettings();
-    if (!s.ghostModeHotkeyEnabled || !s.ghostModeHotkey) return;
-    const parts = s.ghostModeHotkey.toLowerCase().split('+').map(p => p.trim());
-    const key = parts[parts.length - 1];
-    const needAlt = parts.includes('alt');
-    const needCtrl = parts.includes('ctrl') || parts.includes('control');
-    const needShift = parts.includes('shift');
-    const needMeta = parts.includes('meta') || parts.includes('cmd');
-    _ghostHotkeyHandler = e => {
-        if (e.key.toLowerCase() !== key) return;
-        if (needAlt !== e.altKey || needCtrl !== e.ctrlKey || needShift !== e.shiftKey || needMeta !== e.metaKey) return;
-        e.preventDefault();
-        toggleGhostMode();
-    };
-    document.addEventListener('keydown', _ghostHotkeyHandler);
-}
-
 export function minimize() {
     saveScrollPosition();
     const windowEl = document.getElementById(WIN_ID);
-    setGhostMode(false);
     const s = getSettings();
     s.minimized = true;
     if(windowEl) windowEl.style.display = 'none';
@@ -347,7 +311,6 @@ export function minimize() {
 export function hideWindow() {
     saveScrollPosition();
     const windowEl = document.getElementById(WIN_ID);
-    setGhostMode(false);
     const s = getSettings();
     s.windowVisible = false;
     s.minimized = false;

@@ -5,7 +5,7 @@ import { _dbgSetupGlobalErrorHandlers, _dbgAdd, _dbgSnapshotSettings } from './u
 import { showCustomDialog, autoResize, copyText } from './utils/util-dom.js';
 import { setupExternalWIChangeListener } from './features/feature-lorebook-engine.js';
 
-import { restoreWindowState, hideWindow, minimize, toggleVisibility, makeDraggable, makeResizable, toggleGhostMode, setupGhostHotkey, setupHotkey, bringWindowToFront } from './ui/ui-window.js';
+import { restoreWindowState, hideWindow, toggleVisibility, makeDraggable, makeResizable, setupHotkey, bringWindowToFront } from './ui/ui-window.js';
 import { ensureLauncher, watchLauncherHost, refreshLauncher, applyMobileMode, initViewportSync, observeStChrome } from './ui/ui-launcher.js';
 import { setupSettingsPanelListeners, setupSettingsHandlers, updateSettingsUI, updateProfilesList, updateSPConnProfileList, _takeProfileSnapshot, openSettingsPanel, syncOverlayUI } from './ui/ui-settings.js';
 import { setupLorebookManagerListeners, openLorebookManager } from './features/feature-lorebook-ui.js';
@@ -210,11 +210,8 @@ function attachWindowListeners() {
         }, 150);
     });
 
-    document.getElementById('scp-min-btn')?.addEventListener('click', () => minimize());
     document.getElementById('scp-close-btn')?.addEventListener('click', () => hideWindow());
     document.getElementById('scp-ext-settings-btn')?.addEventListener('click', () => openSettingsPanel());
-
-    document.getElementById('scp-ghost-btn')?.addEventListener('click', () => toggleGhostMode());
 
     // Session dropdown
     document.getElementById('scp-sess-trigger')?.addEventListener('click', e => {
@@ -546,7 +543,6 @@ async function _initInner() {
     setupChatPickerListeners(); 
     setupChangelogListeners();
     setupSearchHotkey();
-    setupGhostHotkey();
     setupHotkey();
     setupMessagesScrollTracking();
     setupCodeBlockActions();

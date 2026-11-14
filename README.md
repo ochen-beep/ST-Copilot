@@ -19,7 +19,6 @@ Enter **ST-Copilot** — an advanced Out-Of-Character (OOC) meta-assistant, crea
 | **📚 AI Lorebook Manager** | Command the AI to draft, edit, or delete Lorebook entries based on the chat. Review changes via a Diff-viewer before applying. |
 | **💭 Chat Manager** | Treat your message history like google docs. Ask copilot to edit/hide/add the message. |
 | **🎯 Surgical Context** | Hand-pick specific messages from your chat history to feed into the Copilot's context payload. |
-| **👻 Ghost Mode** | Make the Copilot window semi-transparent and completely click-through so it never gets in your way. |
 | **🎨 Deep Customization** | Built-in theme engine with color pickers, blur effects, and import/export capabilities. |
 | **📂 Advanced Sessions** | Keep multiple separate Copilot conversations per chat, including auto-deleting temporary sessions. |
 

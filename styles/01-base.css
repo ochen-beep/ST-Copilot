@@ -123,56 +123,6 @@
 
 .scp-opacity-wrap { position: relative; display: flex; }
 
-/* ── Ghost Mode ──────────────────────────────────────────────── */
-
-.scp-window.scp-ghost-mode {
-    pointer-events: none !important;
-    transition: opacity 0.4s ease !important;
-}
-
-.scp-window.scp-ghost-mode .scp-hbtn-ghost {
-    pointer-events: auto !important;
-}
-
-.scp-hbtn-ghost {
-    transition: color 0.15s, background 0.15s, transform 0.15s, opacity 0.4s !important;
-}
-
-.scp-hbtn-ghost:hover {
-    color: var(--scp-accent) !important;
-    background: var(--scp-accent-bg) !important;
-}
-
-.scp-hbtn-ghost.active {
-    color: var(--scp-accent) !important;
-    background: var(--scp-accent-bg) !important;
-    border: 1px solid var(--scp-accent-dim) !important;
-    border-radius: 5px;
-    animation: scp-ghost-bob 6s ease-in-out infinite !important;
-}
-
-.scp-window.scp-ghost-mode .scp-hbtn-ghost {
-    opacity: 1 !important;
-    color: var(--scp-accent) !important;
-    background: var(--scp-accent-bg) !important;
-    border: 1px solid var(--scp-accent-dim) !important;
-    box-shadow: 0 0 8px var(--scp-accent-dim) !important;
-}
-
-.scp-window.scp-ghost-mode .scp-hbtn-ghost:hover {
-    opacity: 1 !important;
-    box-shadow: 0 0 14px var(--scp-accent) !important;
-    animation-play-state: paused !important;
-}
-
-@keyframes scp-ghost-bob {
-    0%   { transform: translateY(0)    rotate(0deg);   }
-    25%  { transform: translateY(-4px) rotate(-6deg);  }
-    50%  { transform: translateY(0)    rotate(0deg);   }
-    75%  { transform: translateY(-3px) rotate(5deg);   }
-    100% { transform: translateY(0)    rotate(0deg);   }
-}
-
 /* ── Toolbar ─────────────────────────────────────────────────── */
 
 /* ── Session Dropdown ────────────────────────────────────────── */

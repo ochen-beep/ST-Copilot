@@ -47,8 +47,9 @@ function withTimeout(promise, ms = TOOL_TIMEOUT_MS) {
 }
 
 // Таймауты генерации в конфиг-объекте: фаззинг/соук-тесты сжимают их вместо
-// трёхминутных ожиданий; дефолты = прежние константы (ask_user 5 мин, stall 3 мин).
-export const _genTimeouts = { askUserMs: 300000, stallMs: 180000 };
+// минутных ожиданий; дефолты: ask_user 5 мин, stall 5 мин (продуктовое решение
+// владельца 2026-11-10: 180 с мало для медленных/бесплатных провайдеров).
+export const _genTimeouts = { askUserMs: 300000, stallMs: 300000 };
 
 export async function awaitAskUserAnswer(askPromise) {
     return new Promise((resolve) => {
@@ -253,7 +254,10 @@ async function _callGenerateInner(session, settings, pendingText, onChunk, nativ
             }
         } catch (e) {
             if (state.abortController === abort) state.abortController = null;
-            if (abort.signal.aborted || e?.name === 'AbortError') return null;
+            // Чужой AbortError (сеть/браузер оборвали fetch без нашего сигнала)
+            // не глотаем — пробрасываем в обработчик ошибок, иначе запрос умирал
+            // молча (BUG-6: ни ответа, ни диалога, частичный текст терялся из вида).
+            if (abort.signal.aborted) return null;
             throw e;
         }
 
@@ -373,13 +377,13 @@ async function _callGenerateInner(session, settings, pendingText, onChunk, nativ
                 }
             } catch (err2) {
             if (state.abortController === abort) state.abortController = null;
-                if (abort.signal.aborted || err2?.name === 'AbortError' || err2?.message === 'userStopped') return null;
+                if (abort.signal.aborted || err2?.message === 'userStopped') return null;
                 if (err2.cause) err2.message = `${err2.message} — CAUSE: ${err2.cause.message || String(err2.cause)}`;
                 throw err2;
             }
         } else {
             if (state.abortController === abort) state.abortController = null;
-            if (abort.signal.aborted || e?.name === 'AbortError' || e?.message === 'userStopped') return null;
+            if (abort.signal.aborted || e?.message === 'userStopped') return null;
             if (e.cause) e.message = `${e.message} — CAUSE: ${e.cause.message || String(e.cause)}`;
             throw e;
         }
@@ -483,7 +487,7 @@ async function _callGenerateInner(session, settings, pendingText, onChunk, nativ
     } catch (e) {
         if (state.abortController === abort) state.abortController = null;
         if (tcCutAt !== null) { const c = cutResult(); if (c) return c; }
-        if (abort.signal.aborted || e?.name === 'AbortError' || e?.message === 'userStopped') return null;
+        if (abort.signal.aborted || e?.message === 'userStopped') return null;
         throw e;
     }
 
@@ -1036,6 +1040,18 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
         // content:'' persists into the bucket on the next save.
         if (streamMsgId) {
             const idx = session.messages.findIndex(m => m.id === streamMsgId);
+            // BUG-6: при обрыве соединения (чужой AbortError) частичный ответ
+            // сохраняем как сообщение — паритет со Stop и watchdog, чтобы
+            // настримленный текст не пропадал вместе с плейсхолдером.
+            if (idx >= 0 && !session.messages[idx].content && streamAccumText) {
+                session.messages[idx].content = streamAccumText;
+                session.messages[idx].reasoning = streamAccumReasoning || null;
+                saveSessionsToMetadata();
+                if (streamContentEl) {
+                    streamContentEl.innerHTML = renderMarkdown(streamAccumText);
+                    postProcessHTMLBlocks(streamContentEl);
+                }
+            }
             if (idx >= 0 && !session.messages[idx].content) {
                 session.messages.splice(idx, 1);
                 streamMsgEl?.remove();

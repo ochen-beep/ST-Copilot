@@ -51,10 +51,6 @@ export const _SETTINGS_DEF = [
     { key: 'wobbleWindow',   stId: 'scp-wobble-window',  spId: 'scp-sp-wobble-window', type: 'checkbox', fromSetting: s => s.wobbleWindow !== false },
     { key: 'performanceMode', stId: 'scp-perf-mode', spId: 'scp-sp-perf-mode', type: 'checkbox',
       onChange: () => import('./ui-window.js').then(m => m.applyCustomTheme(getSettings().customTheme || THEME_PRESETS.default)) },
-    { key: 'ghostModeHotkeyEnabled', stId: 'scp-ghost-hotkey-enabled', spId: 'scp-sp-ghost-hotkey-enabled', type: 'checkbox',
-      onChange: () => import('./ui-window.js').then(m => m.setupGhostHotkey()) },
-    { key: 'ghostModeHotkey', stId: 'scp-ghost-hotkey', spId: 'scp-sp-ghost-hotkey', type: 'input',
-      onChange: () => import('./ui-window.js').then(m => m.setupGhostHotkey()) },
     { key: 'changelogAutoShow',    stId: null, spId: 'scp-sp-changelog-auto', type: 'checkbox' },
     { key: 'includeSummaryception', stId: 'scp-include-summaryception', spId: 'scp-sp-include-summaryception', type: 'checkbox', fromSetting: s => s.includeSummaryception !== false },
     { key: 'useAspectEvolutia',    stId: 'scp-use-aspect-evolutia',    spId: 'scp-sp-use-aspect-evolutia',    type: 'checkbox', fromSetting: s => s.useAspectEvolutia !== false },
@@ -65,10 +61,7 @@ export const _SETTINGS_DEF = [
     // ── Sliders ───────────────────────────────────────────────────────────────
     { key: 'opacity', stId: 'scp-opacity-slider', spId: 'scp-sp-opacity-slider', type: 'slider', toVal: Number,
       stValId: 'scp-opacity-val', spValId: 'scp-sp-opacity-val', valFmt: v => `${v}%`,
-      onChange: val => { const w = document.getElementById('scp-window'); if (w && !state.ghostModeActive) w.style.opacity = (val / 100).toString(); } },
-    { key: 'ghostModeOpacity', stId: 'scp-ghost-opacity', spId: 'scp-sp-ghost-opacity', type: 'slider', toVal: Number,
-      stValId: 'scp-ghost-opacity-val', spValId: 'scp-sp-ghost-opacity-val', valFmt: v => `${v}%`,
-      onChange: val => { const w = document.getElementById('scp-window'); if (w && state.ghostModeActive) w.style.opacity = (val / 100).toString(); } },
+      onChange: val => { const w = document.getElementById('scp-window'); if (w) w.style.opacity = (val / 100).toString(); } },
 
     // ── Connection ────────────────────────────────────────────────────────────
     { key: 'connectionSource',  stId: 'scp-conn-source',  spId: 'scp-sp-conn-source',  type: 'select', profileKey: true, onChange: _applyConnectionSourceVisibility },

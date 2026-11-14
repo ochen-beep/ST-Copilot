@@ -57,9 +57,8 @@ const DEFAULT_SETTINGS = {
     lorebookCopilotScanDepth: 6,
     floatingIconPersistent: false,
     reasoningTrimStrings: '',
-    ghostModeOpacity: 15,
-    ghostModeHotkey: 'Alt+Shift+G',
-    ghostModeHotkeyEnabled: true,
+    // Ghost Mode выпилен (продуктовое решение 2026-11-10): старые ключи
+    // ghostMode* в сохранённых настройках безвредно игнорируются.
     quickPromptsVisible: false,
     quickPrompts: [
         { id: 'qp_d1', label: 'Анализ', icon: '🔍', text: 'Analyze the current scene and character motivations in detail.' },
