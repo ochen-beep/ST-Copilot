@@ -47,7 +47,6 @@ const DEFAULT_SETTINGS = {
     savedThemes: {},
     activeThemeProfile: '',
     sessions: {},
-    lorebookEnabled: true,
     lorebookAutoKeyword: true,
     lorebookSelectedBooks: [],
     lorebookEntryOverrides: {},

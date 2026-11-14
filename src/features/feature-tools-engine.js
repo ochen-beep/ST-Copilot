@@ -11,7 +11,13 @@ export { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCall
 export function getEnabledTools() {
     const s = getEffectiveSettings();
     if (!s.toolsEnabled) return [];
-    return TOOL_DEFINITIONS.filter(t => s[t.settingKey] !== false);
+    // Lorebook tools are part of the lorebook AI feature: the manage toggle
+    // must gate them, not just the lorebook-changes prompt instructions.
+    const lorebookGated = new Set(['search_lorebook_entry', 'get_lorebooks']);
+    return TOOL_DEFINITIONS.filter(t => {
+        if (lorebookGated.has(t.name) && s.lorebookAIManageEnabled === false) return false;
+        return s[t.settingKey] !== false;
+    });
 }
 
 export async function executeTool(toolName, toolInput) {

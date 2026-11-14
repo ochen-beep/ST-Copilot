@@ -138,6 +138,23 @@ describe('lorebook tools respect excluded books and disabled entries', () => {
     });
 });
 
+describe('lorebook tool gating', () => {
+    it('lorebook tools disappear when lorebook AI management is off', async () => {
+        seedSettings({ lorebookAIManageEnabled: false });
+        const names = engine.getEnabledTools().map(t => t.name);
+        expect(names).not.toContain('search_lorebook_entry');
+        expect(names).not.toContain('get_lorebooks');
+        expect(names).toContain('search_chat');
+    });
+
+    it('lorebook tools stay available when management is on (default)', async () => {
+        seedSettings({ lorebookAIManageEnabled: true });
+        const names = engine.getEnabledTools().map(t => t.name);
+        expect(names).toContain('search_lorebook_entry');
+        expect(names).toContain('get_lorebooks');
+    });
+});
+
 describe('context builder: book-level include must not resurrect ST-disabled entries', () => {
     it('selected book injects only active entries; explicit per-entry force still works', async () => {
         window.selected_world_info = ['TestBook'];

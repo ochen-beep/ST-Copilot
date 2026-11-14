@@ -1284,7 +1284,6 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         savedThemes: {},
         activeThemeProfile: '',
         sessions: {},
-        lorebookEnabled: true,
         lorebookAutoKeyword: true,
         lorebookSelectedBooks: [],
         lorebookEntryOverrides: {},
@@ -9571,7 +9570,13 @@ ${scopeHtml}
     function getEnabledTools() {
         const s = getEffectiveSettings();
         if (!s.toolsEnabled) return [];
-        return TOOL_DEFINITIONS.filter(t => s[t.settingKey] !== false);
+        // Lorebook tools are part of the lorebook AI feature: the manage toggle
+        // must gate them, not just the lorebook-changes prompt instructions.
+        const lorebookGated = new Set(['search_lorebook_entry', 'get_lorebooks']);
+        return TOOL_DEFINITIONS.filter(t => {
+            if (lorebookGated.has(t.name) && s.lorebookAIManageEnabled === false) return false;
+            return s[t.settingKey] !== false;
+        });
     }
 
     async function executeTool(toolName, toolInput) {
