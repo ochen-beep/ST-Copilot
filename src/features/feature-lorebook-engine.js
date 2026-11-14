@@ -384,7 +384,9 @@ export async function buildLorebookContextBlock(settings) {
             if (override === false) continue;
 
             const isConstant = !!entry.constant && !entry.disable;
-            const manualInclude = bookListHas(selectedBooks, bookName);
+            // Book-level include means "all ACTIVE entries": ST-disabled entries stay
+            // off unless the user forced that specific entry on (override === true).
+            const manualInclude = bookListHas(selectedBooks, bookName) && !entry.disable;
             const keywordInclude = keywordEntries[bookName]?.some(e => e.uid === entry.uid);
 
             if (override === true || isConstant || manualInclude || keywordInclude) {

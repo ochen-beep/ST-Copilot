@@ -119,3 +119,25 @@ describe('lorebook tools respect excluded books and disabled entries', () => {
         expect(r.found).toBe(0);
     });
 });
+
+describe('context builder: book-level include must not resurrect ST-disabled entries', () => {
+    it('selected book injects only active entries; explicit per-entry force still works', async () => {
+        window.selected_world_info = ['TestBook'];
+        ctx.loadWorldInfo = async () => ({ name: 'TestBook', entries: {
+            0: { uid: 0, comment: 'ActiveLore', content: 'ACTIVE CONTENT', key: ['a'], disable: false },
+            1: { uid: 1, comment: 'OffLore', content: 'DISABLED CONTENT', key: ['o'], disable: true },
+            2: { uid: 2, comment: 'ForcedLore', content: 'FORCED CONTENT', key: ['f'], disable: true },
+        } });
+        const lb = await import('../src/features/feature-lorebook-engine.js');
+        const settings = {
+            lorebookSelectedBooks: ['TestBook'],
+            lorebookExcludedBooks: [],
+            lorebookAutoKeyword: false,
+            lorebookEntryOverrides: { 'TestBook_ForcedLore': true },
+        };
+        const block = await lb.buildLorebookContextBlock(settings);
+        expect(block).toContain('ACTIVE CONTENT');
+        expect(block).not.toContain('DISABLED CONTENT');
+        expect(block).toContain('FORCED CONTENT');
+    });
+});
