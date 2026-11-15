@@ -26,7 +26,12 @@ import { postProcessToolCalls, executeAskUser } from '.././features/feature-tool
 import { playCompletionSound } from '.././ui/ui-widgets.js';
 
 
-export async function buildSystemContent(settings) {
+export async function buildSystemContent(settings, genOpts = {}) {
+    // noTools-запросы (финальный ответ после исчерпания tool-бюджета) собираются
+    // всегда заново: их промпт отличается от кэшированного отсутствием tools-блока.
+    if (genOpts.noTools) {
+        return _buildSystemContentInner(settings, genOpts);
+    }
     // Лёгкая синхронная подпись необходимых входов: быстрый FNV-1a над JSON(settings)
     // + чар/группа/имена + активный список WI-книг. Страхует от редких кейсов, когда
     // инвалидация не успела вызваться явным образом (см. invalidateSystemPromptCache).
@@ -62,7 +67,7 @@ export async function buildSystemContent(settings) {
     return promise;
 }
 
-async function _buildSystemContentInner(settings) {
+async function _buildSystemContentInner(settings, genOpts = {}) {
     let sysPromptRaw = (typeof settings.systemPrompt === 'string' && settings.systemPrompt.trim()) ? settings.systemPrompt : DEFAULT_SYSTEM_PROMPT;
     const parts = [_ensureWrapped(sysPromptRaw, 'system_prompt')];
     const charInfo = getCharInfo();
@@ -133,7 +138,7 @@ async function _buildSystemContentInner(settings) {
     const charEditDirective = buildCharEditAIInstructions(settings).trim();
     const chatEditDirective = buildChatEditAIInstructions(settings).trim();
     const memoryAIInstr = buildMemoryAIInstructions(settings).trim();
-    const toolsBlock = buildToolCallsSystemBlock().trim();
+    const toolsBlock = genOpts.noTools ? '' : buildToolCallsSystemBlock().trim();
 
     const modules = [memoryAIInstr, aiInstructions, charEditDirective, chatEditDirective, toolsBlock].filter(Boolean);
     if (modules.length > 0) {
@@ -243,8 +248,8 @@ export function getMainChatSlice(depth) {
     return ctx.chat.slice(-depth).map((m, i) => extractData(m, total - depth + i));
 }
 
-export async function assembleMessages(session, settings, pendingUserText, pendingAtts = null) {
-    const messages = [{ role: 'system', content: await buildSystemContent(settings) }];
+export async function assembleMessages(session, settings, pendingUserText, pendingAtts = null, genOpts = {}) {
+    const messages = [{ role: 'system', content: await buildSystemContent(settings, genOpts) }];
     const depth = Math.max(0, parseInt(settings.contextDepth) || 0);
     const hasPicked = !!(session.pickedChatIndices && session.pickedChatIndices.length > 0);
     

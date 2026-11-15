@@ -16612,7 +16612,12 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         }
     }
 
-    async function buildSystemContent(settings) {
+    async function buildSystemContent(settings, genOpts = {}) {
+        // noTools-запросы (финальный ответ после исчерпания tool-бюджета) собираются
+        // всегда заново: их промпт отличается от кэшированного отсутствием tools-блока.
+        if (genOpts.noTools) {
+            return _buildSystemContentInner(settings, genOpts);
+        }
         // Лёгкая синхронная подпись необходимых входов: быстрый FNV-1a над JSON(settings)
         // + чар/группа/имена + активный список WI-книг. Страхует от редких кейсов, когда
         // инвалидация не успела вызваться явным образом (см. invalidateSystemPromptCache).
@@ -16648,7 +16653,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         return promise;
     }
 
-    async function _buildSystemContentInner(settings) {
+    async function _buildSystemContentInner(settings, genOpts = {}) {
         let sysPromptRaw = (typeof settings.systemPrompt === 'string' && settings.systemPrompt.trim()) ? settings.systemPrompt : DEFAULT_SYSTEM_PROMPT;
         const parts = [_ensureWrapped(sysPromptRaw, 'system_prompt')];
         const charInfo = getCharInfo();
@@ -16719,7 +16724,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const charEditDirective = buildCharEditAIInstructions(settings).trim();
         const chatEditDirective = buildChatEditAIInstructions(settings).trim();
         const memoryAIInstr = buildMemoryAIInstructions(settings).trim();
-        const toolsBlock = buildToolCallsSystemBlock().trim();
+        const toolsBlock = genOpts.noTools ? '' : buildToolCallsSystemBlock().trim();
 
         const modules = [memoryAIInstr, aiInstructions, charEditDirective, chatEditDirective, toolsBlock].filter(Boolean);
         if (modules.length > 0) {
@@ -16829,8 +16834,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         return ctx.chat.slice(-depth).map((m, i) => extractData(m, total - depth + i));
     }
 
-    async function assembleMessages(session, settings, pendingUserText, pendingAtts = null) {
-        const messages = [{ role: 'system', content: await buildSystemContent(settings) }];
+    async function assembleMessages(session, settings, pendingUserText, pendingAtts = null, genOpts = {}) {
+        const messages = [{ role: 'system', content: await buildSystemContent(settings, genOpts) }];
         const depth = Math.max(0, parseInt(settings.contextDepth) || 0);
         const hasPicked = !!(session.pickedChatIndices && session.pickedChatIndices.length > 0);
         
@@ -17525,9 +17530,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         });
     }
 
-    async function _callGenerateInner(session, settings, pendingText, onChunk, nativeTools = false) {
+    async function _callGenerateInner(session, settings, pendingText, onChunk, nativeTools = false, genOpts = {}) {
         const ctx = SillyTavern.getContext();
-        const messages = await assembleMessages(session, settings, pendingText);
+        const messages = await assembleMessages(session, settings, pendingText, null, genOpts);
         const maxTokens = parseInt(settings.maxTokens) || 8200;
 
         const abort = new AbortController();
@@ -17959,7 +17964,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     // срабатывание = abort + помеченная ошибка, чтобы UI показал её, а не молчал.
 
 
-    async function callGenerate(session, settings, pendingText, onChunk, nativeTools = false) {
+    async function callGenerate(session, settings, pendingText, onChunk, nativeTools = false, genOpts = {}) {
         let stalled = false;
         let stallTimer = null;
         const pet = () => {
@@ -17974,7 +17979,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         try {
             const result = await _callGenerateInner(session, settings, pendingText,
                 typeof onChunk === 'function' ? (...a) => { pet(); onChunk(...a); } : onChunk,
-                nativeTools);
+                nativeTools, genOpts);
             if (result === null && stalled && !state.generationStopped) {
                 const err = new Error(`Генерация зависла: провайдер не присылал данные ${Math.round(_genTimeouts.stallMs / 1000)} с подряд. Запрос прерван — проверьте соединение и повторите.`);
                 err._stalled = true;
@@ -18179,6 +18184,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 // Повтор с теми же аргументами не исполняется — модель получает заметку
                 // и должна уточнить запрос или ответить. Ошибки в Set не попадают: ретрай легален.
                 const executedToolFingerprints = new Set();
+                // Раунды тулов (перезаписывается каждый раунд): финальный no-tools
+                // проход использует последний, чтобы подложить результаты в промпт.
+                let roundEntries = [];
 
                 let accumulatedText = roundText;
                 let accumulatedReasoning = roundReasoning || null;
@@ -18240,7 +18248,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     const tcs = nativeTools ? (roundToolCalls || []) : parseToolCallsFromText(roundText);
                     if (!tcs.length) break;
 
-                    const roundEntries = [];
+                    roundEntries = [];
                     for (const tc of tcs) {
                         const tcId = `tc_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
                         const entry = { id: tcId, callId: tc.callId || null, name: tc.name, input: tc.input || {}, status: 'running', result: undefined };
@@ -18430,6 +18438,31 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     }
 
                     result = { text: accumulatedText, reasoning: accumulatedReasoning };
+                }
+
+                // Раунды исчерпаны (или модель упорно молчит), а текста так и нет:
+                // один финальный проход БЕЗ инструментов. Результаты тулов
+                // подкладываем вручную — _tcTemp-сообщения из истории уже вычищены,
+                // и без них модель не смогла бы ответить по существу.
+                if (result !== null && state.activeToolCalls.length
+                    && !stripToolCallsFromText(result.text || '').trim()
+                    && !state.generationStopped && myEpoch === state.genEpoch) {
+                    _dbgAdd('GEN_FINAL_ANSWER_RETRY', {});
+                    const resultsText = roundEntries.map(e =>
+                        `<tool_result name="${e.name}" status="${e.status}">\n${typeof e.result === 'string' ? e.result : JSON.stringify(e.result, null, 2)}\n</tool_result>`
+                    ).join('\n');
+                    const finalSession = { ...session, messages: session.messages.filter(m => m.id !== streamMsgId) };
+                    const retry = await callGenerate(finalSession, settings,
+                        `<tool_results>\n${resultsText}\n</tool_results>\n\n(system note: your tool budget is exhausted. Using the tool results above, write your final answer to the user now. Do not attempt to call any more tools.)`,
+                        (t, r) => _updateLiveUI(t, r), false, { noTools: true });
+                    const retryText = retry ? stripToolCallsFromText(retry.text || '').trim() : '';
+                    if (retryText) {
+                        accumulatedText += '\n\n' + retryText;
+                        if (retry.reasoning) {
+                            accumulatedReasoning = accumulatedReasoning ? accumulatedReasoning + '\n\n' + retry.reasoning : retry.reasoning;
+                        }
+                        result = { text: accumulatedText, reasoning: accumulatedReasoning };
+                    }
                 }
             }
 
