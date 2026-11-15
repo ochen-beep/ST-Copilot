@@ -19342,18 +19342,28 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         document.getElementById('scp-send-btn')?.addEventListener('click', async () => {
             const rawText = inputEl?.value.trim();
             if (!rawText && !state.pendingAttachments.length || state.generating) return;
-            
-            const { expandMacros, getEffectiveSettings } = await Promise.resolve().then(function () { return session; });
-            const _s = getEffectiveSettings();
-            const text = _s.autoExpandMacros ? expandMacros(rawText || '') : (rawText || '');
-            if (inputEl) { inputEl.value = ''; autoResize(inputEl); }
-            
-            Promise.resolve().then(function () { return featureAttachments; }).then(async m => {
-                const processedAtts = await m._processAttachmentsBeforeSend(state.pendingAttachments, false);
-                state.pendingAttachments = [];
-                m._renderAttachmentPreviews();
-                runGenerate(getCurrentSession(), text, true, processedAtts).catch(console.error);
-            });
+
+            try {
+                const { expandMacros, getEffectiveSettings } = await Promise.resolve().then(function () { return session; });
+                const _s = getEffectiveSettings();
+                const text = _s.autoExpandMacros ? expandMacros(rawText || '') : (rawText || '');
+                if (inputEl) { inputEl.value = ''; autoResize(inputEl); }
+
+                // A rejection here (attachment processing, dynamic import) happens
+                // after the input was cleared — put the user's text back, or a
+                // transient failure silently eats the message.
+                Promise.resolve().then(function () { return featureAttachments; }).then(async m => {
+                    const processedAtts = await m._processAttachmentsBeforeSend(state.pendingAttachments, false);
+                    state.pendingAttachments = [];
+                    m._renderAttachmentPreviews();
+                    runGenerate(getCurrentSession(), text, true, processedAtts).catch(console.error);
+                }).catch(e => {
+                    console.error(`[${EXT_DISPLAY}] Send failed:`, e);
+                    if (inputEl && inputEl.value.trim() === '' && rawText) { inputEl.value = rawText; autoResize(inputEl); }
+                });
+            } catch (e) {
+                console.error(`[${EXT_DISPLAY}] Send failed:`, e);
+            }
         });
 
         // Modals
