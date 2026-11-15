@@ -18135,6 +18135,12 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         let isStreaming = false;
         let streamAccumText = '';
         let streamAccumReasoning = null;
+        // Hoisted for the catch: a throw in tool round >=2 must not cost the
+        // completed rounds' text — the catch salvages these into the message.
+        let accumulatedText = '';
+        let accumulatedReasoning = null;
+        let lastRoundPartialText = '';
+        let genToolRound = 0;
         // RAF-throttle стриминга: раньше на каждый чанк (~50-100ms) шёл полный
         // innerHTML = renderMarkdown(stripMemoryBlock(text)) → O(N²) по ростущей длине.
         // Теперь обновляем DOM не чаще 60fps — падение CPU без изменения визуального
@@ -18313,12 +18319,12 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 // проход использует последний, чтобы подложить результаты в промпт.
                 let roundEntries = [];
 
-                let accumulatedText = roundText;
-                let accumulatedReasoning = roundReasoning || null;
+                accumulatedText = roundText;
+                accumulatedReasoning = roundReasoning || null;
                 // Текст текущего раунда по состоянию на последний чанк: при Stop
                 // посреди раунда nextResult=null, и без него настримленный кусок
                 // пропадал из финального сообщения, хотя был виден на экране.
-                let lastRoundPartialText = '';
+                lastRoundPartialText = '';
                 // Ретрай пустого continuation — один на всю генерацию, чтобы не зациклиться.
                 let emptyContinuationRetried = false;
 
@@ -18370,6 +18376,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 };
 
                 for (let round = 0; round < maxRounds; round++) {
+                    genToolRound = round + 1;
                     const tcs = nativeTools ? (roundToolCalls || []) : parseToolCallsFromText(roundText);
                     if (!tcs.length) break;
 
@@ -18678,6 +18685,20 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                         postProcessHTMLBlocks(streamContentEl);
                     }
                 }
+                // A throw in tool round >=2 leaves streamAccumText empty (it resets
+                // each round), so the splice below would also drop the completed
+                // rounds' text and their tool results — same contract as Stop.
+                const salvageText = streamAccumText
+                    || (lastRoundPartialText ? accumulatedText + '\n\n' + lastRoundPartialText : accumulatedText);
+                if (idx >= 0 && !session.messages[idx].content && salvageText) {
+                    session.messages[idx].content = salvageText;
+                    session.messages[idx].reasoning = accumulatedReasoning || null;
+                    saveSessionsToMetadata();
+                    if (streamContentEl) {
+                        streamContentEl.innerHTML = renderMarkdown(salvageText);
+                        postProcessHTMLBlocks(streamContentEl);
+                    }
+                }
                 if (idx >= 0 && !session.messages[idx].content) {
                     session.messages.splice(idx, 1);
                     streamMsgEl?.remove();
@@ -18696,7 +18717,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 inputEl.value = userText;
             }
 
-            _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack });
+            _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack, round: genToolRound, accumulatedChars: accumulatedText.length });
             console.error(`[${EXT_DISPLAY}] Generation failed:`, err);
 
             showGenerationError(err);
