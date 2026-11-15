@@ -440,6 +440,17 @@ Triggers field rules:
 - Omit or set \`null\` to keep the original triggers unchanged (preferred for patches, appends and partial edits)
 - Provide an array to set new triggers`;
 
+    // Non-editable output contract: whatever the user writes in the manage prompt,
+    // the model must always see the block format — a custom prompt without the
+    // {{lorebook_output}} placeholder used to produce unappliable proposals.
+    const LB_OUTPUT_CONTRACT = `
+
+<output_requirement>
+MANDATORY: Proposals MUST be contained in a \`lorebook-changes\` block at the absolute end of your message.
+Format requirement (Strictly adhere to this JSON structure):
+{{lorebook_output}}
+</output_requirement>`;
+
     const CHAR_EDIT_FORMAT_BLOCK = `\`\`\`character-changes
 <replace char="char_name" field="FIELD_NAME">
 <<<<<<< ANCHOR
@@ -3218,6 +3229,13 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             } else {
                 rawPrompt = `Active lorebooks: {{active_lorebooks}}\n\n` + rawPrompt;
             }
+        }
+
+        // Contract guarantee: a custom manage prompt without the output placeholder
+        // never shows the model the block format — proposals come back malformed
+        // and unappliable. The code-owned contract is appended unconditionally.
+        if (!rawPrompt.includes('{{lorebook_output}}')) {
+            rawPrompt += LB_OUTPUT_CONTRACT;
         }
 
         const prompt = rawPrompt
@@ -9981,8 +9999,14 @@ ${scopeHtml}
         const finalPrompt = prompt
             .replace('{{tools_list}}', toolsList)
             .replace('{{tool_call_format}}', TOOL_CALL_FORMAT_BLOCK);
-            
-        return '\n\n' + _ensureWrapped(finalPrompt, 'tool_calls_system');
+
+        // Contract guarantee: a custom tools prompt may omit the fence format; the
+        // text-protocol parser depends on it, so the block is appended when missing.
+        const contract = finalPrompt.includes('```tool_call')
+            ? ''
+            : '\n\nOutput requirement: emit every tool call ONLY as this fenced block, then stop:\n' + TOOL_CALL_FORMAT_BLOCK;
+
+        return '\n\n' + _ensureWrapped(finalPrompt + contract, 'tool_calls_system');
     }
 
     function _parseRgba(str) {

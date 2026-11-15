@@ -356,6 +356,12 @@ export function buildToolCallsSystemBlock() {
     const finalPrompt = prompt
         .replace('{{tools_list}}', toolsList)
         .replace('{{tool_call_format}}', TOOL_CALL_FORMAT_BLOCK);
-        
-    return '\n\n' + _ensureWrapped(finalPrompt, 'tool_calls_system');
+
+    // Contract guarantee: a custom tools prompt may omit the fence format; the
+    // text-protocol parser depends on it, so the block is appended when missing.
+    const contract = finalPrompt.includes('```tool_call')
+        ? ''
+        : '\n\nOutput requirement: emit every tool call ONLY as this fenced block, then stop:\n' + TOOL_CALL_FORMAT_BLOCK;
+
+    return '\n\n' + _ensureWrapped(finalPrompt + contract, 'tool_calls_system');
 }

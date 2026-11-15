@@ -1,4 +1,4 @@
-import { EXT_DISPLAY, EMBEDDED_BOOK_KEY, DEFAULT_LB_MANAGE_PROMPT, LB_FORMAT_BLOCK } from '../constants.js';
+import { EXT_DISPLAY, EMBEDDED_BOOK_KEY, DEFAULT_LB_MANAGE_PROMPT, LB_FORMAT_BLOCK, LB_OUTPUT_CONTRACT } from '../constants.js';
 import { getCurrentSession, saveSettings, expandMacros } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
 import { ST_WorldInfo, ST_Utils } from '../version.js';
@@ -467,6 +467,13 @@ export function buildLBAIInstructions(settings) {
         } else {
             rawPrompt = `Active lorebooks: {{active_lorebooks}}\n\n` + rawPrompt;
         }
+    }
+
+    // Contract guarantee: a custom manage prompt without the output placeholder
+    // never shows the model the block format — proposals come back malformed
+    // and unappliable. The code-owned contract is appended unconditionally.
+    if (!rawPrompt.includes('{{lorebook_output}}')) {
+        rawPrompt += LB_OUTPUT_CONTRACT;
     }
 
     const prompt = rawPrompt

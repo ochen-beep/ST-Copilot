@@ -204,6 +204,17 @@ Triggers field rules:
 - Omit or set \`null\` to keep the original triggers unchanged (preferred for patches, appends and partial edits)
 - Provide an array to set new triggers`;
 
+// Non-editable output contract: whatever the user writes in the manage prompt,
+// the model must always see the block format — a custom prompt without the
+// {{lorebook_output}} placeholder used to produce unappliable proposals.
+export const LB_OUTPUT_CONTRACT = `
+
+<output_requirement>
+MANDATORY: Proposals MUST be contained in a \`lorebook-changes\` block at the absolute end of your message.
+Format requirement (Strictly adhere to this JSON structure):
+{{lorebook_output}}
+</output_requirement>`;
+
 export const CHAR_EDIT_FORMAT_BLOCK = `\`\`\`character-changes
 <replace char="char_name" field="FIELD_NAME">
 <<<<<<< ANCHOR
