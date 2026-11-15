@@ -1054,7 +1054,10 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         'customTheme','savedThemes','sessions','starredMessages',
         'stats','quickPromptSets','customSounds','completionSoundData',
         'quickPrompts','profiles','promptPresets','altGreetingIndices',
-        'memories'
+        'memories',
+        // Secrets: the debug dump leaves the machine (shared bug reports), the
+        // key must never travel with it.
+        'customKey',
     ]);
 
     // Extension-wide mutable identity/runtime refs. These live OUTSIDE index.js on

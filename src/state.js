@@ -97,5 +97,8 @@ export const DBG_SKIP = new Set([
     'customTheme','savedThemes','sessions','starredMessages',
     'stats','quickPromptSets','customSounds','completionSoundData',
     'quickPrompts','profiles','promptPresets','altGreetingIndices',
-    'memories'
+    'memories',
+    // Secrets: the debug dump leaves the machine (shared bug reports), the
+    // key must never travel with it.
+    'customKey',
 ]);
