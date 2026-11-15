@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Мокаем единственную зависимость util-text — дебаг-логгер.
+// Мокаем единственную зависимость util-text — дебаг-логгер (spy: блок
+// «Анти-флуд» проверяет, что сотни промахов за тик сворачиваются в одну запись).
 // Важно: vi.mock поднимается (hoisted), путь — от товара to исходному модулю.
 vi.mock('../src/utils/util-debug.js', () => ({
-  _dbgAdd: () => {},
+  _dbgAdd: vi.fn(),
 }));
 
+import { _dbgAdd } from '../src/utils/util-debug.js';
 import {
   _repairJSON,
   _sanitizeProposedTags,
@@ -421,5 +423,58 @@ describe('applyReplaceAllToField / applyPatchToField', () => {
     expect(single.occurrences).toBe(2);
     const anchor = applyPatchToField('one cat', { anchor: 'cat', replace: 'dog' });
     expect(anchor.result).toBe('one dog');
+  });
+});
+
+describe('Анти-флуд TEXT_REPLACE_FAILED', () => {
+  beforeEach(async () => {
+    // Дренируем микротаск-окно, возможное оставшееся от соседних тестов.
+    await Promise.resolve();
+    _dbgAdd.mockClear();
+  });
+
+  const miss = (src, anchor) => applySearchReplaceToField(src, anchor, 'X');
+
+  it('одиночный промах пишется в старой форме {reason, search, srcLength}', async () => {
+    miss('hello world', 'cat');
+    await Promise.resolve();
+    expect(_dbgAdd).toHaveBeenCalledTimes(1);
+    const [type, payload] = _dbgAdd.mock.calls[0];
+    expect(type).toBe('TEXT_REPLACE_FAILED');
+    expect(payload.search).toBe('cat');
+    expect(payload.srcLength).toBe('hello world'.length);
+    expect(payload.reason).toContain('не найден');
+    expect(payload.aggregated).toBeUndefined();
+  });
+
+  it('сотни промахов за один тик сворачиваются в одну сводку (дамп 2026-11-15: 260 записей за 20 мс)', async () => {
+    for (let i = 0; i < 260; i++) miss('nothing here at all', `якорь-${i}`);
+    await Promise.resolve();
+    expect(_dbgAdd).toHaveBeenCalledTimes(1);
+    const [type, payload] = _dbgAdd.mock.calls[0];
+    expect(type).toBe('TEXT_REPLACE_FAILED');
+    expect(payload.aggregated).toBe(true);
+    expect(payload.misses).toBe(260);
+    expect(payload.fields).toBe(1);
+    expect(payload.samples.length).toBeLessThanOrEqual(8);
+  });
+
+  it('поля разных длин учитываются в fields; успешные замены не логируются', async () => {
+    miss('alpha beta', 'нет такого');
+    miss('gamma и чуть длиннее содержимое', 'нет такого');
+    applySearchReplaceToField('beta', 'beta', 'X');
+    await Promise.resolve();
+    expect(_dbgAdd).toHaveBeenCalledTimes(1);
+    expect(_dbgAdd.mock.calls[0][1].misses).toBe(2);
+    expect(_dbgAdd.mock.calls[0][1].fields).toBe(2);
+  });
+
+  it('цикл, разбитый await-границей, даёт по сводке на сегмент', async () => {
+    miss('первый src', 'x');
+    await Promise.resolve();
+    expect(_dbgAdd).toHaveBeenCalledTimes(1);
+    miss('второй src', 'x');
+    await Promise.resolve();
+    expect(_dbgAdd).toHaveBeenCalledTimes(2);
   });
 });

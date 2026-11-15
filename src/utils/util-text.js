@@ -1,5 +1,39 @@
 import { _dbgAdd } from './util-debug.js';
 
+// Анти-флуд: циклы применений патчей (валидация/preview карточки чат-эдита,
+// exec bulk_replace, лорбук-apply) гоняют десятки якорей по десяткам полей за
+// один тик — построчные записи каждого промаха за ~20 мс вытесняли из
+// дебаг-кольца (3000) всё остальное (дамп 2026-11-15: 260+ записей, ни одного
+// TOOL_*/GEN_* события не выжило). Промахи одного синхронного окна агрегируются
+// в одну сводку; окно закрывается микротаском — циклы, разбитые await'ами,
+// дают по сводке на сегмент. Одиночный промах пишется в старой форме.
+let _missAgg = null;
+
+function _logReplaceMiss(reason, search, srcLength) {
+    const sample = { search: String(search).slice(0, 120), reason: String(reason).slice(0, 120), srcLength };
+    if (_missAgg) {
+        _missAgg.misses++;
+        _missAgg.fields.add(srcLength);
+        if (_missAgg.samples.length < 8) _missAgg.samples.push(sample);
+        return;
+    }
+    const agg = { misses: 1, fields: new Set([srcLength]), samples: [sample] };
+    _missAgg = agg;
+    queueMicrotask(() => {
+        if (_missAgg === agg) _missAgg = null;
+        if (agg.misses === 1) {
+            _dbgAdd('TEXT_REPLACE_FAILED', agg.samples[0]);
+        } else {
+            _dbgAdd('TEXT_REPLACE_FAILED', {
+                aggregated: true,
+                misses: agg.misses,
+                fields: agg.fields.size,
+                samples: agg.samples,
+            });
+        }
+    });
+}
+
 /**
  * Итеративный Левенштейн с двумя строками-буферами (O(N) памяти).
  * Используется для мягкого подбора имени в resolveCharacterByName.
@@ -200,7 +234,7 @@ export function applySearchReplaceToField(fieldContent, searchText, replaceText)
     const repl = replaceText || '';
 
     const fail = (reason) => {
-        _dbgAdd('TEXT_REPLACE_FAILED', { reason, search: srch.slice(0, 120), srcLength: src.length });
+        _logReplaceMiss(reason, srch, src.length);
         return { result: src, matched: false, reason };
     };
 
