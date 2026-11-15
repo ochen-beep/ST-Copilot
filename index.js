@@ -17632,10 +17632,13 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         });
     }
 
-    // Таймауты генерации в конфиг-объекте: фаззинг/соук-тесты сжимают их вместо
-    // минутных ожиданий; дефолты: ask_user 5 мин, stall 5 мин (продуктовое решение
-    // владельца 2026-11-10: 180 с мало для медленных/бесплатных провайдеров).
-    const _genTimeouts = { askUserMs: 300000, stallMs: 300000 };
+    // Generation timeouts in a config object: fuzz/soak tests shrink them instead
+    // of waiting minutes. Defaults: ask_user 5 min, stream stall 5 min (owner
+    // decision 2026-11-10: 180 s was too little for slow/free providers),
+    // non-stream hard cap 10 min — a non-stream request is one opaque HTTP call,
+    // silence inside it is indistinguishable from progress, so its cap is a total
+    // duration, not a silence window.
+    const _genTimeouts = { askUserMs: 300000, stallMs: 300000, nonStreamMs: 600000 };
 
     async function awaitAskUserAnswer(askPromise) {
         return new Promise((resolve) => {
@@ -17655,14 +17658,12 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         });
     }
 
-    async function _callGenerateInner(session, settings, pendingText, onChunk, nativeTools = false, genOpts = {}) {
+    // Resolve the effective streaming mode once, shared by the watchdog (it needs
+    // to know whether chunks will ever arrive) and the request builder.
+    // Native function calling: ST's stream parser (getStreamingReply) drops
+    // delta.tool_calls, so native tool rounds must go non-streaming.
+    function resolveUseStream(settings, nativeTools) {
         const ctx = SillyTavern.getContext();
-        const messages = await assembleMessages(session, settings, pendingText, null, genOpts);
-        const maxTokens = parseInt(settings.maxTokens) || 8200;
-
-        const abort = new AbortController();
-        state.abortController = abort;
-
         const streamSetting = settings.forceStreaming;
         let useStream;
 
@@ -17677,10 +17678,22 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 ?? true);
         }
 
-        // Нативный function calling: ST-стрим (getStreamingReply) выбрасывает delta.tool_calls,
-        // поэтому tool-раунды идут нестримингово. tool_payload раскладывается по всем веткам ниже.
         if (nativeTools && toOpenAITools().length === 0) nativeTools = false;
         if (nativeTools) useStream = false;
+        return { useStream, nativeTools };
+    }
+
+    async function _callGenerateInner(session, settings, pendingText, onChunk, nativeTools = false, genOpts = {}) {
+        const ctx = SillyTavern.getContext();
+        const messages = await assembleMessages(session, settings, pendingText, null, genOpts);
+        const maxTokens = parseInt(settings.maxTokens) || 8200;
+
+        const abort = new AbortController();
+        state.abortController = abort;
+
+        const resolved = resolveUseStream(settings, nativeTools);
+        const useStream = resolved.useStream;
+        nativeTools = resolved.nativeTools;
         const toolsPayload = nativeTools ? { tools: toOpenAITools(), tool_choice: 'auto' } : {};
 
         function deepExtract(obj) {
@@ -18084,21 +18097,26 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         return { text: text.trim(), reasoning, isMaxTokens, toolCalls: null, rawToolCalls: null };
     }
 
-    // Watchdog тишины: открытое SSE-соединение без чанков раньше держало генерацию
-    // бесконечно (снималась только ручным Stop). Таймер петится на каждом чанке;
-    // срабатывание = abort + помеченная ошибка, чтобы UI показал её, а не молчал.
-
+    // Watchdog: an open SSE connection without chunks used to hold generation
+    // forever (only manual Stop cleared it). Streaming requests re-arm the timer
+    // on every chunk; non-streaming requests never chunk, so they get a single
+    // longer total-duration cap instead (see _genTimeouts.nonStreamMs). Fire =
+    // abort + marked error so the UI shows it instead of hanging silently.
 
     async function callGenerate(session, settings, pendingText, onChunk, nativeTools = false, genOpts = {}) {
         let stalled = false;
         let stallTimer = null;
+        // ponytail: resolveUseStream reads the DOM/toggle again — cheap, and the
+        // alternative is threading a flag through every callGenerate caller.
+        const willStream = resolveUseStream(settings, nativeTools).useStream;
+        const capMs = willStream ? _genTimeouts.stallMs : _genTimeouts.nonStreamMs;
         const pet = () => {
             clearTimeout(stallTimer);
             stallTimer = setTimeout(() => {
                 stalled = true;
-                _dbgAdd('GEN_STALL_TIMEOUT', { timeoutMs: _genTimeouts.stallMs });
+                _dbgAdd('GEN_STALL_TIMEOUT', { timeoutMs: capMs, streaming: willStream });
                 try { state.abortController?.abort(); } catch (_) {}
-            }, _genTimeouts.stallMs);
+            }, capMs);
         };
         pet();
         try {
@@ -18933,6 +18951,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         getMainChatSlice: getMainChatSlice,
         logOutgoingRequest: logOutgoingRequest,
         redactRequestBody: redactRequestBody,
+        resolveUseStream: resolveUseStream,
         runContinue: runContinue,
         runGenerate: runGenerate
     });
