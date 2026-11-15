@@ -10182,6 +10182,31 @@ ${scopeHtml}
         }));
     }
 
+    // Error taxonomy for tool results (model-facing): a raw error.message gives the
+    // model a stack or an empty "an error occurred" to build its answer from. The
+    // kind also keeps unprovable failures (network/CORS/abort) from being reported
+    // as "the tool is broken" — their outcome is unknown, not negative.
+    function classifyToolError(err) {
+        const msg = String(err?.message || err || '');
+        if (err?.name === 'AbortError' || msg.includes('Generation stopped by user')) {
+            return { kind: 'stopped', userMessage: 'Generation stopped by user.' };
+        }
+        if (/did not respond within/i.test(msg)) {
+            return { kind: 'timeout', userMessage: 'The tool did not respond in time. Its result is unknown — retry later or ask the user.' };
+        }
+        if (err instanceof TypeError && /fetch|network/i.test(msg)) {
+            return { kind: 'network-unknown', userMessage: 'Network error while running the tool — the result is unknown, not a tool failure. Retrying may succeed.' };
+        }
+        const status = msg.match(/(?:Custom )?API Error (\d{3})/);
+        if (status) {
+            return { kind: 'provider-error', userMessage: `Provider returned HTTP ${status[1]} for this tool call. The tool itself is intact — retry or continue without its result.` };
+        }
+        if (err instanceof SyntaxError || /json/i.test(msg)) {
+            return { kind: 'parse', userMessage: 'The tool returned an unparseable result. Try again with narrower arguments.' };
+        }
+        return { kind: 'unknown', userMessage: `Tool failed: ${msg.slice(0, 160)}` };
+    }
+
 
     function buildToolCallsSystemBlock() {
         const tools = getEnabledTools();
@@ -18692,8 +18717,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                             _dbgAdd('TOOL_EXECUTED', { toolName: entry.name, status: entry.status, ms: Math.round(performance.now() - t0) });
                             if (entry.status === 'done') executedToolFingerprints.add(fingerprint);
                         } catch (e) {
-                            _dbgAdd('TOOL_EXECUTION_FAILED', { toolName: entry.name, error: e.message });
-                            entry.result = { error: e.message };
+                            const { kind, userMessage } = classifyToolError(e);
+                            _dbgAdd('TOOL_EXECUTION_FAILED', { toolName: entry.name, kind, error: e.message });
+                            entry.result = { error: userMessage, kind };
                             entry.status = 'error';
                         }
                     };

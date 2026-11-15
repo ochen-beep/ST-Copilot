@@ -18,7 +18,7 @@ import { buildLorebookContextBlock, buildLBAIInstructions, expandOutletsAsync } 
 import { buildCharacterContextBlock, buildCharEditAIInstructions } from './features/feature-character-engine.js';
 import { buildChatEditAIInstructions } from './features/feature-chatedit-engine.js';
 import { buildMemoryContextBlock, buildMemoryAIInstructions, processMemoryUpdates, stripMemoryBlock } from './features/feature-memory.js';
-import { buildToolCallsSystemBlock, parseToolCallsFromText, stripToolCallsFromText, executeTool, getEnabledTools, toOpenAITools, extractProviderToolCalls, findToolCallCut } from './features/feature-tools-engine.js';
+import { buildToolCallsSystemBlock, parseToolCallsFromText, stripToolCallsFromText, executeTool, getEnabledTools, toOpenAITools, extractProviderToolCalls, findToolCallCut, classifyToolError } from './features/feature-tools-engine.js';
 
 import { updateMsgCount, smartScrollToBottom, setGeneratingState, showGenerationError, _renderMsgBodyContent, _refreshSwipeBars, appendMsgEl } from './ui/ui-chat.js';
 import { getDisplayContent, extractToolCallPlaceholders, renderMarkdown, postProcessHTMLBlocks } from './ui/ui-chat.js';
@@ -874,8 +874,9 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                         _dbgAdd('TOOL_EXECUTED', { toolName: entry.name, status: entry.status, ms: Math.round(performance.now() - t0) });
                         if (entry.status === 'done') executedToolFingerprints.add(fingerprint);
                     } catch (e) {
-                        _dbgAdd('TOOL_EXECUTION_FAILED', { toolName: entry.name, error: e.message });
-                        entry.result = { error: e.message };
+                        const { kind, userMessage } = classifyToolError(e);
+                        _dbgAdd('TOOL_EXECUTION_FAILED', { toolName: entry.name, kind, error: e.message });
+                        entry.result = { error: userMessage, kind };
                         entry.status = 'error';
                     }
                 };
