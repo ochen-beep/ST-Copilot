@@ -63,3 +63,441 @@
 - [x] `npm run check` = vitest + сборка + git diff бандла (замена CI при local-only)
 - [ ] Трек B остаток: mid-stream-drop, stall (прогоны вручную, харнесс готов)
 - [ ] Трек C: большой чат, две вкладки, соук (по запросу)
+
+---
+
+# Фаза 5 — переносимые решения из соседних расширений (план 2026-11-15)
+
+> Источник: разбор соседних расширений этого же data-dir — `Glosses`,
+> `SillyTavern-Diegetic`, `SillyTavern-DS-Comments`, `UR Image Studio` — на
+> предмет решений, применимых к Copilot. Каждый пункт ниже — самостоятельный
+> бриф: симптом/условие, что исследовать перед правкой, скелет правки, ловушки,
+> верификация. Начинать пункт = сначала прочитать все перечисленные файлы и
+> прогнать указанные потоки, потом править.
+>
+> ⚠️ Репортёрша сидит на **v2.10.0** — фиксы этой и предыдущей сессий доходят
+> до неё только после обновления бандла на её машине. Напоминать в ответах.
+>
+> Процесс неизменен: атомарный коммит с бандлом `index.js`; после каждого
+> фикса — `vitest` + живая проверка на `http://127.0.0.1:8001/`.
+
+## Что уже сделано до этой фазы (не переделывать)
+
+- [x] Нормализация якорей патчей: `_findAllRanges` (util-text.js) после literal
+  и whitespace-проходов пробует нормализованный проход — регистр, ё/е, «» vs
+  "", тире, NBSP; 1:1 на кодовую точку, проекция в исходные индексы через
+  hsMap. Тесты — блок «Нормализованный проход» в util-text.test.js. ✅ `0ad3d05`
+- [x] Контракт формата в коде: `LB_OUTPUT_CONTRACT` (constants.js) докладывается
+  к любому `lorebookManagePrompt` без `{{lorebook_output}}`; `buildToolCallsSystemBlock`
+  докладывает fence-пример, если в собранном промпте нет ```tool_call```.
+  Тесты — tests/prompt-contract.test.js. ✅ `4e4e6f2`
+- [x] Редакция дампа: `customKey` в `DBG_SKIP` (state.js) — дамп больше не уносит
+  API-ключ (реальный репорт с утечкой: st-copilot-debug-*.txt с живым sk-ключом).
+  Тесты — tests/debug-redaction.test.js. ✅ `99a5e8c`
+- [x] Тулы: дедуп вызовов за генерацию, полный контент записей (`full: true`),
+  фильтры видимости (hidden/excluded/disabled) во всех тул-результатх,
+  гейтинг лорбук-тулов за `lorebookAIManageEnabled`, финальный no-tools
+  проход при исчерпании бюджета (`GEN_FINAL_ANSWER_RETRY`). ✅ `c7e4290`…`9c6768e`
+- [x] Скролл: блочный `content-visibility` + `overscroll-behavior: contain`
+  (styles/02-messages.css) — лечение «дергается и не листается» на гигантских
+  сообщениях (репорт: 1 сообщение ~155k токенов, телефон). ✅ `38dad4c`
+
+## 5.1 — Ленивые iframe для HTML-блоков
+
+**Источник решения.** `SillyTavern-Diegetic/src/render.js:197-260`: плейсхолдер
+с кэшем точной высоты (`_heightCache` Map по baseKey), IntersectionObserver с
+rootMargin 600px, `lazyActive()` с режимами off/on/auto (<768px),
+`mountFrameInShell`/`unmountToPlaceholder`.
+
+**Симптом/условие.** После блочного content-visibility (`38dad4c`, уже в проде)
+вернуться к пункту, если репортёрша подтвердит дрожь на телефоне в сессиях с
+несколькими HTML-артефактами: CV убирает layout/paint, но сами iframe остаются
+в DOM и на телефоне продолжают жрать память и провоцировать перерастеризацию.
+
+**Что исследовать перед правкой.**
+1. `src/ui/render-msg.js` — `postProcessHTMLBlocks` (как создаются iframe),
+   `prepareHtmlForIframe` (sandbox-скрипт с handshake `scp-iframe-h/bg/err`
+   и RESIZE_SNIPPET), как блоки переживают re-render сообщения.
+2. `src/index.js` ~645-670 — обработчик `scp-iframe-h`: `height = h + 16`,
+   кап 62% высоты окна. Здесь же живёт петля осцилляции высоты (h+16 меняет
+   высоту iframe → observer внутри постит снова) — candidate для гистерезиса
+   (|Δ| > 2px).
+3. Как сообщения re-render'ятся (innerHTML reset) — ключ кэша высоты должен
+   переживать re-render: msgId + индекс блока.
+
+**Скелет правки.** Оболочка-плейсхолдер с высотой из кэша вместо немедленного
+iframe; IO монтирует фрейм при подходе к экрану, размонтирует при уходе;
+высота кэшируется из handshake. Настройка off/on/auto, auto = узкий вьюпорт.
+Popup-фреймы ленивыми не делать.
+
+**Ловушки.** Размонтированный iframe не должен постить handshake; ключи кэша
+чистить при clear сессии; не сломать пост-обработку ошибок (scp-iframe-err).
+
+**Верификация.** Юнит: маунт/анмаунт по фейковому IO + кэш высоты. Живо:
+узкий вьюпорт, сессия с 2-3 HTML-блоками — скролл плавный, DOM не держит
+невидимые фреймы, скрин до/после.
+
+## 5.2 — Координатор прогонов per-message
+
+**Источник решения.** `SillyTavern-Diegetic/src/coordinator.js`: трёхуровневая
+identity — `chatEpoch` (смена чата/выключение) × `messageRevision` (правка/
+свайп конкретного сообщения) × `runToken` (уникальный прогон); слоты
+AbortController на стабильный ключ; API beginRun/isCurrent/endRun/
+abortKind/bumpMessageRevision/invalidateAll.
+
+**Симптом/условие.** Инцидент аудита 2026-11-13: клик send во время
+инициализации → unhandled rejection в цепочке send-хендлера → `state.generating`
+висел true до перезагрузки (кнопка задизейблена, тостов нет). Плюс общий класс:
+у копилота только глобальный `genEpoch`, per-message инвалидации нет.
+
+**Что исследовать перед правкой.**
+1. `src/api.js`: `runGenerate` (~533: state.generating/genEpoch/activeToolCalls),
+   `runContinue` (~1104), `_runSwipeRegen`, finally-блок сброса, гварды
+   `myEpoch === state.genEpoch` (их несколько в tool-цикле).
+2. `src/index.js:405-420` — send-хендлер: `import(...).then(async m => ...)`
+   без `.catch` — unhandled rejection оставляет флаги висеть. Найден именно так.
+3. `src/index.js:593+` — `onChatChanged` → `generationStopped` (FIX 1.6).
+4. Референс-реализация: Diegetic coordinator.js (self-contained, ~100 строк).
+
+**Скелет правки.** Порт `createGenerationCoordinator()`; runGenerate/
+runContinue/runSwipeRegen — beginRun вместо ручных флагов; `isCurrent(run)`
+вместо `myEpoch === state.genEpoch`; CHAT_CHANGED → invalidateAll; правка/
+свайп ST-сообщения → bumpMessageRevision (в точке chatedit-событий).
+`state.generating` остаётся UI-флагом, вычисляемым из живого прогона.
+
+**Ловушки.** activeToolCalls рендерится из глобального state — слоты не должны
+ломать пост-процесс карточек; finally-сброс идемпотентен; `ask_user` живёт
+дольше раунда — его resolver не абортить ревизией чужого сообщения; временные
+_tcTemp-сообщения чистятся как сейчас.
+
+**Верификация.** Юнит: coordinator-тесты (begin/abort/revision/invalidate).
+Живо: клик send до конца init → флаг не залипает; свайп сообщения A во время
+генерации B — B продолжается; смена чата — всё гасится.
+
+## 5.3 — Мок-LLM стенд
+
+**Источник решения.** `Glosses/gls-qa-2026-11-08/mock/server.mjs`: HTTP-мок,
+OpenAI-совместимый, режимы по имени модели (badjson/empty/badanchor/timeout/
+slow8), журнал запросов `GET /__journal`, сброс `GET /__journal/reset`.
+
+**Зачем.** Юнит-тесты не ловят пайплайнные баги. Оба бага этого репорта (цикл
+из 5 поисков, экранированные фенсы) воспроизводились бы на моке бесплатно,
+без траты API-генераций на живой проверке.
+
+**Что исследовать перед правкой.**
+1. Референс-мок Glosses (см. выше) + их RUNBOOK в PROJECT_MAP.md.
+2. Copilot-подключение: `settings.connectionSource = 'custom'` + `customUrl`
+   на мок-порт; протокол text (фенсы) и native — оба прогнать.
+3. `tests/live/synthetic-llm.js` — существующий частичный харнесс, не дублировать.
+
+**Скелет правки.** node-сервер без зависимостей; режимы: ok/short/empty/
+badjson/escaped (\\-фенсы — регресс `f637e78`)/toolloop (N поисков подряд —
+регресс дедупа `9c6768e` и финального прохода)/timeout/slow. Прогон: source=custom
+на мок, запросы программно через `#scp-input` + send, сверка журнала мока и DOM.
+
+**Верификация.** Каждый регресс-баг воспроизводится на моке и закрывается
+существующими фиксами; сценарий без фиксов — падает.
+
+## 5.4 — customKey → localforage (отложено: редизайн profileKey)
+
+**Источник решения.** `UR Image Studio/src/api-key-store.js` (localforage +
+revision guard + serialize-мьютекс), `Glosses/src/connection.js` §3.3 (ключ
+НЕ в settings JSON).
+
+**Симптом/условие.** Утечка закрыта редакцией дампа (`99a5e8c`), но ключ всё
+ещё в settings.json (SyncThing-бэкапы между СВОИМИ устройствами). Перенос
+имеет юзер-трейд-оффф: ключ перестанет синкаться между устройствами —
+**решение владельца обязательно до начала работ**.
+
+**Что исследовать перед правкой.**
+1. `src/ui/settings-defs.js:70` — `customKey` с `profileKey: true`: как
+   profileKey-значения копируются в профили и обратно — `src/ui/settings-profiles.js`,
+   `settings-panel.js` (bindOv), `settings-core.js` (ovi), session-overrides
+   (`scp-sp-ov-custom-key`).
+2. Единственный потребитель ключа: `src/api.js:194` (Bearer-заголовок кастомного
+   endpoint'а).
+3. Референс: URIS api-key-store.js.
+
+**Скелет правки.** Модуль `custom-key-store.js` (get/set/migrate с revision
+guard); миграция once: settings.customKey → store, из settings удалить, флаг
+`customKeyMigrated`; settings-defs поле убрать; UI-инпут биндить на store;
+api.js:194 → await getCustomKey().
+
+**Ловушки.** Профили хранят ключ в своих значениях — после переноса профиль
+либо держит свой ключ (несколько записей store), либо теряет смысл; SessionTool
+overrides тоже. Это и есть редизайн — не начинать без решения владельца.
+
+**Верификация.** Юнит: миграция + ревизии (мок localforage). Живо: кастомный
+endpoint отвечает с ключом; экспортируемый дамп чист; settings.json чист.
+
+## 5.5 — send_date как identity истории правок
+
+**Источник решения.** `SillyTavern-DS-Comments/src/feed-file-store.js`: send_date
+(ISO с мс) как per-swipe ключ — ST сам поддерживает его в swipe_info, он не
+сдвигается при splice сообщений/свайпов («no anchors, no reconciliation»).
+
+**Симптом/условие.** chat-edit proposals держат `msg_indices` (индексы ST-чата).
+Удаление сообщений между генерацией proposals и применением сдвигает индексы —
+правки попадают в чужие сообщения.
+
+**Что исследовать перед правкой.**
+1. `src/features/feature-chatedit-engine.js` — где msg_indices резолвятся в
+   сообщения при применении; `feature-chatedit-ui.js` — применение и diff.
+2. Инструмент `get_recent_messages` уже отдаёт индексы — добавить send_date
+   в выдачу, чтобы модель цитировала стабильный ключ.
+3. Проверить фактическую стабильность send_date при splice/дублировании
+   (DS-Comments это утверждает — подтвердить на 8001 экспериментом).
+4. `applySearchReplaceToField`-пайплайн — правка по контенту, индекс нужен
+   только для адресации сообщения.
+
+**Скелет правки.** В proposals при генерации резолвить msg_indices →
+send_date (инструмент отдаёт), при применении резолвить send_date →
+актуальный индекс; промах — честный отказ «сообщение изменилось/удалено».
+Касается apply и diff-модала.
+
+**Верификация.** Юнит: delete-shift сценарий (2 proposals, удалить сообщение
+выше, применить). Живо: тот же сценарий на 8001.
+
+## 5.6 — Персистентный event-log
+
+**Источник решения.** `SillyTavern-DS-Comments/src/event-log.js`: ring 150 в
+localforage, signal-only (GEN_START/DONE/ERROR, SESSION_*, STORAGE_*),
+sessionId, survives F5. Замечание DS: основной дебаг-лог тонет в шуме
+обсерверов — персистентный журнал записывает только значимые переходы.
+
+**Симптом/условие.** Дамп копилота не пересекает F5: журнал репортёршы
+начинался с Session Start уже после перезагрузки — инцидент до reload потерян.
+
+**Что исследовать перед правкой.**
+1. `src/utils/util-debug.js` (DBG_STATE ring 300, in-memory; сборка дампа
+   ~142-160: stEnv + log entries).
+2. Где дамп-экспорт кнопкой (поиск по `st-copilot-debug-` — формируется в
+   util-debug.js, скачивается blob'ом).
+
+**Скелет правки.** `recordEvent()` рядом с `_dbgAdd` на 8-10 значимых типах
+(GEN_START/GEN_TOOL_ROUND/GEN_DONE/GEN_ERROR/GEN_EMPTY_FINAL_TEXT/
+SESSION_CREATED/DELETED/STORAGE_WRITE_FAILED/SETTINGS_CHANGED-крупные);
+ring в localforage; дамп добавляет секцию «Event Log (persisted, crosses F5)».
+
+**Верификация.** Юнит: ring + persistence (мок localforage). Живо: F5 → дамп
+содержит события до перезагрузки.
+
+## 5.7 — Advisory pool для lorebook proposals
+
+**Источник решения.** `Glosses/src/anchor-policy.js` collectExplainedAnchors:
+модели говорят все якоря, объяснённые ранее в чате (кроме текущего сообщения
+и скрытых юзером), с лимитом — чтобы она предлагала свежее, а не повторялась.
+
+**Симптом/условие.** Условный: жалобы на «модель перепредлагает те же записи».
+У копилота данные уже есть — lb-history сообщения несут `ACCEPTED/REJECTED/
+DISMISSED: имя записи` в appliedLines.
+
+**Что исследовать перед правкой.**
+1. `src/features/feature-lorebook-ui-apply.js` — logLBHistoryChanges/addHistoryToSwipe
+   (формат appliedLines), где истории живут.
+2. `src/features/feature-lorebook-engine.js` buildLBAIInstructions — куда
+   подмешать advisory-блок (рядом с Active lorebooks).
+3. Формат appliedLines (парсить имена записей + статусы).
+
+**Скелет правки.** Собрать из lb-history последнего окна (~10 сообщений)
+имена записей REJECTED/DISMISSED → advisory-строка «Недавно предложено и
+отклонено юзером (не перепредлагать без явной просьбы): ...» (лимит ~20 имён)
+→ в buildLBAIInstructions; строка в DEFAULT_LB_MANAGE_PROMPT о том же.
+
+**Ловушки.** lb-history может быть зачищен юзером — пустой advisory нормален;
+имена не уникальны между книгами — добавлять имя книги.
+
+**Верификация.** Юнит: сборка advisory из appliedLines (вкл. лимит и книги).
+Живо: отклонить proposal → следующий запрос — модель не перепредлагает то же.
+
+## 5.8 — Таксономия ошибок тулов
+
+**Источник решения.** `UR Image Studio/src/capability-observer.js`: outcome
+taxonomy — capability / auth / quota / rate-limit / invalid-request /
+provider-error / timeout / network-unknown, и правило «unprovable (CORS/abort/
+transport ambiguity) никогда не репортится как unsupported».
+
+**Симптом/условие.** Ошибки тулов отдаются модели голым error.message; модель
+по ним строит ответ юзеру — сырой стек или бессмысленное «произошла ошибка».
+
+**Что исследовать перед правкой.**
+1. `src/api.js` execEntry catch → TOOL_EXECUTION_FAILED → entry.result =
+   { error: e.message } — кто ест строку: `<tool_result status="error">` в
+   промпте модели + карточка в UI.
+2. Референс: URIS capability-observer.js (таксономия и правило unprovable),
+   URIS http.js (typed error.code FETCH_TIMEOUT).
+
+**Скелет правки.** classify(err) → {kind, userMessage}; entry.result =
+{ error: userMessage, kind } (model видит короткий текст + kind); UI-карточка
+показывает userMessage; network-unknown не превращать в «инструмент сломан».
+
+**Верификация.** Юнит: классификация 6-8 типовых ошибок. Живо: вырубить сеть →
+тул возвращает network-unknown, модель вежливо сообщает о недоступности.
+
+## Грабли среды (для следующего агента, 2026-11-14/15)
+
+- **IAB-вкладка браузерного агента:** в фоновой вкладке `rAF = 0` (Chromium
+  троттлит occluded-окно) → CDP-скролл (`cua.scroll`) висит по 30с таймауту,
+  визуальный джиттер не снимается. Синтетические wheel-события доходят до JS
+  (проверка preventDefault — валидна), но нативный скролл не эмулируют.
+- **`openCharacterChat('<имя>.jsonl')`** — имя С расширением создаёт НОВЫЙ
+  пустой чат и перезаписывает `chat` в карточке персонажа. Открывать по имени
+  без расширения или через UI-клики. Урон отшибается: карточку вернуть
+  открытием правильного чата, файл-мусор удалить.
+- **Инжект module-скриптов** (`import('/scripts/.../src/...')`) создаёт
+  ПАРАЛЛЕЛЬНЫЕ инстансы модулей бандла (бандл — IIFE): состояние (DBG_STATE,
+  bucket) не общее. Для чистых функций (парсеры, applyPatchToField, _dbgStrip)
+  валидно; для state — нет.
+- **Bash-heredoc на этой машине** съедает бэкслеши и ломает кавычки — код и
+  тесты с регэкспами писать только через Write/Edit.
+- **`npm run check` перед коммитом** падает на diff-гейте, если бандл ещё не
+  закоммичен (rollup пересобирает index.js) — либо коммитить бандл в том же
+  коммите, либо гейт гонять после.
+- **Пайпы `cmd | tail`** маскируют exit-код — код возврата проверять
+  отдельно (`cmd; echo $?`), уже дважды почти пропустили красный гейт.
+
+---
+
+# Фаза 5 — переносимые решения из соседних расширений (план 2026-11-15)
+
+> Источник: разбор `Glosses`, `SillyTavern-Diegetic`, `SillyTavern-DS-Comments`,
+> `UR Image Studio` (соседние расширения в этом же data-dir) на предмет решений,
+> применимых к Copilot. Каждый пункт ниже — самостоятельный бриф: симптом,
+> что исследовать перед правкой, скелет правки, верификация.
+>
+> ⚠️ Репортёрша сидит на **v2.10.0** — фиксы этой и предыдущей сессий доходят до
+> неё только после обновления бандла на её машине. Об этом напоминать в ответах.
+>
+> Процесс неизменен: атомарный коммит с бандлом; после каждого фикса — `vitest`
+> + живая проверка на `http://127.0.0.1:8001/`.
+
+## Что уже сделано до этой фазы (не переделывать)
+
+- [x] Нормализация якорей патчей: `_findAllRanges` (util-text.js) после literal и
+  whitespace-проходов пробует нормализованный проход (регистр, ё/е, «» vs "",
+  тире, NBSP; 1:1 на кодовую точку, проекция на исходные индексы через hsMap).
+  Тесты — блок «Нормализованный проход» в util-text.test.js. ✅ `0ad3d05`
+- [x] Контракт формата в коде: `LB_OUTPUT_CONTRACT` (constants.js) докладывается
+  к любому `lorebookManagePrompt` без `{{lorebook_output}}`; `buildToolCallsSystemBlock`
+  докладывает fence-пример, если в собранном промпте нет ```tool_call```. Тесты —
+  tests/prompt-contract.test.js. ✅ `4e4e6f2`
+- [x] Редакция дампа: `customKey` в `DBG_SKIP` (state.js) — дамп больше не уносит
+  API-ключ. ✅ `99a5e8c`. Перенос ключа в localforage — отложен осознанно: customKey
+  это `profileKey` (settings-defs.js:70), ключ живёт в профилях и session-overrides,
+  перенос = редизайн профильной механики (см. 5.4).
+- [x] Тулы: дедуп вызовов за генерацию, полный контент записей (`full: true`),
+  фильтры видимости (hidden/excluded/disabled), гейтинг лорбук-тулов,
+  финальный no-tools проход при исчерпании бюджета (`GEN_FINAL_ANSWER_RETRY`).
+  ✅ коммиты `c7e4290`…`9c6768e`
+- [x] Скролл: блочный `content-visibility` + `overscroll-behavior: contain`
+  (styles/02-messages.css) — лечение «дергается и не листается» на гигантских
+  сообщениях (репорт: 1 сообщение ~155k токенов). ✅ `38dad4c`
+
+## 5.1 — Ленивые iframe для HTML-блоков (Diegetic render.js:197-260)
+
+**Симптом/условие.** После content-visibility (`38dad4c`) вернуться к пункту, если
+репортёрша подтвердит дрожь на телефоне в сессиях с несколькими HTML-артефактами:
+CV убирает layout/paint, но сами iframe остаются в DOM и жрут память на телефоне.
+
+**Что исследовать перед правкой.**
+1. `src/ui/render-msg.js` — `postProcessHTMLBlocks` (как создаются iframe), 
+   `prepareHtmlForIframe` (sandbox-скрипт с handshake `scp-iframe-h/bg/err`),
+   как блоки переживают re-render сообщения (innerHTML reset).
+2. `src/index.js` ~645-670 — обработчик `scp-iframe-h`: `height = h + 16`,
+   кап `62%` высоты окна. Это место, где живёт петля осцилляции высоты
+   (h+16 меняет высоту iframe → observer внутри iframe постит снова).
+3. Референс: `SillyTavern-Diegetic/src/render.js:197-260` — плейсхолдер с кэшем
+   точной высоты (`_heightCache` Map по baseKey), IntersectionObserver
+   rootMargin 600px, `lazyActive()` off/on/auto (<768px), `mountFrameInShell`/
+   `unmountToPlaceholder`.
+
+**Скелет правки.** Оболочка-плейсхолдер с высотой из `_heightCache` вместо
+немедленного iframe; IO монтирует фрейм при подходе к экрану и размонтирует
+при уходе; высота кэшируется из handshake. Настройка off/on/auto (auto = ширина
+<768px). Ключ кэша должен переживать re-render: msgId + индекс блока.
+
+**Ловушки.** popup-фреймы ленивыми не делать; handshake при размонтировании
+не должен постить высоту; ключи кэша чистить при clear сессии.
+
+**Верификация.** Юнит: маунт/анмаунт по фейковому IO. Живо: телефон/узкий
+вьюпорт, сессия с 2-3 HTML-блоками — скролл плавный, память не растёт,
+скрин до/после.
+
+## 5.2 — Координатор прогонов per-message (Diegetic coordinator.js)
+
+**Симптом/условие.** Инцидент аудита 2026-11-13: клик send во время
+инициализации → unhandled rejection в цепочке send-хендлера → флаг
+`state.generating` висел true до перезагрузки (кнопка дизейбл, тост нет).
+Плюс общий класс гонок: только глобальный `genEpoch`, нет per-message
+инвалидации.
+
+**Что исследовать перед правкой.**
+1. `src/api.js`: `runGenerate` (~533: state.generating/genEpoch/activeToolCalls),
+   `runContinue` (~1104), `_runSwipeRegen`, finally-блок (сброс generating),
+   `onChatChanged` → `generationStopped` (FIX 1.6 уже частично закрывает).
+2. `src/index.js:405-420` — send-хендлер: `import(...).then(async m => ...)` 
+   без `.catch` — unhandled rejection оставляет флаги висеть (нашёлся именно так).
+3. Референс: `SillyTavern-Diegetic/src/coordinator.js` — beginRun/isCurrent/
+   abortKind/bumpMessageRevision/invalidateAll: слоты AbortController'ов на
+   стабильный ключ сообщения, revision растёт на правке/свайпе ЭТОГО сообщения,
+   epoch — на смене чата.
+
+**Скелет правки.** `createGenerationCoordinator()` (порт из Diegetic, он
+self-contained); в runGenerate/runContinue/runSwipeRegen — beginRun вместо
+ручных флагов; гварды `isCurrent(run)` вместо `myEpoch === state.genEpoch`;
+CHAT_CHANGED → invalidateAll; правка/свайп ST-сообщения → bumpMessageRevision
+(вешается там же, где сейчас чат-эдит события). `state.generating` остаётся
+только как UI-флаг, вычисляемый из «есть ли живой прогон».
+
+**Ловушки.** activeToolCalls рендерится из глобального state — слоты не должны
+ломать пост-процесс карточек; finally-сброс должен оставаться идемпотентным;
+не сломать `ask_user` (его resolver живёт дольше раунда).
+
+**Верификация.** Юнит: coordinator-тесты (begin/abort/revision/invalidate).
+Живо: клик send до конца init → флаг не залипает; свайп сообщения A во время
+генерации B — B продолжается.
+
+## 5.3 — Мок-LLM стенд (Glosses RUNBOOK)
+
+**Зачем.** Юнит-тесты не ловят пайплайнные баги (цикл из 5 поисков, экранированные
+фенсы, пустой финал) — они ловятся только живым прогоном с тратой API. Мок
+делает это детерминированным и бесплатным.
+
+**Что исследовать перед правкой.**
+1. Референс: `Glosses/gls-qa-2026-11-08/mock/server.mjs` — HTTP-мок OpenAI-
+   совместимый, режимы по имени модели (badjson/empty/badanchor/timeout/slow8),
+   журнал запросов `GET /__journal`.
+2. Копилот: `settings.connectionSource = 'custom'` + `customUrl` → мок;
+   `customKey` любой; протокол text (фенсы) и native — оба прогнать.
+3. Текущий харнесс: `tests/live/synthetic-llm.js` (уже есть частичный).
+
+**Скелет.** node-сервер без зависимостей; режимы: ok/short/empty/badjson/
+escaped (\-фенсы — регресс `f637e78`)/toolloop (N вызовов search подряд —
+регресс дедупа и финального прохода)/timeout/slow. Скрипт-прогон: настроить
+connectionSource=custom на мок, слать запросы через UI-ввод программно,
+сверять журнал мока и итоговый DOM.
+
+**Верификация.** Каждый регресс-баг этого репорта воспроизводится на моке
+и чинится тестом.
+
+## 5.4 — customKey → localforage (отложено: редизайн profileKey)
+
+**Симптом/условие.** Утечка закрыта редакцией дампа (`99a5e8c`), но ключ всё ещё
+в settings.json (уходит в SyncThing-бэкапы). Перенос имеет юзер-трейд-оффф:
+ключ перестанет синкаться между устройствами SyncThing'ом — решение владельца.
+
+**Что исследовать перед правкой.**
+1. `src/ui/settings-defs.js:70` — `customKey` с `profileKey: true`: как
+   profileKey-значения копируются в профили и обратно — `src/ui/settings-profiles.js`,
+   `settings-panel.js`, `settings-core.js` (ovi/bindOv), session-overrides
+   (`scp-sp-ov-custom-key`).
+2. Референс: `UR Image Studio/src/api-key-store.js` — localforage + revision
+   guard + serialize-мьютекс; `Glosses/src/connection.js` §3.3.
+3. Единственный потребитель: `src/api.js:194` (Bearer-заголовок).
+
+**Скелет правки.** Модуль `custom-key-store.js` (get/set/migrate, revision
+guard); миграция once: settings.customKey → store, из settings удалить,
+флаг `customKeyMigrated`; settings-defs поле убрать, UI-инпут биндить на
+store; api.js:194 → await getCustomKey().
+
+**Ловушки.** Проф
