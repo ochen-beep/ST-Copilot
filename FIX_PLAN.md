@@ -129,7 +129,11 @@ bulk_replace → 260+ записей за ~20 мс — из кольца (3000) 
   ленивый маунт — по подтверждению трясски на телефоне после обновления
   бандла. ✅ `e85f074`
 - [ ] «Обрывы инструментов»: код-разведка 2026-11-15 (три Explore-агента) нашла
-  две верифицированные root-cause candidates, обе закрыты:
+  две верифицированные root-cause candidates, обе закрыты; диагностический слой
+  (5.6 event-log) и гонки залипания флагов (5.2 координатор) тоже закрыты —
+  см. статусы в 5.2/5.6 ниже. Регрессии запинены мок-стендом (5.3): `scp-round2err`
+  живьём показал, что текст раунда 1 переживает 500-й в раунде 2 (`09d378e`), а
+  `resolveUseStream` покрыт юнит-тестом.
   - [x] Сбой в tool-раунде ≥2 стирал весь текст предыдущих раундов и результаты
     тулов: `streamAccumText` сбрасывается в начале каждого раунда, onChunk раунда
     пишет только `lastRoundPartialText`, `msg.content` пуст до успеха — catch
@@ -193,6 +197,18 @@ Popup-фреймы ленивыми не делать.
 
 ## 5.2 — Координатор прогонов per-message
 
+> Статус: ✅ `4cd212c` — порт с адаптацией: у Copilot прогон **один глобальный**
+> (одиночный слот вместо per-message слотов Diegetic), т.к. per-message ревизии
+> не имеют потребителя: правка/удаление сообщений во время генерации уже
+> блокирована UI-гвардиями фазы 2. `beginRun`/`isCurrent`/`endRun`/
+> `invalidateAll` заменили ручные флаги и `genEpoch` (удалён из state.js);
+> pre-try блоки (getEffectiveSettings/DOM) обёрнуты в mini-try с endRun —
+> throw до основного try больше не залипает `state.generating` (инцидент
+> 2026-11-13); finally чистит `activeToolCalls` под isCurrent-гвардом.
+> CHAT_CHANGED → `invalidateAll` (session-view). Живо: смена чата посреди
+> стрима гасит прогон без GEN_DONE, флаги чистые. bumpMessageRevision из брифа
+> НЕ портирован (осознанно, см. выше); vitest 294→298 (+4 теста координатора).
+
 **Источник решения.** `SillyTavern-Diegetic/src/coordinator.js`: трёхуровневая
 identity — `chatEpoch` (смена чата/выключение) × `messageRevision` (правка/
 свайп конкретного сообщения) × `runToken` (уникальный прогон); слоты
@@ -229,6 +245,13 @@ _tcTemp-сообщения чистятся как сейчас.
 генерации B — B продолжается; смена чата — всё гасится.
 
 ## 5.3 — Мок-LLM стенд
+
+> Статус: ✅ — `tests/live/mock-llm.mjs` (node:http, без зависимостей, порт
+> 8901, RUNBOOK в шапке). Режимы: scp-mock/short/empty/badjson/escaped/
+> toolloop3/slow/timeout/**round2err** (последний пинит спасение текста при
+> 500-м во 2-м раунде — шаг 1) + юнит `resolveUseStream` (пин развязки
+> watchdog-таймаутов — шаг 2). Живо проверено: смоук по SSE (1 запрос, ответ
+> в DOM), round2err → «Ищу в лорбуке» выжил, GEN_ERROR в event-log.
 
 **Источник решения.** `Glosses/gls-qa-2026-11-08/mock/server.mjs`: HTTP-мок,
 OpenAI-совместимый, режимы по имени модели (badjson/empty/badanchor/timeout/
@@ -313,6 +336,16 @@ send_date (инструмент отдаёт), при применении ре�
 выше, применить). Живо: тот же сценарий на 8001.
 
 ## 5.6 — Персистентный event-log
+
+> Статус: ✅ — `src/utils/util-eventlog.js` (ring 150, allowlist GEN_*/TOOL_*/
+> SESSION_*/STORAGE_* + WINDOW_ERROR/UNHANDLED_REJECTION/CONSOLE_ERROR/
+> UI_ERROR_*), хук одной строкой в `_dbgAdd`, ленивая загрузка при первом
+> событии (без init-проводки), хранилище — `SillyTavern.libs.localforage`
+> (ST core отдаёт сам, бандлить нечего), flush на visibilitychange/pagehide
+> с ожиданием in-flight загрузки. Дамп: секция «Event Log (persisted, crosses
+> F5)» между env-блоком и кольцом. Заодно `TOOL_EXECUTED {toolName,status,ms}`
+> в execEntry — успешные выполнения тулов раньше были невидимы в логе.
+> vitest 283→290 (+7), живо: 21 событие первой сессии пережило F5 (27 после).
 
 **Источник решения.** `SillyTavern-DS-Comments/src/event-log.js`: ring 150 в
 localforage, signal-only (GEN_START/DONE/ERROR, SESSION_*, STORAGE_*),
