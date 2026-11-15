@@ -309,6 +309,15 @@ endpoint отвечает с ключом; экспортируемый дамп
 
 ## 5.5 — send_date как identity истории правок
 
+> Статус: ✅ — `get_recent_messages` отдаёт `send_date` (пин юнит-тестом
+> контракта), формат-блок требует копировать его в `msg_date`/`msg_dates`
+> (выровнены с msg_indices), движок при apply сверяет дату живого сообщения:
+> не совпала — изменение честно пропускается (toastr + не попадает в
+> successLog), нет даты — легаси-поведение (старые proposals валидны).
+> Карточка валидации тоже показывает «сообщение изменилось». Диапазоны
+> msg_range сознательно без identity (позиционные по дизайну). vitest
+> 304→310 (+6: delete-shift, частичный bulk_replace, легаси, контракт тула).
+
 **Источник решения.** `SillyTavern-DS-Comments/src/feed-file-store.js`: send_date
 (ISO с мс) как per-swipe ключ — ST сам поддерживает его в swipe_info, он не
 сдвигается при splice сообщений/свайпов («no anchors, no reconciliation»).
@@ -398,6 +407,12 @@ DISMISSED: имя записи` в appliedLines.
 Живо: отклонить proposal → следующий запрос — модель не перепредлагает то же.
 
 ## 5.8 — Таксономия ошибок тулов
+
+> Статус: ✅ — `classifyToolError(err)` в feature-tools-engine.js (stopped /
+> timeout / network-unknown / provider-error с HTTP-кодом / parse / unknown),
+> execEntry кладёт в `entry.result = { error: userMessage, kind }` — модель
+> видит короткий честный текст вместо стека; network-unknown явно не
+> превращается в «инструмент сломан». vitest 304→310 (+6 типовых ошибок).
 
 **Источник решения.** `UR Image Studio/src/capability-observer.js`: outcome
 taxonomy — capability / auth / quota / rate-limit / invalid-request /
