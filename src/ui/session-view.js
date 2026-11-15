@@ -2,6 +2,7 @@ import { EXT_DISPLAY, I, THEME_PRESETS } from '../constants.js';
 import { state } from '../state.js';
 import { getSettings, saveSettings, getCurrentSession, saveSessionsToMetadata, deleteMsg, truncateAfter, truncateFrom, expandMacros, getEffectiveSettings, getBindingKey, initChatBucket, isMessageStarred, toggleStarMessage } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
+import { genCoord } from '../utils/util-coordinator.js';
 import { escHtml, autoResize, showCustomDialog, copyText } from '../utils/util-dom.js';
 import { getCharInfo } from '../utils/util-st.js';
 
@@ -366,10 +367,10 @@ export async function onChatChanged() {
         // flag a zombie generation keeps issuing paid API rounds for the old chat.
         state.generationStopped = true;
         state.generating = false;
-        // Invalidate the zombie's epoch: generation B resets generationStopped,
-        // but A's round loop and tool executor also check myEpoch — without the
-        // bump A resumes rounds and hijacks B's abortController slot.
-        state.genEpoch++;
+        // Coordinator: invalidate the zombie run — its round loop and tool
+        // executor check isCurrent(), which goes false here, so A cannot
+        // resume rounds or hijack B's abortController slot.
+        genCoord.invalidateAll();
         setGeneratingState(false);
     }
     state.lastChatLen = -1;

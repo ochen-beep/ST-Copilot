@@ -981,9 +981,6 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         // Флаг остановки, живущий дольше abortController: контроллер зануляется после
         // каждого callGenerate, поэтому Stop между tool-раундами без этого флага терялся.
         generationStopped: false,
-        // Эпоха генерации: зомби-runGenerate после смены чата не должен сбрасывать
-        // флаги уже начавшейся новой генерации в своём finally.
-        genEpoch: 0,
         htmlBlockCounter: 0,
         htmlBlockRegistry: new Map(),
         tokenCountCache: new Map(),
@@ -12126,6 +12123,58 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
     // Окно ленивого рендера (сообщений в DOM); порог подгрузки «Показать ещё».
     const MSG_RENDER_WINDOW = 80;
 
+    // Ownership of the single generation run.
+    //
+    // Copilot runs ONE generation at a time (global slot), unlike Diegetic's
+    // per-message slots: per-message revisions have no consumer here because the
+    // UI guards already block message edit/delete while a run is live.
+    //
+    //   - beginRun/endRun: the run lifecycle. endRun only clears the slot the run
+    //     still owns, so a zombie run's finally (e.g. after a chat switch) can
+    //     never clobber the flags of a newer run — the 2026-11-13 incident class
+    //     (stuck state.generating until reload).
+    //   - isCurrent: the single staleness predicate, checked after every await
+    //     and right before any commit/tool-execution.
+    //   - invalidateAll: chat switch / shutdown — bumps the epoch and cancels the
+    //     live run; every older run's isCurrent() goes false.
+
+    function createGenerationCoordinator() {
+        let epoch = 0;
+        let current = null;
+        let tokenSeq = 0;
+
+        function beginRun() {
+            const run = { token: ++tokenSeq, epoch, canceled: false };
+            current = run;
+            return run;
+        }
+
+        function isCurrent(run) {
+            return !!run && current === run && !run.canceled && run.epoch === epoch;
+        }
+
+        function endRun(run) {
+            if (!isCurrent(run)) return false;
+            current = null;
+            return true;
+        }
+
+        function invalidateAll() {
+            epoch++;
+            if (current) current.canceled = true;
+            current = null;
+        }
+
+        function hasLiveRun() {
+            return !!current;
+        }
+
+        return { beginRun, isCurrent, endRun, invalidateAll, hasLiveRun };
+    }
+
+    // Single shared instance: generation ownership is process-wide.
+    const genCoord = createGenerationCoordinator();
+
     function openSearch() {
         _dbgAdd('SEARCH_TOGGLE', { state: 'open' });
         state.searchOpen = true;
@@ -12925,10 +12974,10 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
             // flag a zombie generation keeps issuing paid API rounds for the old chat.
             state.generationStopped = true;
             state.generating = false;
-            // Invalidate the zombie's epoch: generation B resets generationStopped,
-            // but A's round loop and tool executor also check myEpoch — without the
-            // bump A resumes rounds and hijacks B's abortController slot.
-            state.genEpoch++;
+            // Coordinator: invalidate the zombie run — its round loop and tool
+            // executor check isCurrent(), which goes false here, so A cannot
+            // resume rounds or hijack B's abortController slot.
+            genCoord.invalidateAll();
             setGeneratingState(false);
         }
         state.lastChatLen = -1;
@@ -13267,16 +13316,21 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
             msgData.swipeIndex = 0;
         }
 
+        const run = genCoord.beginRun();
         state.generating = true;
         // Same reset as runGenerate/runContinue: a stale flag from a previously
         // stopped generation suppresses the stall-watchdog error for this regen.
         state.generationStopped = false;
         state.activeToolCalls = [];
-        // Эпоха генерации — как в runGenerate: зомби-реген после смены чата не должен
-        // снимать флаги уже начавшейся новой генерации в своём finally.
-        const myEpoch = ++state.genEpoch;
-        const settings = getEffectiveSettings();
-        setGeneratingState(true);
+        let settings;
+        try {
+            settings = getEffectiveSettings();
+            setGeneratingState(true);
+        } catch (e) {
+            genCoord.endRun(run);
+            state.generating = false;
+            throw e;
+        }
 
         const body = wrapEl.querySelector('.scp-msg-body');
         if (body) {
@@ -13437,7 +13491,7 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
             if (state.abortController?.signal?.aborted || err?.message === 'userStopped') ; 
             else { showGenerationError(err); }
         } finally {
-            if (myEpoch === state.genEpoch) {
+            if (genCoord.endRun(run)) {
                 state.generating = false;
                 setGeneratingState(false);
             }
@@ -18261,12 +18315,22 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
     async function runGenerate(session, userText, addUserMsg = true, processedAtts = null) {
         if (state.generating) return;
+        // Run ownership via the coordinator: beginRun replaces the manual epoch
+        // bookkeeping; the mini-try keeps a pre-try throw (settings/DOM) from
+        // leaking state.generating (the stuck-flag incident class).
+        const run = genCoord.beginRun();
         state.generating = true;
         state.generationStopped = false;
-        const myEpoch = ++state.genEpoch;
         state.activeToolCalls = [];
-        const settings = getEffectiveSettings();
-        setGeneratingState(true);
+        let settings;
+        try {
+            settings = getEffectiveSettings();
+            setGeneratingState(true);
+        } catch (e) {
+            genCoord.endRun(run);
+            state.generating = false;
+            throw e;
+        }
 
         let streamMsgId = null;
         let streamMsgEl = null;
@@ -18533,7 +18597,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     _updateLiveUI();
 
                     const execEntry = async (entry) => {
-                        if (state.generationStopped || state.abortController?.signal.aborted || myEpoch !== state.genEpoch) {
+                        if (state.generationStopped || state.abortController?.signal.aborted || !genCoord.isCurrent(run)) {
                             entry.result = { error: 'Generation stopped by user.' };
                             entry.status = 'error';
                             return;
@@ -18590,7 +18654,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
                     // Stop, нажатый во время исполнения инструментов: не запускаем
                     // следующий раунд — выходим с тем, что успели накопить.
-                    if (state.generationStopped || myEpoch !== state.genEpoch) break;
+                    if (state.generationStopped || !genCoord.isCurrent(run)) break;
 
                     if (nativeTools) {
                         const rawCalls = roundRawToolCalls || roundEntries.map((e, i) => ({
@@ -18725,7 +18789,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 // и без них модель не смогла бы ответить по существу.
                 if (result !== null && state.activeToolCalls.length
                     && !stripToolCallsFromText(result.text || '').trim()
-                    && !state.generationStopped && myEpoch === state.genEpoch) {
+                    && !state.generationStopped && genCoord.isCurrent(run)) {
                     _dbgAdd('GEN_FINAL_ANSWER_RETRY', {});
                     const resultsText = roundEntries.map(e =>
                         `<tool_result name="${e.name}" status="${e.status}">\n${typeof e.result === 'string' ? e.result : JSON.stringify(e.result, null, 2)}\n</tool_result>`
@@ -18852,7 +18916,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 }
             }
             if (!err?._stalled && (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped')) {
-                if (myEpoch === state.genEpoch) {
+                if (genCoord.isCurrent(run)) {
                     state.generating = false;
                     setGeneratingState(false);
                 }
@@ -18873,8 +18937,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             // живой сессии — на диск они и так не попадают (_stripTempMessages),
             // но в памяти переживали ошибку и рендерились как обычные сообщения.
             if (session.messages?.some(m => m._tcTemp)) session.messages = session.messages.filter(m => !m._tcTemp);
+            // Stale tool chips after Stop/error: success clears them, error paths
+            // did not — guarded so a zombie run's finally never wipes a newer run's.
+            if (genCoord.isCurrent(run)) state.activeToolCalls = [];
             // Зомби-генерация (после смены чата) не трогает флаги новой генерации.
-            if (myEpoch === state.genEpoch) {
+            if (genCoord.endRun(run)) {
                 state.generating = false;
                 setGeneratingState(false);
             }
@@ -18895,12 +18962,19 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const targetMsg = session.messages.find(m => m.id === targetMsgId);
         if (!targetMsg || targetMsg.role !== 'assistant') return;
 
+        const run = genCoord.beginRun();
         state.generating = true;
         state.generationStopped = false;
-        const myEpoch = ++state.genEpoch;
         state.activeToolCalls = [];
-        const settings = getEffectiveSettings();
-        setGeneratingState(true);
+        let settings;
+        try {
+            settings = getEffectiveSettings();
+            setGeneratingState(true);
+        } catch (e) {
+            genCoord.endRun(run);
+            state.generating = false;
+            throw e;
+        }
 
         const CONTINUE_PROMPT = 'Continue your response exactly from where you left off. Do not repeat any previously written text.';
 
@@ -19047,7 +19121,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         } catch (err) {
             cleanupCursor();
             if (!err?._stalled && (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped')) {
-                if (myEpoch === state.genEpoch) {
+                if (genCoord.isCurrent(run)) {
                     state.generating = false;
                     setGeneratingState(false);
                 }
@@ -19058,7 +19132,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
             showGenerationError(err);
         } finally {
-            if (myEpoch === state.genEpoch) {
+            if (genCoord.endRun(run)) {
                 state.generating = false;
                 setGeneratingState(false);
             }

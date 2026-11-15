@@ -2,6 +2,7 @@ import { EXT_DISPLAY, I, THEME_PRESETS } from '../constants.js';
 import { state } from '../state.js';
 import { getSettings, saveSettings, getCurrentSession, saveSessionsToMetadata, deleteMsg, truncateAfter, truncateFrom, expandMacros, getEffectiveSettings, getBindingKey, initChatBucket, isMessageStarred, toggleStarMessage } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
+import { genCoord } from '../utils/util-coordinator.js';
 import { escHtml, autoResize, showCustomDialog, copyText } from '../utils/util-dom.js';
 import { getCharInfo } from '../utils/util-st.js';
 
@@ -92,16 +93,21 @@ export async function _runSwipeRegen(session, msgId, wrapEl) {
         msgData.swipeIndex = 0;
     }
 
+    const run = genCoord.beginRun();
     state.generating = true;
     // Same reset as runGenerate/runContinue: a stale flag from a previously
     // stopped generation suppresses the stall-watchdog error for this regen.
     state.generationStopped = false;
     state.activeToolCalls = [];
-    // Эпоха генерации — как в runGenerate: зомби-реген после смены чата не должен
-    // снимать флаги уже начавшейся новой генерации в своём finally.
-    const myEpoch = ++state.genEpoch;
-    const settings = getEffectiveSettings();
-    setGeneratingState(true);
+    let settings;
+    try {
+        settings = getEffectiveSettings();
+        setGeneratingState(true);
+    } catch (e) {
+        genCoord.endRun(run);
+        state.generating = false;
+        throw e;
+    }
 
     const body = wrapEl.querySelector('.scp-msg-body');
     if (body) {
@@ -262,7 +268,7 @@ export async function _runSwipeRegen(session, msgId, wrapEl) {
         if (state.abortController?.signal?.aborted || err?.message === 'userStopped') {} 
         else { showGenerationError(err); }
     } finally {
-        if (myEpoch === state.genEpoch) {
+        if (genCoord.endRun(run)) {
             state.generating = false;
             setGeneratingState(false);
         }

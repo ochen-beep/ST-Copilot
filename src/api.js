@@ -2,6 +2,7 @@ import { DEFAULT_SYSTEM_PROMPT, EXT_DISPLAY } from './constants.js';
 import { state, invalidateSystemPromptCache, decideSystemPromptCache } from './state.js';
 import { getEffectiveSettings, getCurrentSession, saveSessionsToMetadata, addMessage } from './session.js';
 import { _dbgAdd } from './utils/util-debug.js';
+import { genCoord } from './utils/util-coordinator.js';
 import { escHtml } from './utils/util-dom.js';
 import { _ensureWrapped, normalizeCharNamesInBlock } from './utils/util-text.js';
 import { cacheKey, fnv1a32 } from './utils/util-hash.js';
@@ -550,12 +551,22 @@ export async function callGenerate(session, settings, pendingText, onChunk, nati
 
 export async function runGenerate(session, userText, addUserMsg = true, processedAtts = null) {
     if (state.generating) return;
+    // Run ownership via the coordinator: beginRun replaces the manual epoch
+    // bookkeeping; the mini-try keeps a pre-try throw (settings/DOM) from
+    // leaking state.generating (the stuck-flag incident class).
+    const run = genCoord.beginRun();
     state.generating = true;
     state.generationStopped = false;
-    const myEpoch = ++state.genEpoch;
     state.activeToolCalls = [];
-    const settings = getEffectiveSettings();
-    setGeneratingState(true);
+    let settings;
+    try {
+        settings = getEffectiveSettings();
+        setGeneratingState(true);
+    } catch (e) {
+        genCoord.endRun(run);
+        state.generating = false;
+        throw e;
+    }
 
     let streamMsgId = null;
     let streamMsgEl = null;
@@ -822,7 +833,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 _updateLiveUI();
 
                 const execEntry = async (entry) => {
-                    if (state.generationStopped || state.abortController?.signal.aborted || myEpoch !== state.genEpoch) {
+                    if (state.generationStopped || state.abortController?.signal.aborted || !genCoord.isCurrent(run)) {
                         entry.result = { error: 'Generation stopped by user.' };
                         entry.status = 'error';
                         return;
@@ -879,7 +890,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
                 // Stop, нажатый во время исполнения инструментов: не запускаем
                 // следующий раунд — выходим с тем, что успели накопить.
-                if (state.generationStopped || myEpoch !== state.genEpoch) break;
+                if (state.generationStopped || !genCoord.isCurrent(run)) break;
 
                 if (nativeTools) {
                     const rawCalls = roundRawToolCalls || roundEntries.map((e, i) => ({
@@ -1014,7 +1025,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
             // и без них модель не смогла бы ответить по существу.
             if (result !== null && state.activeToolCalls.length
                 && !stripToolCallsFromText(result.text || '').trim()
-                && !state.generationStopped && myEpoch === state.genEpoch) {
+                && !state.generationStopped && genCoord.isCurrent(run)) {
                 _dbgAdd('GEN_FINAL_ANSWER_RETRY', {});
                 const resultsText = roundEntries.map(e =>
                     `<tool_result name="${e.name}" status="${e.status}">\n${typeof e.result === 'string' ? e.result : JSON.stringify(e.result, null, 2)}\n</tool_result>`
@@ -1141,7 +1152,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
             }
         }
         if (!err?._stalled && (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped')) {
-            if (myEpoch === state.genEpoch) {
+            if (genCoord.isCurrent(run)) {
                 state.generating = false;
                 setGeneratingState(false);
             }
@@ -1162,8 +1173,11 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
         // живой сессии — на диск они и так не попадают (_stripTempMessages),
         // но в памяти переживали ошибку и рендерились как обычные сообщения.
         if (session.messages?.some(m => m._tcTemp)) session.messages = session.messages.filter(m => !m._tcTemp);
+        // Stale tool chips after Stop/error: success clears them, error paths
+        // did not — guarded so a zombie run's finally never wipes a newer run's.
+        if (genCoord.isCurrent(run)) state.activeToolCalls = [];
         // Зомби-генерация (после смены чата) не трогает флаги новой генерации.
-        if (myEpoch === state.genEpoch) {
+        if (genCoord.endRun(run)) {
             state.generating = false;
             setGeneratingState(false);
         }
@@ -1184,12 +1198,19 @@ export async function runContinue(session, targetMsgId) {
     const targetMsg = session.messages.find(m => m.id === targetMsgId);
     if (!targetMsg || targetMsg.role !== 'assistant') return;
 
+    const run = genCoord.beginRun();
     state.generating = true;
     state.generationStopped = false;
-    const myEpoch = ++state.genEpoch;
     state.activeToolCalls = [];
-    const settings = getEffectiveSettings();
-    setGeneratingState(true);
+    let settings;
+    try {
+        settings = getEffectiveSettings();
+        setGeneratingState(true);
+    } catch (e) {
+        genCoord.endRun(run);
+        state.generating = false;
+        throw e;
+    }
 
     const CONTINUE_PROMPT = 'Continue your response exactly from where you left off. Do not repeat any previously written text.';
 
@@ -1336,7 +1357,7 @@ export async function runContinue(session, targetMsgId) {
     } catch (err) {
         cleanupCursor();
         if (!err?._stalled && (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped')) {
-            if (myEpoch === state.genEpoch) {
+            if (genCoord.isCurrent(run)) {
                 state.generating = false;
                 setGeneratingState(false);
             }
@@ -1347,7 +1368,7 @@ export async function runContinue(session, targetMsgId) {
 
         showGenerationError(err);
     } finally {
-        if (myEpoch === state.genEpoch) {
+        if (genCoord.endRun(run)) {
             state.generating = false;
             setGeneratingState(false);
         }

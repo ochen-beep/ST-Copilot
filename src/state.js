@@ -24,9 +24,6 @@ export const state = {
     // Флаг остановки, живущий дольше abortController: контроллер зануляется после
     // каждого callGenerate, поэтому Stop между tool-раундами без этого флага терялся.
     generationStopped: false,
-    // Эпоха генерации: зомби-runGenerate после смены чата не должен сбрасывать
-    // флаги уже начавшейся новой генерации в своём finally.
-    genEpoch: 0,
     htmlBlockCounter: 0,
     htmlBlockRegistry: new Map(),
     tokenCountCache: new Map(),
