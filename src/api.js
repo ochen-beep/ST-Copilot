@@ -835,6 +835,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                             entry.status = 'done';
                             return;
                         }
+                        const t0 = performance.now();
                         const res = await withTimeout(executeTool(entry.name, entry.input));
                         if (res?.__ask_user) {
                             if (!streamMsgEl) {
@@ -857,6 +858,9 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                             entry.result = res;
                             entry.status = 'done';
                         }
+                        // Successful executions were invisible in the debug log —
+                        // the interruption diagnosis needs the full per-tool trail.
+                        _dbgAdd('TOOL_EXECUTED', { toolName: entry.name, status: entry.status, ms: Math.round(performance.now() - t0) });
                         if (entry.status === 'done') executedToolFingerprints.add(fingerprint);
                     } catch (e) {
                         _dbgAdd('TOOL_EXECUTION_FAILED', { toolName: entry.name, error: e.message });

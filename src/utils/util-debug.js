@@ -2,6 +2,7 @@ import { EXT_DISPLAY } from '../constants.js';
 import { DBG_STATE, DBG_SKIP } from '../state.js';
 import { getSettings, getCurrentSession, hasSessionOverrides } from '../session.js';
 import { extVersion } from '../version.js';
+import { dumpEventLog, recordEvent } from './util-eventlog.js';
 
 let _lastDiffTs = 0;
 
@@ -12,8 +13,10 @@ export function _dbgStrip(s) {
 }
 
 export function _dbgAdd(type, payload) {
-    DBG_STATE.log.push({ ts: Date.now(), type, payload });
+    const ts = Date.now();
+    DBG_STATE.log.push({ ts, type, payload });
     if (DBG_STATE.log.length > DBG_STATE.MAX) DBG_STATE.log.splice(0, DBG_STATE.log.length - DBG_STATE.MAX);
+    recordEvent(type, payload, ts);
 }
 
 export function _dbgSnapshotSettings() {
@@ -145,6 +148,9 @@ export function dbgDownload() {
         '='.repeat(70),
         '=== SillyTavern Global Environment ===',
         JSON.stringify(stEnv, null, 2),
+        '='.repeat(70),
+        '=== Event Log (persisted, crosses F5) ===',
+        dumpEventLog(),
         '='.repeat(70), ''
     ];
     for (const e of DBG_STATE.log) {
