@@ -1610,8 +1610,25 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
+    // Per-char anchor normalization: case, ё→е, quote variants («» „ “ ” ' ') →
+    // straight quote, dash variants (– — − ‑) → hyphen. Models quote the source
+    // text in a different glyph form than the field actually stores (RU text is
+    // full of ё/е and «» drift), so plain indexOf misses valid patches.
+    function _normalizeAnchorChar(ch) {
+        const c = ch.normalize('NFC').toLowerCase();
+        if (c === 'ё') return 'е';
+        if ('«»“”„‟‘’‚‛\''.includes(c)) return '"';
+        if ('‐‑‒–—−-'.includes(c)) return '-';
+        return c;
+    }
+
+    // ponytail: normalization folded into _findAllRanges (per code point, 1:1);
+    // no cross-char NFC composition / grapheme clustering — upgrade path:
+    // Intl.Segmenter position map like Diegetic's anchor.js if misses show.
+
     // Все вхождения якоря: literal → whitespace-толерантный (переносы строк и
-    // кратные пробелы внутри якоря). Никакого фаззи-подбора.
+    // кратные пробелы внутри якоря) → нормализованный (регистр, ё/е, кавычки,
+    // тире). Никакого прочего фаззи-подбора.
     function _findAllRanges(src, query) {
         const q = query.trim();
         if (!q) return [];
@@ -1625,10 +1642,57 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         if (out.length) return out;
 
         const parts = q.split(/\s+/).map(_escapeRe);
-        if (parts.length < 2) return [];
-        const wsRe = new RegExp(parts.join('\\s+'), 'g');
-        let m;
-        while ((m = wsRe.exec(src)) !== null) out.push({ start: m.index, end: m.index + m[0].length });
+        if (parts.length >= 2) {
+            const wsRe = new RegExp(parts.join('\\s+'), 'g');
+            let m;
+            while ((m = wsRe.exec(src)) !== null) out.push({ start: m.index, end: m.index + m[0].length });
+            if (out.length) return out;
+        }
+
+        // Нормализованный проход: якорь в другой форме юникода (ё/е, «» vs "",
+        // тире, NBSP, регистр). Нормализация — 1:1 на кодовую точку, поэтому
+        // совпадение ищется по массиву нормализованных символов и проецируется
+        // обратно на исходные индексы — заменяется исходный спан.
+        // ponytail: O(n·m) скан на промахе — поля лорбука/сообщения малы;
+        // KMP по нормализованному массиву, если когда-нибудь станет медленно.
+        const hsEntries = [];
+        const hsMap = [];
+        let lastWasSpace = false;
+        let srcIdx = 0;
+        for (const ch of src) {
+            if (/\s/.test(ch)) {
+                if (!lastWasSpace) { hsEntries.push(' '); hsMap.push(srcIdx); lastWasSpace = true; }
+                srcIdx += ch.length;
+                continue;
+            }
+            lastWasSpace = false;
+            hsEntries.push(_normalizeAnchorChar(ch));
+            hsMap.push(srcIdx);
+            srcIdx += ch.length;
+        }
+        const nqEntries = [];
+        let nqLastSpace = false;
+        for (const ch of q) {
+            if (/\s/.test(ch)) {
+                if (!nqLastSpace) { nqEntries.push(' '); nqLastSpace = true; }
+                continue;
+            }
+            nqLastSpace = false;
+            nqEntries.push(_normalizeAnchorChar(ch));
+        }
+        if (!nqEntries.length) return out;
+
+        for (let start = 0; start + nqEntries.length <= hsEntries.length; start++) {
+            let ok = true;
+            for (let j = 0; j < nqEntries.length; j++) {
+                if (hsEntries[start + j] !== nqEntries[j]) { ok = false; break; }
+            }
+            if (!ok) continue;
+            const endEntry = start + nqEntries.length;
+            const start0 = hsMap[start];
+            const end0 = endEntry >= hsMap.length ? src.length : hsMap[endEntry];
+            out.push({ start: start0, end: end0 });
+        }
         return out;
     }
 

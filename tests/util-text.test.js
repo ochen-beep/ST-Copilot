@@ -218,6 +218,66 @@ describe('applySearchReplaceToField', () => {
     expect(r.matched).toBe(false);
     expect(r.result).toBe('existing content');
   });
+
+  // Нормализованный проход: модель цитирует исходник в другой форме юникода.
+  it('ё в поле vs е в якоре — совпадает', () => {
+    const r = applySearchReplaceToField('Ёжик шёл в тумане', 'Ежик', 'Волк');
+    expect(r.matched).toBe(true);
+    expect(r.result).toBe('Волк шёл в тумане');
+  });
+
+  it('ёлочки в поле vs прямые кавычки в якоре — совпадает', () => {
+    const r = applySearchReplaceToField('сказал «привет» всем', 'сказал "привет"', 'молвил');
+    expect(r.matched).toBe(true);
+    expect(r.result).toBe('молвил всем');
+  });
+
+  it('разные тире (– vs —) — совпадает', () => {
+    const r = applySearchReplaceToField('мгновение — и тишина', 'мгновение – и', 'миг — и');
+    expect(r.matched).toBe(true);
+    expect(r.result).toBe('миг — и тишина');
+  });
+
+  it('NBSP в поле vs обычный пробел в якоре — совпадает', () => {
+    const r = applySearchReplaceToField('раз\u00A0два', 'раз два', 'три');
+    expect(r.matched).toBe(true);
+    expect(r.result).toBe('три');
+  });
+
+  it('регистр — совпадает', () => {
+    const r = applySearchReplaceToField('ТАВЕРНА ЗАКРЫТА', 'таверна', 'Лагерь');
+    expect(r.matched).toBe(true);
+    expect(r.result).toBe('Лагерь ЗАКРЫТА');
+  });
+
+  it('literal точное совпадение при двух вхождениях — отказ из-за неоднозначности', () => {
+    const r = applySearchReplaceToField('Ёлка Ёлка', 'Ёлка', 'Сосна');
+    expect(r.matched).toBe(false);
+  });
+
+  it('range-якорь a || b с ё/е дрейфом — сносит весь диапазон', () => {
+    const r = applySearchReplaceToField('Первый Ёжик ... последний Волк', 'Первый Ежик || последний Волк', 'СЕРЕДИНА');
+    expect(r.matched).toBe(true);
+    expect(r.result).toBe('СЕРЕДИНА');
+  });
+
+  it('replace-all: literal не находит ничего — нормализованный ловит все формы', () => {
+    const r = applyReplaceAllToField('Ежик и ЁЖИК и Ежик', 'ёжик', 'ВОЛК');
+    expect(r.matched).toBe(true);
+    expect(r.count).toBe(3);
+    expect(r.result).toBe('ВОЛК и ВОЛК и ВОЛК');
+  });
+
+  it('эмодзи в поле не сбивает индексы нормализованного прохода', () => {
+    const r = applySearchReplaceToField('текст 🌲 лес', 'текст 🌲 лес', 'одно');
+    expect(r.matched).toBe(true);
+    expect(r.result).toBe('одно');
+  });
+
+  it('по-настоящему отсутствующий якорь — не найден', () => {
+    const r = applySearchReplaceToField('Ёжик шёл', 'Медведь', 'X');
+    expect(r.matched).toBe(false);
+  });
 });
 
 describe('_ensureWrapped', () => {
