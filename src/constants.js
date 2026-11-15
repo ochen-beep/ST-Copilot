@@ -254,18 +254,20 @@ export const CHAR_CREATE_FORMAT_BLOCK = `\`\`\`character-create
 export const CHAT_EDIT_FORMAT_BLOCK = `\`\`\`chat-changes
 {"changes":[
   {"action":"rename_chat","name":"New Chat Display Name"},
-  {"action":"prepend","msg_index":6,"content":"Text to add at the start. "},
-  {"action":"append","msg_index":6,"content":" Text to add at the end."},
+  {"action":"prepend","msg_index":6,"msg_date":"<send_date of #6>","content":"Text to add at the start. "},
+  {"action":"append","msg_index":6,"msg_date":"<send_date of #6>","content":" Text to add at the end."},
   {"action":"add","msg_index":7,"role":"assistant","content":"Brand new message text"},
-  {"action":"delete","msg_index":12},
+  {"action":"delete","msg_index":12,"msg_date":"<send_date of #12>"},
   {"action":"hide","msg_range":[8,10]},
-  {"action":"unhide","msg_index":11},
-  {"action":"bulk_replace","msg_range":[0,10],"replacements":[{"anchor":"old","replace":"new"}]},
-  {"action":"regex","msg_index":13,"regex":"/(hello)/gi","replace":"hi $1"},
-  {"action":"overwrite","msg_index":6,"content":"New text"},
-  {"action":"replace","msg_index":5,"patches":[{"anchor":"first || last","replace":"new"}]}
+  {"action":"unhide","msg_indices":[11],"msg_dates":["<send_date of #11>"]},
+  {"action":"bulk_replace","msg_indices":[3,7],"msg_dates":["<send_date of #3>","<send_date of #7>"],"replacements":[{"anchor":"old","replace":"new"}]},
+  {"action":"regex","msg_index":13,"msg_date":"<send_date of #13>","regex":"/(hello)/gi","replace":"hi $1"},
+  {"action":"overwrite","msg_index":6,"msg_date":"<send_date of #6>","content":"New text"},
+  {"action":"replace","msg_indices":[5],"msg_dates":["<send_date of #5>"],"patches":[{"anchor":"first || last","replace":"new"}]}
 ]}
-\`\`\``;
+\`\`\`
+
+Identity guard: for every action that addresses existing messages (msg_index / msg_indices), copy the exact send_date value from get_recent_messages into msg_date (single) or msg_dates (array aligned with msg_indices). If the chat changed since the proposals were made, the engine skips the change instead of editing a shifted message.`;
 
 export const DEFAULT_MEMORY_PROMPT = `<memory_logic>
 Purpose: ADMINISTRATIVE META-MEMORY. This is a non-diegetic (OOC) database for ST-Copilot to track the Human operator's technical requirements, cognitive patterns, and workflow constraints. 

@@ -310,9 +310,10 @@ export async function executeTool(toolName, toolInput) {
                     index: m._idx,
                     role: m.is_user ? 'user' : 'assistant',
                     name: m.name || (m.is_user ? (ctx.name1 || 'User') : (ctx.name2 || 'Character')),
+                    send_date: m.send_date ?? null,
                     content: (m.mes || '').length > maxLen ? m.mes.slice(0, maxLen) + '...[truncated — request full=true]' : (m.mes || ''),
                 })),
-                note: 'Use "index" values in chat-changes proposals for precise targeting.',
+                note: 'Use "index" values in chat-changes proposals for precise targeting, and copy each message\'s send_date into msg_date/msg_dates so the edit is skipped if the chat shifted.',
             };
         }
         default: return { error: `Unknown tool: ${toolName}` };

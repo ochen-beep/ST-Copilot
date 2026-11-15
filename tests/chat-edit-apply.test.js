@@ -118,3 +118,69 @@ describe('санитизация slash-команд из модельного в
         }
     });
 });
+
+describe('send_date identity: proposals с датами переживают внешние сдвиги', () => {
+    beforeEach(() => {
+        const ctx = SillyTavern.getContext();
+        ctx.chat = [
+            { mes: 'm0', is_user: false, send_date: 'January 1, 2026 10:00am' },
+            { mes: 'm1', is_user: true, send_date: 'January 2, 2026 11:00am' },
+            { mes: 'm2', is_user: false, send_date: 'January 3, 2026 12:00pm' },
+        ];
+        ctx.saveChat = async () => {};
+    });
+
+    it('delete: внешняя вставка сдвинула индекс — дата не совпала, чужое сообщение не удалено', async () => {
+        const ctx = SillyTavern.getContext();
+        // Proposal был на #2 (m2), но с тех пор в начало вставили чужое сообщение:
+        // live #2 теперь m1 — дата не совпадёт, m1 должен выжить.
+        ctx.chat.unshift({ mes: 'stranger', is_user: false, send_date: 'December 31, 2025 09:00am' });
+        const applied = await applyChatChanges([
+            { action: 'delete', msg_index: 2, msg_date: 'January 3, 2026 12:00pm' },
+        ]);
+        expect(applied).toHaveLength(0);
+        expect(ctx.chat.map(m => m.mes)).toEqual(['stranger', 'm0', 'm1', 'm2']);
+    });
+
+    it('delete: дата совпала по новому индексу — удаление работает', async () => {
+        const ctx = SillyTavern.getContext();
+        // m1 уехал на #2 после внешней вставки; proposal скормили уже
+        // актуализированный индекс с правильной датой.
+        ctx.chat.unshift({ mes: 'stranger', is_user: false, send_date: 'December 31, 2025 09:00am' });
+        const applied = await applyChatChanges([
+            { action: 'delete', msg_index: 2, msg_date: 'January 2, 2026 11:00am' },
+        ]);
+        expect(applied).toHaveLength(1);
+        expect(ctx.chat.map(m => m.mes)).toEqual(['stranger', 'm0', 'm2']);
+    });
+
+    it('overwrite без даты — легаси-поведение (применяется как раньше)', async () => {
+        const applied = await applyChatChanges([
+            { action: 'overwrite', msg_index: 1, content: 'rewritten' },
+        ]);
+        expect(applied).toHaveLength(1);
+        expect(SillyTavern.getContext().chat[1].mes).toBe('rewritten');
+    });
+
+    it('bulk_replace: частичное несовпадение дат — мимо-сообщения исключены', async () => {
+        const ctx = SillyTavern.getContext();
+        const applied = await applyChatChanges([
+            { action: 'bulk_replace', msg_indices: [0, 2], msg_dates: ['НЕВЕРНАЯ ДАТА', 'January 3, 2026 12:00pm'], replacements: [{ anchor: 'm', replace: 'X' }] },
+        ]);
+        expect(applied).toHaveLength(1);
+        expect(ctx.chat[0].mes).toBe('m0');
+        expect(ctx.chat[2].mes).toBe('X2');
+    });
+
+    it('msg_dates выравниваются по msg_indices, не по позиции после shift', async () => {
+        const ctx = SillyTavern.getContext();
+        // delete #0 внутри батча сдвигает m1/m2; второй change адресует #2 (m2
+        // в оригинальной нумерации) — дата m2 должна совпасть после сдвига.
+        const applied = await applyChatChanges([
+            { action: 'delete', msg_index: 0, msg_date: 'January 1, 2026 10:00am' },
+            { action: 'overwrite', msg_index: 2, msg_date: 'January 3, 2026 12:00pm', content: 'rewritten-m2' },
+        ]);
+        expect(applied).toHaveLength(2);
+        expect(ctx.chat.map(m => m.mes)).toEqual(['m1', 'rewritten-m2']);
+    });
+});

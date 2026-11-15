@@ -173,6 +173,25 @@ export async function logChatEditHistory(changes, statusStr, afterMsgId = null) 
     } catch(_) {}
 }
 
+// send_date identity for index-addressed changes: proposals may carry
+// msg_date (single) / msg_dates (array aligned with msg_indices), copied from
+// get_recent_messages output. At apply time the live message must still carry
+// the same send_date — an external delete/insert between proposal and apply
+// shifts indices, and without this check the mutation lands on a stranger.
+// No date provided → legacy unchecked behavior (old proposals stay valid).
+export function msgDateFor(change, rawIdx) {
+    if (Array.isArray(change?.msg_dates) && Array.isArray(change?.msg_indices)) {
+        const pos = change.msg_indices.indexOf(rawIdx);
+        if (pos >= 0) return change.msg_dates[pos];
+    }
+    return change?.msg_date;
+}
+
+export function msgDateMatches(msg, expected) {
+    if (expected === undefined || expected === null || expected === '') return true;
+    return String(msg?.send_date ?? '') === String(expected);
+}
+
 export async function applyChatChanges(changes, afterMsgId = null) {
     const ctx = SillyTavern.getContext();
     const msgs = ctx.chat;
@@ -219,7 +238,9 @@ export async function applyChatChanges(changes, afterMsgId = null) {
             if (change.action === 'hide' || change.action === 'unhide') {
                 const cmd = change.action === 'hide' ? '/hide' : '/unhide';
                 if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
-                    const valid = change.msg_indices.map(shifted).filter(i => i >= 0 && i < msgs.length);
+                    const valid = change.msg_indices
+                        .filter(i => msgDateMatches(msgs[shifted(i)], msgDateFor(change, i)))
+                        .map(shifted).filter(i => i >= 0 && i < msgs.length);
                     if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
                         for (const idx of valid) {
                             await ctx.executeSlashCommandsWithOptions(`${cmd} ${idx}-${idx}`);
@@ -271,7 +292,12 @@ export async function applyChatChanges(changes, afterMsgId = null) {
             if (change.action === 'bulk_replace' || change.action === 'regex') {
                 let targetIndices = [];
                 if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
-                    targetIndices = change.msg_indices.map(shifted).filter(i => i >= 0 && i < msgs.length);
+                    const dated = change.msg_indices.filter(i => msgDateMatches(msgs[shifted(i)], msgDateFor(change, i)));
+                    if (dated.length < change.msg_indices.length) {
+                        toastr.warning(`[Редактор чата] ${change.msg_indices.length - dated.length} сообщ. пропущено: send_date не совпал (чат менялся с момента proposals)`, EXT_DISPLAY, { timeOut: 8000 });
+                        if (!dated.length) continue;
+                    }
+                    targetIndices = dated.map(shifted).filter(i => i >= 0 && i < msgs.length);
                 } else {
                     let startIdx = 0, endIdx = msgs.length - 1;
                     if (Array.isArray(change.msg_range)) {
@@ -321,7 +347,13 @@ export async function applyChatChanges(changes, afterMsgId = null) {
 
             if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
                 let allSuccess = true;
-                const sortedIndices = [...change.msg_indices].map(shifted).sort((a, b) =>
+                const dated = change.msg_indices.filter(i => msgDateMatches(msgs[shifted(i)], msgDateFor(change, i)));
+                if (dated.length < change.msg_indices.length) {
+                    toastr.warning(`[Редактор чата] ${change.msg_indices.length - dated.length} сообщ. пропущено: send_date не совпал (чат менялся с момента proposals)`, EXT_DISPLAY, { timeOut: 8000 });
+                    allSuccess = false;
+                }
+                if (!dated.length) continue;
+                const sortedIndices = dated.map(shifted).sort((a, b) =>
                     change.action === 'delete' ? b - a : a - b
                 );
                 let deletedCount = 0;
@@ -371,6 +403,13 @@ export async function applyChatChanges(changes, afterMsgId = null) {
                 continue;
             }
             const { idx, msg } = resolved;
+
+            // Identity guard: the live message must be the one the proposal was
+            // made against (send_date copied from get_recent_messages).
+            if (!msgDateMatches(msg, msgDateFor(change, change.msg_index))) {
+                toastr.warning(`[Редактор чата] Сообщение изменилось с момента proposals (send_date не совпал) — изменение #${idx} пропущено`, EXT_DISPLAY, { timeOut: 8000 });
+                continue;
+            }
 
             if (change.action === 'delete') {
                 // Splice only: ctx.deleteMessage() splices ctx.chat again, which

@@ -3,7 +3,7 @@ import { getCurrentSession, addMessage, saveSessionsToMetadata } from '../sessio
 import { escHtml } from '../utils/util-dom.js';
 import { applyPatchToField } from '../utils/util-text.js';
 import { openTextDiffModal } from '../utils/util-diff.js';
-import { stripChatChangesBlock, reconstructChatChangesBlock, _resolveStMsgByIndexOrId } from './feature-chatedit-engine.js';
+import { stripChatChangesBlock, reconstructChatChangesBlock, _resolveStMsgByIndexOrId, msgDateFor, msgDateMatches } from './feature-chatedit-engine.js';
 import { bringWindowToFront } from '../ui/ui-window.js';
 
 import { addHistoryToSwipe, _renderMsgBodyContent } from '../ui/ui-chat.js';
@@ -93,6 +93,16 @@ export function renderChatProposalCard(changes, msgEl) {
             if (!['user', 'assistant', 'system'].includes(change.role)) return { valid: false, reason: 'Недопустимая роль' };
             if (change.msg_index < 0 || change.msg_index > stMsgs.length + 1) return { valid: false, reason: 'Индекс вне диапазона' };
             return { valid: true };
+        }
+        // Identity guard (send_date): dates, when present in the proposal, must
+        // match the live messages — a mismatch means the chat shifted since the
+        // proposals were made and applying would hit the wrong messages.
+        if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
+            const stale = change.msg_indices.some(i => !msgDateMatches(stMsgs[i], msgDateFor(change, i)));
+            if (stale) return { valid: false, reason: 'Сообщение изменилось с момента proposals (send_date не совпал) — запросите свежий get_recent_messages' };
+        } else if (typeof change.msg_index === 'number') {
+            const m = stMsgs[change.msg_index];
+            if (m && !msgDateMatches(m, change.msg_date)) return { valid: false, reason: 'Сообщение изменилось с момента proposals (send_date не совпал) — запросите свежий get_recent_messages' };
         }
         let startIdx, endIdx;
         if (['bulk_replace', 'regex', 'hide', 'unhide'].includes(change.action)) {

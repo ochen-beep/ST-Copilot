@@ -490,18 +490,20 @@ replacement text
     const CHAT_EDIT_FORMAT_BLOCK = `\`\`\`chat-changes
 {"changes":[
   {"action":"rename_chat","name":"New Chat Display Name"},
-  {"action":"prepend","msg_index":6,"content":"Text to add at the start. "},
-  {"action":"append","msg_index":6,"content":" Text to add at the end."},
+  {"action":"prepend","msg_index":6,"msg_date":"<send_date of #6>","content":"Text to add at the start. "},
+  {"action":"append","msg_index":6,"msg_date":"<send_date of #6>","content":" Text to add at the end."},
   {"action":"add","msg_index":7,"role":"assistant","content":"Brand new message text"},
-  {"action":"delete","msg_index":12},
+  {"action":"delete","msg_index":12,"msg_date":"<send_date of #12>"},
   {"action":"hide","msg_range":[8,10]},
-  {"action":"unhide","msg_index":11},
-  {"action":"bulk_replace","msg_range":[0,10],"replacements":[{"anchor":"old","replace":"new"}]},
-  {"action":"regex","msg_index":13,"regex":"/(hello)/gi","replace":"hi $1"},
-  {"action":"overwrite","msg_index":6,"content":"New text"},
-  {"action":"replace","msg_index":5,"patches":[{"anchor":"first || last","replace":"new"}]}
+  {"action":"unhide","msg_indices":[11],"msg_dates":["<send_date of #11>"]},
+  {"action":"bulk_replace","msg_indices":[3,7],"msg_dates":["<send_date of #3>","<send_date of #7>"],"replacements":[{"anchor":"old","replace":"new"}]},
+  {"action":"regex","msg_index":13,"msg_date":"<send_date of #13>","regex":"/(hello)/gi","replace":"hi $1"},
+  {"action":"overwrite","msg_index":6,"msg_date":"<send_date of #6>","content":"New text"},
+  {"action":"replace","msg_indices":[5],"msg_dates":["<send_date of #5>"],"patches":[{"anchor":"first || last","replace":"new"}]}
 ]}
-\`\`\``;
+\`\`\`
+
+Identity guard: for every action that addresses existing messages (msg_index / msg_indices), copy the exact send_date value from get_recent_messages into msg_date (single) or msg_dates (array aligned with msg_indices). If the chat changed since the proposals were made, the engine skips the change instead of editing a shifted message.`;
 
     const DEFAULT_MEMORY_PROMPT = `<memory_logic>
 Purpose: ADMINISTRATIVE META-MEMORY. This is a non-diegetic (OOC) database for ST-Copilot to track the Human operator's technical requirements, cognitive patterns, and workflow constraints. 
@@ -8707,6 +8709,25 @@ ${scopeHtml}
         } catch(_) {}
     }
 
+    // send_date identity for index-addressed changes: proposals may carry
+    // msg_date (single) / msg_dates (array aligned with msg_indices), copied from
+    // get_recent_messages output. At apply time the live message must still carry
+    // the same send_date — an external delete/insert between proposal and apply
+    // shifts indices, and without this check the mutation lands on a stranger.
+    // No date provided → legacy unchecked behavior (old proposals stay valid).
+    function msgDateFor(change, rawIdx) {
+        if (Array.isArray(change?.msg_dates) && Array.isArray(change?.msg_indices)) {
+            const pos = change.msg_indices.indexOf(rawIdx);
+            if (pos >= 0) return change.msg_dates[pos];
+        }
+        return change?.msg_date;
+    }
+
+    function msgDateMatches(msg, expected) {
+        if (expected === undefined || expected === null || expected === '') return true;
+        return String(msg?.send_date ?? '') === String(expected);
+    }
+
     async function applyChatChanges(changes, afterMsgId = null) {
         const ctx = SillyTavern.getContext();
         const msgs = ctx.chat;
@@ -8753,7 +8774,9 @@ ${scopeHtml}
                 if (change.action === 'hide' || change.action === 'unhide') {
                     const cmd = change.action === 'hide' ? '/hide' : '/unhide';
                     if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
-                        const valid = change.msg_indices.map(shifted).filter(i => i >= 0 && i < msgs.length);
+                        const valid = change.msg_indices
+                            .filter(i => msgDateMatches(msgs[shifted(i)], msgDateFor(change, i)))
+                            .map(shifted).filter(i => i >= 0 && i < msgs.length);
                         if (typeof ctx.executeSlashCommandsWithOptions === 'function') {
                             for (const idx of valid) {
                                 await ctx.executeSlashCommandsWithOptions(`${cmd} ${idx}-${idx}`);
@@ -8805,7 +8828,12 @@ ${scopeHtml}
                 if (change.action === 'bulk_replace' || change.action === 'regex') {
                     let targetIndices = [];
                     if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
-                        targetIndices = change.msg_indices.map(shifted).filter(i => i >= 0 && i < msgs.length);
+                        const dated = change.msg_indices.filter(i => msgDateMatches(msgs[shifted(i)], msgDateFor(change, i)));
+                        if (dated.length < change.msg_indices.length) {
+                            toastr.warning(`[Редактор чата] ${change.msg_indices.length - dated.length} сообщ. пропущено: send_date не совпал (чат менялся с момента proposals)`, EXT_DISPLAY, { timeOut: 8000 });
+                            if (!dated.length) continue;
+                        }
+                        targetIndices = dated.map(shifted).filter(i => i >= 0 && i < msgs.length);
                     } else {
                         let startIdx = 0, endIdx = msgs.length - 1;
                         if (Array.isArray(change.msg_range)) {
@@ -8855,7 +8883,13 @@ ${scopeHtml}
 
                 if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
                     let allSuccess = true;
-                    const sortedIndices = [...change.msg_indices].map(shifted).sort((a, b) =>
+                    const dated = change.msg_indices.filter(i => msgDateMatches(msgs[shifted(i)], msgDateFor(change, i)));
+                    if (dated.length < change.msg_indices.length) {
+                        toastr.warning(`[Редактор чата] ${change.msg_indices.length - dated.length} сообщ. пропущено: send_date не совпал (чат менялся с момента proposals)`, EXT_DISPLAY, { timeOut: 8000 });
+                        allSuccess = false;
+                    }
+                    if (!dated.length) continue;
+                    const sortedIndices = dated.map(shifted).sort((a, b) =>
                         change.action === 'delete' ? b - a : a - b
                     );
                     let deletedCount = 0;
@@ -8905,6 +8939,13 @@ ${scopeHtml}
                     continue;
                 }
                 const { idx, msg } = resolved;
+
+                // Identity guard: the live message must be the one the proposal was
+                // made against (send_date copied from get_recent_messages).
+                if (!msgDateMatches(msg, msgDateFor(change, change.msg_index))) {
+                    toastr.warning(`[Редактор чата] Сообщение изменилось с момента proposals (send_date не совпал) — изменение #${idx} пропущено`, EXT_DISPLAY, { timeOut: 8000 });
+                    continue;
+                }
 
                 if (change.action === 'delete') {
                     // Splice only: ctx.deleteMessage() splices ctx.chat again, which
@@ -8967,6 +9008,8 @@ ${scopeHtml}
         applyChatChanges: applyChatChanges,
         buildChatEditAIInstructions: buildChatEditAIInstructions,
         logChatEditHistory: logChatEditHistory$1,
+        msgDateFor: msgDateFor,
+        msgDateMatches: msgDateMatches,
         parseChatChangesFromText: parseChatChangesFromText,
         reconstructChatChangesBlock: reconstructChatChangesBlock,
         stripChatChangesBlock: stripChatChangesBlock
@@ -9056,6 +9099,16 @@ ${scopeHtml}
                 if (!['user', 'assistant', 'system'].includes(change.role)) return { valid: false, reason: 'Недопустимая роль' };
                 if (change.msg_index < 0 || change.msg_index > stMsgs.length + 1) return { valid: false, reason: 'Индекс вне диапазона' };
                 return { valid: true };
+            }
+            // Identity guard (send_date): dates, when present in the proposal, must
+            // match the live messages — a mismatch means the chat shifted since the
+            // proposals were made and applying would hit the wrong messages.
+            if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
+                const stale = change.msg_indices.some(i => !msgDateMatches(stMsgs[i], msgDateFor(change, i)));
+                if (stale) return { valid: false, reason: 'Сообщение изменилось с момента proposals (send_date не совпал) — запросите свежий get_recent_messages' };
+            } else if (typeof change.msg_index === 'number') {
+                const m = stMsgs[change.msg_index];
+                if (m && !msgDateMatches(m, change.msg_date)) return { valid: false, reason: 'Сообщение изменилось с момента proposals (send_date не совпал) — запросите свежий get_recent_messages' };
             }
             let startIdx, endIdx;
             if (['bulk_replace', 'regex', 'hide', 'unhide'].includes(change.action)) {
@@ -10112,9 +10165,10 @@ ${scopeHtml}
                         index: m._idx,
                         role: m.is_user ? 'user' : 'assistant',
                         name: m.name || (m.is_user ? (ctx.name1 || 'User') : (ctx.name2 || 'Character')),
+                        send_date: m.send_date ?? null,
                         content: (m.mes || '').length > maxLen ? m.mes.slice(0, maxLen) + '...[truncated — request full=true]' : (m.mes || ''),
                     })),
-                    note: 'Use "index" values in chat-changes proposals for precise targeting.',
+                    note: 'Use "index" values in chat-changes proposals for precise targeting, and copy each message\'s send_date into msg_date/msg_dates so the edit is skipped if the chat shifted.',
                 };
             }
             default: return { error: `Unknown tool: ${toolName}` };
