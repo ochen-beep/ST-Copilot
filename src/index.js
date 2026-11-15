@@ -648,17 +648,46 @@ async function _initInner() {
         if (f) _iframeBySource.set(src, f);
         return f;
     };
+    // Гистерезис высоты iframe: ResizeObserver внутри поста шлёт высоту на
+    // каждую переразметку, а запись высоты в родителе сама меняет вьюпорт
+    // iframe → снова пост. Дрожь 1–2px (скроллбар, анимация артефакта)
+    // превращалась в бесконечный цикл «пост → запись → переразметка колонки
+    // чата» — это и есть «тряска экрана» вне генерации. Пишем не чаще раза
+    // в кадр (коалесинг последних постов) и только при |Δ| > 2px.
+    const _iframeLastH = new WeakMap();
+    const _iframePendingH = new WeakMap();
+    const _pendingFrames = new Set();
+    let _hRafScheduled = false;
+    const _applyIframeHeight = f => {
+        const h = _iframePendingH.get(f);
+        _iframePendingH.delete(f);
+        if (h === undefined || typeof h !== 'number' || !Number.isFinite(h)) return;
+        // Превью не должно превышать ~62% высоты окна Copilot: абсолютный
+        // кап 1200px мог оказаться выше самого окна, и блок «расползался»
+        // на несколько экранов. Контент остаётся доступен скроллом в iframe.
+        const winH = f.closest('#scp-window')?.getBoundingClientRect().height || 900;
+        const cap = Math.max(200, Math.min(1200, Math.round(winH * 0.62)));
+        const target = Math.max(40, Math.min(cap, h + 16));
+        const last = _iframeLastH.get(f) || 0;
+        if (Math.abs(target - last) <= 2) return;
+        _iframeLastH.set(f, target);
+        f.style.height = `${target}px`;
+    };
     window.addEventListener('message', e => {
         if (!e.data || typeof e.data !== 'object') return;
         if (e.data.type === 'scp-iframe-h') {
             const f = _findIframeBySource(e.source);
             if (!f) return;
-            // Превью не должно превышать ~62% высоты окна Copilot: абсолютный
-            // кап 1200px мог оказаться выше самого окна, и блок «расползался»
-            // на несколько экранов. Контент остаётся доступен скроллом в iframe.
-            const winH = f.closest('#scp-window')?.getBoundingClientRect().height || 900;
-            const cap = Math.max(200, Math.min(1200, Math.round(winH * 0.62)));
-            f.style.height = `${Math.max(40, Math.min(cap, e.data.h + 16))}px`;
+            if (typeof e.data.h !== 'number' || !Number.isFinite(e.data.h)) return;
+            _iframePendingH.set(f, e.data.h);
+            _pendingFrames.add(f);
+            if (!_hRafScheduled) {
+                _hRafScheduled = true;
+                requestAnimationFrame(() => {
+                    _hRafScheduled = false;
+                    for (const fr of _pendingFrames) { _pendingFrames.delete(fr); _applyIframeHeight(fr); }
+                });
+            }
         } else if (e.data.type === 'scp-iframe-bg') {
             const f = _findIframeBySource(e.source);
             if (f) f.style.background = e.data.hasBg ? 'transparent' : '#ffffff';
