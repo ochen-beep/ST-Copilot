@@ -1,6 +1,6 @@
 import { EXT_DISPLAY, CHAT_EDIT_FORMAT_BLOCK, DEFAULT_CHAT_EDIT_DIRECTIVE } from '../constants.js';
 import { getCurrentSession, addMessage } from '../session.js';
-import { applyPatchToField, _repairJSON } from '../utils/util-text.js';
+import { applyPatchToField, parseLooseJSON, proposalFenceBodyRegex, proposalStripRegexes } from '../utils/util-text.js';
 import { escHtml } from '../utils/util-dom.js';
 
 export function buildChatEditAIInstructions(settings) {
@@ -30,22 +30,11 @@ export function buildChatEditAIInstructions(settings) {
 }
 
 export function parseChatChangesFromText(text) {
-    let raw = null;
-    const strict = text.match(/```chat-changes\s*([\s\S]*?)```/);
-    if (strict) { raw = strict[1].trim(); }
-    else {
-        const open = text.match(/```chat-changes\s*([\s\S]*?)(?=```|$)/);
-        if (open) raw = open[1].trim();
-    }
-    if (!raw) return null;
-    try {
-        const data = JSON.parse(raw);
-        if (Array.isArray(data.changes)) return _sanitizeChatChanges(data.changes);
-    } catch (_) {}
-    try {
-        const data = JSON.parse(_repairJSON(raw));
-        if (Array.isArray(data.changes)) return _sanitizeChatChanges(data.changes);
-    } catch (_) {}
+    const m = text.match(proposalFenceBodyRegex('chat-changes'));
+    if (!m || !m[1].trim()) return null;
+    const raw = m[1].trim();
+    const data = parseLooseJSON(raw);
+    if (data && Array.isArray(data.changes)) return _sanitizeChatChanges(data.changes);
     return null;
 }
 
@@ -102,7 +91,8 @@ export function _sanitizeChatChanges(changes) {
 }
 
 export function stripChatChangesBlock(text) {
-    return text.replace(/```chat-changes[\s\S]*?```/g, '').replace(/```chat-changes[\s\S]*/g, '').trim();
+    const { closed, open } = proposalStripRegexes('chat-changes');
+    return text.replace(closed, '').replace(open, '').trim();
 }
 
 export function reconstructChatChangesBlock(pendingChanges) {

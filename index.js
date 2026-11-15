@@ -1730,6 +1730,44 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
         
         return `${open}\n${t}\n${close}`;
     }
+    // ─── Proposal block parsing helpers ─────────────────────────────────────────
+    // The model sometimes escapes fence markers (\`\`\`) and quotes (\") inside
+    // proposal blocks when the chat system prompt demonstrates escaped formatting
+    // itself — parsers then miss the block entirely and the user gets unappliable
+    // changes. Fence regexes tolerate an optional backslash before every backtick;
+    // JSON bodies get an unescape pass on top of the structural repair.
+
+    function proposalFenceBodyRegex(tag) {
+        // Single lazy match covering both closed and unclosed blocks: body runs
+        // until the next fence (plain or escaped) or end of text.
+        return new RegExp('(?:\\\\?`){3}' + tag + '\\s*([\\s\\S]*?)(?=(?:\\\\?`){3}|$)');
+    }
+
+    function proposalStripRegexes(tag) {
+        const fence = '(?:\\\\?`){3}';
+        return {
+            closed: new RegExp(fence + tag + '[\\s\\S]*?' + fence, 'g'),
+            open: new RegExp(fence + tag + '[\\s\\S]*', 'g'),
+        };
+    }
+
+    // JSON.parse -> unescape \" and \\ -> structural repair on both variants.
+    function parseLooseJSON(raw) {
+        const candidates = [raw, raw.replace(/\\(["\\])/g, '$1')];
+        for (const candidate of candidates) {
+            try {
+                const parsed = JSON.parse(candidate);
+                if (parsed && typeof parsed === 'object') return parsed;
+            } catch (_) {}
+        }
+        for (const candidate of candidates) {
+            try {
+                const repaired = JSON.parse(_repairJSON(candidate));
+                if (repaired && typeof repaired === 'object') return repaired;
+            } catch (_) {}
+        }
+        return null;
+    }
 
     // ─── Storage Subsystem ─────────────────────────────
 
@@ -3159,26 +3197,24 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
     }
 
     function parseLBChangesFromText(text) {
-        let raw = null;
-        const strict = text.match(/```lorebook-changes\s*([\s\S]*?)```/);
-        if (strict) {
-            raw = strict[1].trim();
-        } else {
-            const open = text.match(/```lorebook-changes\s*([\s\S]*?)(?=```|$)/);
-            if (open) raw = open[1].trim();
+        const m = text.match(proposalFenceBodyRegex('lorebook-changes'));
+        if (!m || !m[1].trim()) return null;
+        const raw = m[1].trim();
+        // Model may escape quotes the same way it escapes fences; try both raw
+        // and unescaped forms through the plain parse and the structural repair.
+        const unescaped = raw.replace(/\\(["\\])/g, '$1');
+        for (const candidate of [raw, unescaped]) {
+            try {
+                const data = JSON.parse(candidate);
+                if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
+            } catch (_) {}
+            try {
+                const data = JSON.parse(_repairJSON(candidate));
+                if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
+            } catch (_) {}
         }
-        if (!raw) return null;
         try {
-            const data = JSON.parse(raw);
-            if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
-        } catch (_) {}
-        try {
-            const repaired = _repairJSON(raw);
-            const data = JSON.parse(repaired);
-            if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
-        } catch (_) {}
-        try {
-            const lines = raw.split('\n');
+            const lines = unescaped.split('\n');
             const fixed = lines.map(line => {
                 return line.replace(/("(?:content|name|comment|search|replace|triggers)":\s*)"((?:[^"\\]|\\.)*)"/, (match, prefix, val) => {
                     const escaped = val.replace(/(?<!\\)"/g, '\\"');
@@ -3189,15 +3225,13 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
             if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
         } catch (_) {}
 
-        if (raw) _dbgAdd('LB_PROPOSAL_PARSING_FAILED', { rawText: raw.slice(0, 300) + (raw.length > 300 ? '...' : '') });
+        _dbgAdd('LB_PROPOSAL_PARSING_FAILED', { rawText: raw.slice(0, 300) + (raw.length > 300 ? '...' : '') });
         return null;
     }
 
     function stripLBChangesBlock(text) {
-        return text
-            .replace(/```lorebook-changes[\s\S]*?```/g, '')
-            .replace(/```lorebook-changes[\s\S]*/g, '')
-            .trim();
+        const { closed, open } = proposalStripRegexes('lorebook-changes');
+        return text.replace(closed, '').replace(open, '').trim();
     }
 
     async function bindNewLorebookToCharacter(bookName) {
@@ -5796,15 +5830,12 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
     const CHAR_CREATE_BLOCK = '(?:character-creation|character-create)(?![\\w-])';
 
     function parseCharChangesFromText(text) {
-        let raw = null;
-        const strict = text.match(new RegExp('```' + CHAR_CHANGES_BLOCK + '\\s*([\\s\\S]*?)```'));
-        if (strict) raw = strict[1];
-        else {
-            const open = text.match(new RegExp('```' + CHAR_CHANGES_BLOCK + '\\s*([\\s\\S]*?)(?=```|$)'));
-            if (open) raw = open[1];
-        }
+        const m = text.match(proposalFenceBodyRegex(CHAR_CHANGES_BLOCK));
+        const raw = m ? m[1] : null;
         if (!raw) return null;
-        const xml = _repairCharChangesXML(raw);
+        // Attr values often arrive with escaped quotes (\"...\") when the model
+        // imitates escaped formatting; unescape before the attribute parser.
+        const xml = _repairCharChangesXML(raw.replace(/\\(["\\])/g, '$1'));
         const changes = [];
 
         const replaceByKey = {};
@@ -5936,43 +5967,24 @@ Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response 
     }
 
     function stripCharChangesBlock(text) {
-        const re = new RegExp('```' + CHAR_CHANGES_BLOCK + '[\\s\\S]*?```', 'g');
-        const reOpen = new RegExp('```' + CHAR_CHANGES_BLOCK + '[\\s\\S]*', 'g');
-        return text.replace(re, '').replace(reOpen, '').trim();
+        const { closed, open } = proposalStripRegexes(CHAR_CHANGES_BLOCK);
+        return text.replace(closed, '').replace(open, '').trim();
     }
 
     function parseCharCreationFromText(text) {
-        let raw = null;
-        const strict = text.match(new RegExp('```' + CHAR_CREATE_BLOCK + '\\s*([\\s\\S]*?)```'));
-        if (strict) {
-            raw = strict[1].trim();
-        } else {
-            const open = text.match(new RegExp('```' + CHAR_CREATE_BLOCK + '\\s*([\\s\\S]*?)(?=```|$)'));
-            if (open) raw = open[1].trim();
+        const m = text.match(proposalFenceBodyRegex(CHAR_CREATE_BLOCK));
+        if (!m || !m[1].trim()) return null;
+        const data = parseLooseJSON(m[1].trim());
+        if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+        if (data.tags) {
+            data.tags = _sanitizeProposedTags(Array.isArray(data.tags) ? JSON.stringify(data.tags) : String(data.tags));
         }
-        if (!raw) return null;
-        try {
-            const data = JSON.parse(raw);
-            if (typeof data !== 'object' || Array.isArray(data)) return null;
-            if (data.tags) {
-                data.tags = _sanitizeProposedTags(Array.isArray(data.tags) ? JSON.stringify(data.tags) : String(data.tags));
-            }
-            return data;
-        } catch (_) {}
-        try {
-            const data = JSON.parse(_repairJSON(raw));
-            if (typeof data !== 'object' || Array.isArray(data)) return null;
-            if (data.tags) {
-                data.tags = _sanitizeProposedTags(Array.isArray(data.tags) ? JSON.stringify(data.tags) : String(data.tags));
-            }
-            return data;
-        } catch (_) { return null; }
+        return data;
     }
 
     function stripCharCreationBlock(text) {
-        const re = new RegExp('```' + CHAR_CREATE_BLOCK + '[\\s\\S]*?```', 'g');
-        const reOpen = new RegExp('```' + CHAR_CREATE_BLOCK + '[\\s\\S]*', 'g');
-        return text.replace(re, '').replace(reOpen, '').trim();
+        const { closed, open } = proposalStripRegexes(CHAR_CREATE_BLOCK);
+        return text.replace(closed, '').replace(open, '').trim();
     }
 
     function getCharFieldValue(char, fieldId) {
@@ -8311,22 +8323,11 @@ ${scopeHtml}
     }
 
     function parseChatChangesFromText(text) {
-        let raw = null;
-        const strict = text.match(/```chat-changes\s*([\s\S]*?)```/);
-        if (strict) { raw = strict[1].trim(); }
-        else {
-            const open = text.match(/```chat-changes\s*([\s\S]*?)(?=```|$)/);
-            if (open) raw = open[1].trim();
-        }
-        if (!raw) return null;
-        try {
-            const data = JSON.parse(raw);
-            if (Array.isArray(data.changes)) return _sanitizeChatChanges(data.changes);
-        } catch (_) {}
-        try {
-            const data = JSON.parse(_repairJSON(raw));
-            if (Array.isArray(data.changes)) return _sanitizeChatChanges(data.changes);
-        } catch (_) {}
+        const m = text.match(proposalFenceBodyRegex('chat-changes'));
+        if (!m || !m[1].trim()) return null;
+        const raw = m[1].trim();
+        const data = parseLooseJSON(raw);
+        if (data && Array.isArray(data.changes)) return _sanitizeChatChanges(data.changes);
         return null;
     }
 
@@ -8383,7 +8384,8 @@ ${scopeHtml}
     }
 
     function stripChatChangesBlock(text) {
-        return text.replace(/```chat-changes[\s\S]*?```/g, '').replace(/```chat-changes[\s\S]*/g, '').trim();
+        const { closed, open } = proposalStripRegexes('chat-changes');
+        return text.replace(closed, '').replace(open, '').trim();
     }
 
     function reconstructChatChangesBlock(pendingChanges) {

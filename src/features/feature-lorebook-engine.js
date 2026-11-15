@@ -3,7 +3,7 @@ import { getCurrentSession, saveSettings, expandMacros } from '../session.js';
 import { _dbgAdd } from '../utils/util-debug.js';
 import { ST_WorldInfo, ST_Utils } from '../version.js';
 import { isMsgHidden } from '../utils/util-st.js';
-import { _repairJSON } from '../utils/util-text.js';
+import { _repairJSON, proposalFenceBodyRegex, proposalStripRegexes } from '../utils/util-text.js';
 import { invalidateSystemPromptCache } from '../state.js';
 
 export const wiCache = {};
@@ -510,26 +510,24 @@ export function _sanitizeLBChanges(changes) {
 }
 
 export function parseLBChangesFromText(text) {
-    let raw = null;
-    const strict = text.match(/```lorebook-changes\s*([\s\S]*?)```/);
-    if (strict) {
-        raw = strict[1].trim();
-    } else {
-        const open = text.match(/```lorebook-changes\s*([\s\S]*?)(?=```|$)/);
-        if (open) raw = open[1].trim();
+    const m = text.match(proposalFenceBodyRegex('lorebook-changes'));
+    if (!m || !m[1].trim()) return null;
+    const raw = m[1].trim();
+    // Model may escape quotes the same way it escapes fences; try both raw
+    // and unescaped forms through the plain parse and the structural repair.
+    const unescaped = raw.replace(/\\(["\\])/g, '$1');
+    for (const candidate of [raw, unescaped]) {
+        try {
+            const data = JSON.parse(candidate);
+            if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
+        } catch (_) {}
+        try {
+            const data = JSON.parse(_repairJSON(candidate));
+            if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
+        } catch (_) {}
     }
-    if (!raw) return null;
     try {
-        const data = JSON.parse(raw);
-        if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
-    } catch (_) {}
-    try {
-        const repaired = _repairJSON(raw);
-        const data = JSON.parse(repaired);
-        if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
-    } catch (_) {}
-    try {
-        const lines = raw.split('\n');
+        const lines = unescaped.split('\n');
         const fixed = lines.map(line => {
             return line.replace(/("(?:content|name|comment|search|replace|triggers)":\s*)"((?:[^"\\]|\\.)*)"/, (match, prefix, val) => {
                 const escaped = val.replace(/(?<!\\)"/g, '\\"');
@@ -540,15 +538,13 @@ export function parseLBChangesFromText(text) {
         if (Array.isArray(data.changes)) return _sanitizeLBChanges(data.changes);
     } catch (_) {}
 
-    if (raw) _dbgAdd('LB_PROPOSAL_PARSING_FAILED', { rawText: raw.slice(0, 300) + (raw.length > 300 ? '...' : '') });
+    _dbgAdd('LB_PROPOSAL_PARSING_FAILED', { rawText: raw.slice(0, 300) + (raw.length > 300 ? '...' : '') });
     return null;
 }
 
 export function stripLBChangesBlock(text) {
-    return text
-        .replace(/```lorebook-changes[\s\S]*?```/g, '')
-        .replace(/```lorebook-changes[\s\S]*/g, '')
-        .trim();
+    const { closed, open } = proposalStripRegexes('lorebook-changes');
+    return text.replace(closed, '').replace(open, '').trim();
 }
 
 export async function bindNewLorebookToCharacter(bookName) {

@@ -1,4 +1,4 @@
-import { _sanitizeProposedTags, _repairJSON } from '../utils/util-text.js';
+import { _sanitizeProposedTags, parseLooseJSON, proposalFenceBodyRegex, proposalStripRegexes } from '../utils/util-text.js';
 
 function _parseTagAttrs(attrStr) {
     const attrs = {};
@@ -44,15 +44,12 @@ const CHAR_CHANGES_BLOCK = '(?:character-changes|character-edits?)(?![\\w-])';
 const CHAR_CREATE_BLOCK = '(?:character-creation|character-create)(?![\\w-])';
 
 export function parseCharChangesFromText(text) {
-    let raw = null;
-    const strict = text.match(new RegExp('```' + CHAR_CHANGES_BLOCK + '\\s*([\\s\\S]*?)```'));
-    if (strict) raw = strict[1];
-    else {
-        const open = text.match(new RegExp('```' + CHAR_CHANGES_BLOCK + '\\s*([\\s\\S]*?)(?=```|$)'));
-        if (open) raw = open[1];
-    }
+    const m = text.match(proposalFenceBodyRegex(CHAR_CHANGES_BLOCK));
+    const raw = m ? m[1] : null;
     if (!raw) return null;
-    const xml = _repairCharChangesXML(raw);
+    // Attr values often arrive with escaped quotes (\"...\") when the model
+    // imitates escaped formatting; unescape before the attribute parser.
+    const xml = _repairCharChangesXML(raw.replace(/\\(["\\])/g, '$1'));
     const changes = [];
 
     const replaceByKey = {};
@@ -189,41 +186,22 @@ export function _repairCharChangesXML(raw) {
 }
 
 export function stripCharChangesBlock(text) {
-    const re = new RegExp('```' + CHAR_CHANGES_BLOCK + '[\\s\\S]*?```', 'g');
-    const reOpen = new RegExp('```' + CHAR_CHANGES_BLOCK + '[\\s\\S]*', 'g');
-    return text.replace(re, '').replace(reOpen, '').trim();
+    const { closed, open } = proposalStripRegexes(CHAR_CHANGES_BLOCK);
+    return text.replace(closed, '').replace(open, '').trim();
 }
 
 export function parseCharCreationFromText(text) {
-    let raw = null;
-    const strict = text.match(new RegExp('```' + CHAR_CREATE_BLOCK + '\\s*([\\s\\S]*?)```'));
-    if (strict) {
-        raw = strict[1].trim();
-    } else {
-        const open = text.match(new RegExp('```' + CHAR_CREATE_BLOCK + '\\s*([\\s\\S]*?)(?=```|$)'));
-        if (open) raw = open[1].trim();
+    const m = text.match(proposalFenceBodyRegex(CHAR_CREATE_BLOCK));
+    if (!m || !m[1].trim()) return null;
+    const data = parseLooseJSON(m[1].trim());
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+    if (data.tags) {
+        data.tags = _sanitizeProposedTags(Array.isArray(data.tags) ? JSON.stringify(data.tags) : String(data.tags));
     }
-    if (!raw) return null;
-    try {
-        const data = JSON.parse(raw);
-        if (typeof data !== 'object' || Array.isArray(data)) return null;
-        if (data.tags) {
-            data.tags = _sanitizeProposedTags(Array.isArray(data.tags) ? JSON.stringify(data.tags) : String(data.tags));
-        }
-        return data;
-    } catch (_) {}
-    try {
-        const data = JSON.parse(_repairJSON(raw));
-        if (typeof data !== 'object' || Array.isArray(data)) return null;
-        if (data.tags) {
-            data.tags = _sanitizeProposedTags(Array.isArray(data.tags) ? JSON.stringify(data.tags) : String(data.tags));
-        }
-        return data;
-    } catch (_) { return null; }
+    return data;
 }
 
 export function stripCharCreationBlock(text) {
-    const re = new RegExp('```' + CHAR_CREATE_BLOCK + '[\\s\\S]*?```', 'g');
-    const reOpen = new RegExp('```' + CHAR_CREATE_BLOCK + '[\\s\\S]*', 'g');
-    return text.replace(re, '').replace(reOpen, '').trim();
+    const { closed, open } = proposalStripRegexes(CHAR_CREATE_BLOCK);
+    return text.replace(closed, '').replace(open, '').trim();
 }

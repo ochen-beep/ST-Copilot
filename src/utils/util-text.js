@@ -219,3 +219,41 @@ export function _ensureWrapped(text, tag) {
     
     return `${open}\n${t}\n${close}`;
 }
+// ─── Proposal block parsing helpers ─────────────────────────────────────────
+// The model sometimes escapes fence markers (\`\`\`) and quotes (\") inside
+// proposal blocks when the chat system prompt demonstrates escaped formatting
+// itself — parsers then miss the block entirely and the user gets unappliable
+// changes. Fence regexes tolerate an optional backslash before every backtick;
+// JSON bodies get an unescape pass on top of the structural repair.
+
+export function proposalFenceBodyRegex(tag) {
+    // Single lazy match covering both closed and unclosed blocks: body runs
+    // until the next fence (plain or escaped) or end of text.
+    return new RegExp('(?:\\\\?`){3}' + tag + '\\s*([\\s\\S]*?)(?=(?:\\\\?`){3}|$)');
+}
+
+export function proposalStripRegexes(tag) {
+    const fence = '(?:\\\\?`){3}';
+    return {
+        closed: new RegExp(fence + tag + '[\\s\\S]*?' + fence, 'g'),
+        open: new RegExp(fence + tag + '[\\s\\S]*', 'g'),
+    };
+}
+
+// JSON.parse -> unescape \" and \\ -> structural repair on both variants.
+export function parseLooseJSON(raw) {
+    const candidates = [raw, raw.replace(/\\(["\\])/g, '$1')];
+    for (const candidate of candidates) {
+        try {
+            const parsed = JSON.parse(candidate);
+            if (parsed && typeof parsed === 'object') return parsed;
+        } catch (_) {}
+    }
+    for (const candidate of candidates) {
+        try {
+            const repaired = JSON.parse(_repairJSON(candidate));
+            if (repaired && typeof repaired === 'object') return repaired;
+        } catch (_) {}
+    }
+    return null;
+}
