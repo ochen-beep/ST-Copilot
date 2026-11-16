@@ -536,7 +536,10 @@ Every entry MUST start with the exact word "Human".
 
     const DEFAULT_TOOLS_PROMPT = `Imperative: NEVER hallucinate missing context. If chat history, specific lore, or data appears absent, DO NOT assume the chat hasn't started or the data doesn't exist. You MUST proactively use your tools to fetch, verify, and retrieve the actual state before answering.
 
-Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response to the Human. You may chain tools sequentially.
+Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to the Human.
+- Batch: if you intend several INDEPENDENT tool calls (e.g. searches with different queries), emit ALL their \`tool_call\` blocks in ONE response — they execute in parallel. Chain sequentially only when a call needs a previous call's result.
+- Search discipline: if search results are irrelevant or empty, do NOT re-run the same search with reworded queries more than once. Answer from what you have or state clearly that nothing relevant was found.
+- ALWAYS finish with a text answer to the Human, even when tools fail or return nothing useful.
 
 <available_tools>
 {{tools_list}}
@@ -9875,6 +9878,34 @@ ${scopeHtml}
         });
     }
 
+    // Normalizes raw provider payloads into a compact {title,url,snippet} list so the
+    // model sees one format regardless of provider and the result budget isn't wasted
+    // on provider metadata. Field mappings verified against Extension-WebSearch parsers.
+    const SEARCH_SNIPPET_MAX = 300;
+    const SEARCH_RESULTS_MAX = 10;
+
+    function normalizeSearchResults(provider, data) {
+        let items = [];
+        let answer = null;
+        if (provider === 'serper' && Array.isArray(data.organic)) {
+            items = data.organic.map(x => ({ title: x.title, url: x.link, snippet: x.snippet }));
+        } else if (provider === 'serpapi' && Array.isArray(data.organic_results)) {
+            items = data.organic_results.map(x => ({ title: x.title, url: x.link, snippet: x.snippet }));
+        } else if (provider === 'tavily' && Array.isArray(data.results)) {
+            answer = typeof data.answer === 'string' ? data.answer : null;
+            items = data.results.map(x => ({ title: x.title, url: x.url, snippet: x.content }));
+        } else if (provider === 'zai' && Array.isArray(data.search_result)) {
+            items = data.search_result.map(x => ({ title: x.title, url: x.link, snippet: x.content }));
+        } else {
+            return null; // searxng (HTML) and unknown shapes stay raw
+        }
+        items = items
+            .filter(x => x.url || x.title)
+            .slice(0, SEARCH_RESULTS_MAX)
+            .map(x => ({ ...x, snippet: String(x.snippet || '').slice(0, SEARCH_SNIPPET_MAX) }));
+        return { items, answer };
+    }
+
     async function executeTool(toolName, toolInput) {
         const ctx = SillyTavern.getContext();
         switch (toolName) {
@@ -10087,29 +10118,41 @@ ${scopeHtml}
                 const provider = String(toolInput.provider || 'zai');
                 const query = String(toolInput.query || '').trim();
                 if (!query) return { error: 'Empty search query.' };
-                const bodies = {
-                    zai: { query },
-                    tavily: { query },
-                    serper: { query },
-                    serpapi: { query },
-                    searxng: { baseUrl: toolInput.searxng_url, query },
-                };
-                const body = bodies[provider];
-                if (!body) return { error: `Unknown provider: ${provider}.` };
-                if (provider === 'searxng' && !body.baseUrl) return { error: 'provider=searxng requires the searxng_url parameter.' };
-                const res = await fetch(`/api/search/${provider}`, {
-                    method: 'POST',
-                    headers: ctx.getRequestHeaders(),
-                    body: JSON.stringify(body),
-                });
-                if (res.status === 400) return { error: `Provider ${provider} is not configured: add an API key in ST (Secrets) or choose another provider.` };
+                if (!['zai', 'tavily', 'serper', 'serpapi', 'searxng'].includes(provider)) return { error: `Unknown provider: ${provider}.` };
+                if (provider === 'searxng' && !toolInput.searxng_url) return { error: 'provider=searxng requires the searxng_url parameter.' };
+                // On 400 (provider key missing server-side) try the next keyed provider
+                // instead of burning a model round on the error; searxng needs a URL and never falls back.
+                const chain = provider === 'searxng'
+                    ? ['searxng']
+                    : [provider, ...['zai', 'tavily', 'serper', 'serpapi'].filter(p => p !== provider)];
+                let usedProvider = provider;
+                let res = null;
+                for (const p of chain) {
+                    usedProvider = p;
+                    res = await fetch(`/api/search/${p}`, {
+                        method: 'POST',
+                        headers: ctx.getRequestHeaders(),
+                        body: JSON.stringify({ query, ...(p === 'searxng' ? { baseUrl: toolInput.searxng_url } : {}) }),
+                    });
+                    if (res.status !== 400) break;
+                }
+                if (res.status === 400) return { error: `None of the search providers (${chain.join(', ')}) is configured: add an API key in ST Secrets or use a SearXNG instance URL.` };
                 if (!res.ok) return { error: `Search failed (HTTP ${res.status}).` };
                 const raw = await res.text();
                 let parsed;
                 try { parsed = JSON.parse(raw); } catch (_) { parsed = null; }
-                const max = 4000;
-                const payload = parsed !== null && raw.length > max ? raw.slice(0, max) + '…[truncated]' : (parsed ?? raw);
-                return { provider, query, results: payload };
+                const norm = parsed !== null ? normalizeSearchResults(usedProvider, parsed) : null;
+                const notes = [];
+                if (usedProvider !== provider) notes.push(`requested provider ${provider} is not configured (no API key); served by ${usedProvider}`);
+                if (norm) {
+                    // Drop tail results instead of cutting the JSON string mid-token.
+                    let results = norm.items;
+                    while (results.length > 1 && JSON.stringify(results).length > 3800) results = results.slice(0, -1);
+                    if (norm.items.length - results.length) notes.push(`${norm.items.length - results.length} results trimmed — refine the query or use read_url`);
+                    return { provider: usedProvider, query, results, ...(norm.answer ? { answer: norm.answer } : {}), ...(notes.length ? { note: notes.join('; ') } : {}) };
+                }
+                const payload = parsed !== null && raw.length > 4000 ? raw.slice(0, 4000) + '…[truncated]' : (parsed ?? raw);
+                return { provider: usedProvider, query, results: payload, ...(notes.length ? { note: notes.join('; ') } : {}) };
             }
             case 'todo_write': {
                 const todos = Array.isArray(toolInput.todos) ? toolInput.todos : [];
@@ -18661,6 +18704,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     smartScrollToBottom();
                 };
 
+                // ponytail: fixed per-generation search budget, make configurable when users ask
+                let searchBudgetLeft = 3;
+
                 for (let round = 0; round < maxRounds; round++) {
                     genToolRound = round + 1;
                     const tcs = nativeTools ? (roundToolCalls || []) : parseToolCallsFromText(roundText);
@@ -18688,6 +18734,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                                 entry.result = { note: 'This exact call was already executed this generation — the result is above in context. Refine the arguments or answer the user now.' };
                                 entry.status = 'done';
                                 return;
+                            }
+                            if (entry.name === 'search_web') {
+                                if (searchBudgetLeft <= 0) {
+                                    _dbgAdd('TOOL_CALL_SEARCH_BUDGET', {});
+                                    entry.result = { note: 'Search budget for this generation is exhausted (3 calls already made). Answer using the results collected above.' };
+                                    entry.status = 'done';
+                                    return;
+                                }
+                                searchBudgetLeft--;
                             }
                             const t0 = performance.now();
                             const res = await withTimeout(executeTool(entry.name, entry.input));
@@ -18802,7 +18857,12 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     };
 
                     lastRoundPartialText = '';
-                    let nextResult = await callGenerate(tempSession, settings, null, (t, r) => {
+                    // Last round: tell the model the budget is over BEFORE it spends
+                    // this generation on another tool call (pattern: OpenCode MAX_STEPS_PROMPT).
+                    const lastRoundNote = round === maxRounds - 1
+                        ? '(system note: that was your last tool round — the tool budget is now exhausted. Write your complete final answer to the user now. Do not output any more tool_call blocks.)'
+                        : null;
+                    let nextResult = await callGenerate(tempSession, settings, lastRoundNote, (t, r) => {
                         if (t) lastRoundPartialText = t;
                         _updateLiveUI(t, r);
                         if (streamContentEl) streamContentEl.appendChild(cursor2);
