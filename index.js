@@ -1483,6 +1483,9 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
         toolsThinking: false,
         toolsMaxRounds: 5,
         toolsProtocol: 'text',
+        toolsGenRetryMax: 1,
+        toolsCollapseChains: true,
+        toolsCollapseThreshold: 3,
         toolsEnabled_search_chat: true,
         toolsEnabled_search_lorebook: true,
         toolsEnabled_get_lorebooks: true,
@@ -11798,6 +11801,86 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
             }
             i = end + 1;
         }
+
+        collapseToolChains(containerEl);
+    }
+
+    // Collapse long chains (ChatGPT/Codex "Searched the web" pattern): consecutive
+    // finished cards fold behind one summary header. Idempotent — safe on every
+    // postProcess pass; existing groups just refresh their summary/status.
+    const TC_COLLAPSE_DEFAULT_MIN = 3;
+
+    function toolGroupStatus(cards) {
+        if (cards.some(c => c.querySelector('.scp-tool-call-status.running'))) return 'running';
+        if (cards.some(c => c.querySelector('.scp-tool-call-status.error'))) return 'error';
+        return 'done';
+    }
+
+    function toolGroupSummary(cards, status) {
+        const counts = new Map();
+        for (const c of cards) {
+            const label = c.querySelector('.scp-tool-call-name')?.textContent?.trim() || 'инструмент';
+            counts.set(label, (counts.get(label) || 0) + 1);
+        }
+        const parts = [...counts.entries()].map(([l, n]) => n > 1 ? `${l.toLowerCase()} ×${n}` : l.toLowerCase());
+        const statusText = status === 'running' ? 'Выполняется…' : status === 'error' ? 'Есть ошибка' : 'Готово';
+        return { head: `${cards.length} вызов(ов) · ${parts.join(' · ')}`, statusText };
+    }
+
+    function refreshToolGroup(group) {
+        const body = group.querySelector('.scp-tc-group-body');
+        const cards = body ? [...body.querySelectorAll(':scope > .scp-inline-tool-call')] : [];
+        if (!cards.length) { group.remove(); return; }
+        const status = toolGroupStatus(cards);
+        const { head, statusText } = toolGroupSummary(cards, status);
+        const sumEl = group.querySelector('.scp-tc-group-summary');
+        const stEl = group.querySelector('.scp-tc-group-status');
+        if (sumEl) sumEl.textContent = head;
+        if (stEl) { stEl.textContent = statusText; stEl.className = `scp-tc-group-status ${status}`; }
+    }
+
+    function collapseToolChains(containerEl) {
+        const s = getSettings();
+        if (s.toolsCollapseChains === false) return;
+        const min = Math.max(2, parseInt(s.toolsCollapseThreshold ?? TC_COLLAPSE_DEFAULT_MIN, 10) || TC_COLLAPSE_DEFAULT_MIN);
+
+        // Refresh statuses of groups built on an earlier pass.
+        containerEl.querySelectorAll('.scp-tc-group').forEach(refreshToolGroup);
+
+        // Collect top-level consecutive runs that are not already inside a group.
+        const allTCs = [...containerEl.querySelectorAll('.scp-inline-tool-call')]
+            .filter(c => !c.closest('.scp-tc-group'));
+        let i = 0;
+        while (i < allTCs.length) {
+            let end = i;
+            while (end + 1 < allTCs.length) {
+                let sib = allTCs[end].nextSibling;
+                while (sib && ((sib.nodeType === Node.TEXT_NODE && !sib.textContent.trim()) || sib.tagName === 'BR')) sib = sib.nextSibling;
+                if (sib === allTCs[end + 1]) end++; else break;
+            }
+            const run = allTCs.slice(i, end + 1);
+            if (run.length >= min) {
+                const group = document.createElement('div');
+                group.className = 'scp-tc-group';
+                const status = toolGroupStatus(run);
+                const { head, statusText } = toolGroupSummary(run, status);
+                const header = document.createElement('div');
+                header.className = 'scp-tc-group-header';
+                header.innerHTML = `<i class="fa-solid fa-screwdriver-wrench" style="font-size:11px;opacity:.7"></i>` +
+                    `<span class="scp-tc-group-summary">${escHtml(head)}</span>` +
+                    `<span class="scp-tc-group-status ${status}">${escHtml(statusText)}</span>` +
+                    `<span class="scp-tc-group-chevron">▶</span>`;
+                const body = document.createElement('div');
+                body.className = 'scp-tc-group-body';
+                header.addEventListener('click', () => group.classList.toggle('open'));
+                group.append(header, body);
+                run[0].before(group);
+                body.append(...run);
+                // Live pass: keep the group open while something is still running or failed.
+                if (status !== 'done') group.classList.add('open');
+            }
+            i = end + 1;
+        }
     }
 
     let _toolsUIBound = false;
@@ -11829,6 +11912,15 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
             document.getElementById('scp-sp-tools-max-rounds')?.addEventListener('input', e => {
                 getSettings().toolsMaxRounds = parseInt(e.target.value) || 5; saveSettings$1();
             });
+            document.getElementById('scp-sp-tools-gen-retry')?.addEventListener('input', e => {
+                getSettings().toolsGenRetryMax = Math.max(0, Math.min(3, parseInt(e.target.value) || 0)); saveSettings$1();
+            });
+            document.getElementById('scp-sp-tools-collapse')?.addEventListener('change', e => {
+                getSettings().toolsCollapseChains = e.target.checked; saveSettings$1();
+            });
+            document.getElementById('scp-sp-tools-collapse-min')?.addEventListener('input', e => {
+                getSettings().toolsCollapseThreshold = Math.max(2, Math.min(10, parseInt(e.target.value) || 3)); saveSettings$1();
+            });
 
             const protoSel = document.getElementById('scp-sp-tools-protocol');
             if (protoSel) {
@@ -11844,6 +11936,9 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
         const setV = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
         setC('scp-sp-tools-enabled', s.toolsEnabled);
         setV('scp-sp-tools-max-rounds', s.toolsMaxRounds ?? 5);
+        setV('scp-sp-tools-gen-retry', s.toolsGenRetryMax ?? 1);
+        setC('scp-sp-tools-collapse', s.toolsCollapseChains !== false);
+        setV('scp-sp-tools-collapse-min', s.toolsCollapseThreshold ?? 3);
 
         const protoSel2 = document.getElementById('scp-sp-tools-protocol');
         if (protoSel2) protoSel2.value = s.toolsProtocol === 'native' ? 'native' : 'text';
@@ -17941,6 +18036,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     // duration, not a silence window.
     const _genTimeouts = { askUserMs: 300000, stallMs: 300000, nonStreamMs: 600000 };
 
+    // Phased recovery decision for a failed generation (pattern: OpenCode session
+    // runner). 'transparent' = nothing was streamed, retry the attempt as-is;
+    // 'continue' = partial output exists, keep it visible and continue from the
+    // cut; 'none' = give up (user stop, stale run, or retries exhausted).
+    function planStreamRecovery({ resultNull, partialLen, retriesLeft, stopped, isCurrent }) {
+        if (!resultNull || stopped || !isCurrent || retriesLeft <= 0) return 'none';
+        return partialLen > 0 ? 'continue' : 'transparent';
+    }
+
     async function awaitAskUserAnswer(askPromise) {
         return new Promise((resolve) => {
             let settled = false;
@@ -18624,7 +18728,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             });
 
             const nativeTools = settings.toolsEnabled && settings.toolsProtocol === 'native';
+            // Transparent retry for a failure before any streamed output (setting:
+            // toolsGenRetryMax). A failure after output started is NOT retried here —
+            // the partial stays visible and is handled by the null-result path below.
+            const genRetryMax = Math.max(0, Math.min(3, parseInt(settings.toolsGenRetryMax ?? 1, 10) || 0));
             let result = await callGenerate(session, settings, null, onChunk, nativeTools);
+            let initTries = genRetryMax;
+            while (result === null && initTries-- > 0 && !state.generationStopped && genCoord.isCurrent(run)) {
+                await new Promise(r => setTimeout(r, 1000));
+                result = await callGenerate(session, settings, null, onChunk, nativeTools);
+            }
 
             cleanupCursor();
 
@@ -18656,6 +18769,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 lastRoundPartialText = '';
                 // Ретрай пустого continuation — один на всю генерацию, чтобы не зациклиться.
                 let emptyContinuationRetried = false;
+                // Бюджет фазовых ретраев сбоя стрима (planStreamRecovery) на всю генерацию.
+                let streamRetriesLeft = genRetryMax;
 
                 const _updateLiveUI = (tempText = '', tempReasoning = null) => {
                     if (!streamMsgEl || !streamContentEl) return;
@@ -18903,6 +19018,41 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     });
 
                     if (nextResult === null) {
+                        // Сбой стрима раунда: фазовое восстановление (паттерн OpenCode
+                        // session runner). Не началось — повтор как есть; началось —
+                        // частичный текст сохраняется и продолжается с места обрыва.
+                        // Ретрай не расходует toolsMaxRounds.
+                        const plan = planStreamRecovery({
+                            resultNull: true,
+                            partialLen: lastRoundPartialText.trim().length,
+                            retriesLeft: streamRetriesLeft,
+                            stopped: state.generationStopped,
+                            isCurrent: genCoord.isCurrent(run),
+                        });
+                        if (plan === 'transparent') {
+                            streamRetriesLeft--;
+                            _dbgAdd('GEN_STREAM_RETRY', { phase: 'transparent', round: round + 2 });
+                            await new Promise(r => setTimeout(r, 1000));
+                            nextResult = await callGenerate(tempSession, settings, lastRoundNote, (t, r) => {
+                                if (t) lastRoundPartialText = t;
+                                _updateLiveUI(t, r);
+                            }, nativeTools);
+                        } else if (plan === 'continue') {
+                            streamRetriesLeft--;
+                            _dbgAdd('GEN_STREAM_RETRY', { phase: 'continue', round: round + 2 });
+                            accumulatedText += '\n\n' + lastRoundPartialText.trim();
+                            lastRoundPartialText = '';
+                            await new Promise(r => setTimeout(r, 1000));
+                            nextResult = await callGenerate(tempSession, settings,
+                                '(system note: your previous reply was cut off mid-sentence by a connection failure. Continue seamlessly from exactly where it stopped. Do not repeat what was already written.)',
+                                (t, r) => { _updateLiveUI(t, r); }, nativeTools);
+                            if (nextResult === null || !String(nextResult.text || '').trim()) {
+                                accumulatedText += '\n\n_⚠ Ответ оборван из-за сбоя соединения._';
+                                nextResult = null;
+                            }
+                        }
+                    }
+                    if (nextResult === null) {
                         // Stop посреди раунда: сохраняем настримленный кусок раунда,
                         // иначе он был бы виден на экране, но потерян в сохранённом тексте.
                         if (lastRoundPartialText.trim()) accumulatedText += '\n\n' + lastRoundPartialText;
@@ -18959,8 +19109,12 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             if (result === null) {
                 if (streamMsgId && isStreaming && streamAccumText) {
                     const msg = session.messages.find(m => m.id === streamMsgId);
-                    if (msg) { msg.content = streamAccumText; msg.reasoning = streamAccumReasoning || null; saveSessionsToMetadata(); }
-                    if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(streamAccumText); postProcessHTMLBlocks(streamContentEl); }
+                    // Сбой (не Stop — тот вышел раньше): частичный текст честно помечаем.
+                    const orphanPartial = !state.generationStopped
+                        ? streamAccumText + '\n\n_⚠ Ответ оборван из-за сбоя соединения._'
+                        : streamAccumText;
+                    if (msg) { msg.content = orphanPartial; msg.reasoning = streamAccumReasoning || null; saveSessionsToMetadata(); }
+                    if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(orphanPartial); postProcessHTMLBlocks(streamContentEl); }
                 } else if (streamMsgId) {
                     const idx = session.messages.findIndex(m => m.id === streamMsgId);
                     if (idx >= 0 && !session.messages[idx].content) {
@@ -19293,6 +19447,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         formatPayloadAsText: formatPayloadAsText,
         getMainChatSlice: getMainChatSlice,
         logOutgoingRequest: logOutgoingRequest,
+        planStreamRecovery: planStreamRecovery,
         redactRequestBody: redactRequestBody,
         resolveUseStream: resolveUseStream,
         runContinue: runContinue,
