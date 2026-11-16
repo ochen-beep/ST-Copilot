@@ -103,6 +103,9 @@ export function setupToolsSettingsUI() {
         document.getElementById('scp-sp-tools-max-rounds')?.addEventListener('input', e => {
             getSettings().toolsMaxRounds = parseInt(e.target.value) || 5; saveSettings();
         });
+        document.getElementById('scp-sp-tools-gen-retry')?.addEventListener('input', e => {
+            getSettings().toolsGenRetryMax = Math.max(0, Math.min(3, parseInt(e.target.value) || 0)); saveSettings();
+        });
 
         const protoSel = document.getElementById('scp-sp-tools-protocol');
         if (protoSel) {
@@ -118,6 +121,7 @@ export function setupToolsSettingsUI() {
     const setV = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
     setC('scp-sp-tools-enabled', s.toolsEnabled);
     setV('scp-sp-tools-max-rounds', s.toolsMaxRounds ?? 5);
+    setV('scp-sp-tools-gen-retry', s.toolsGenRetryMax ?? 1);
 
     const protoSel2 = document.getElementById('scp-sp-tools-protocol');
     if (protoSel2) protoSel2.value = s.toolsProtocol === 'native' ? 'native' : 'text';

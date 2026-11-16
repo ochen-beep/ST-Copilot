@@ -55,6 +55,15 @@ function withTimeout(promise, ms = TOOL_TIMEOUT_MS) {
 // duration, not a silence window.
 export const _genTimeouts = { askUserMs: 300000, stallMs: 300000, nonStreamMs: 600000 };
 
+// Phased recovery decision for a failed generation (pattern: OpenCode session
+// runner). 'transparent' = nothing was streamed, retry the attempt as-is;
+// 'continue' = partial output exists, keep it visible and continue from the
+// cut; 'none' = give up (user stop, stale run, or retries exhausted).
+export function planStreamRecovery({ resultNull, partialLen, retriesLeft, stopped, isCurrent }) {
+    if (!resultNull || stopped || !isCurrent || retriesLeft <= 0) return 'none';
+    return partialLen > 0 ? 'continue' : 'transparent';
+}
+
 export async function awaitAskUserAnswer(askPromise) {
     return new Promise((resolve) => {
         let settled = false;
@@ -738,7 +747,16 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
         });
 
         const nativeTools = settings.toolsEnabled && settings.toolsProtocol === 'native';
+        // Transparent retry for a failure before any streamed output (setting:
+        // toolsGenRetryMax). A failure after output started is NOT retried here —
+        // the partial stays visible and is handled by the null-result path below.
+        const genRetryMax = Math.max(0, Math.min(3, parseInt(settings.toolsGenRetryMax ?? 1, 10) || 0));
         let result = await callGenerate(session, settings, null, onChunk, nativeTools);
+        let initTries = genRetryMax;
+        while (result === null && initTries-- > 0 && !state.generationStopped && genCoord.isCurrent(run)) {
+            await new Promise(r => setTimeout(r, 1000));
+            result = await callGenerate(session, settings, null, onChunk, nativeTools);
+        }
 
         cleanupCursor();
 
@@ -770,6 +788,8 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
             lastRoundPartialText = '';
             // Ретрай пустого continuation — один на всю генерацию, чтобы не зациклиться.
             let emptyContinuationRetried = false;
+            // Бюджет фазовых ретраев сбоя стрима (planStreamRecovery) на всю генерацию.
+            let streamRetriesLeft = genRetryMax;
 
             const _updateLiveUI = (tempText = '', tempReasoning = null) => {
                 if (!streamMsgEl || !streamContentEl) return;
@@ -1017,6 +1037,41 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 });
 
                 if (nextResult === null) {
+                    // Сбой стрима раунда: фазовое восстановление (паттерн OpenCode
+                    // session runner). Не началось — повтор как есть; началось —
+                    // частичный текст сохраняется и продолжается с места обрыва.
+                    // Ретрай не расходует toolsMaxRounds.
+                    const plan = planStreamRecovery({
+                        resultNull: true,
+                        partialLen: lastRoundPartialText.trim().length,
+                        retriesLeft: streamRetriesLeft,
+                        stopped: state.generationStopped,
+                        isCurrent: genCoord.isCurrent(run),
+                    });
+                    if (plan === 'transparent') {
+                        streamRetriesLeft--;
+                        _dbgAdd('GEN_STREAM_RETRY', { phase: 'transparent', round: round + 2 });
+                        await new Promise(r => setTimeout(r, 1000));
+                        nextResult = await callGenerate(tempSession, settings, lastRoundNote, (t, r) => {
+                            if (t) lastRoundPartialText = t;
+                            _updateLiveUI(t, r);
+                        }, nativeTools);
+                    } else if (plan === 'continue') {
+                        streamRetriesLeft--;
+                        _dbgAdd('GEN_STREAM_RETRY', { phase: 'continue', round: round + 2 });
+                        accumulatedText += '\n\n' + lastRoundPartialText.trim();
+                        lastRoundPartialText = '';
+                        await new Promise(r => setTimeout(r, 1000));
+                        nextResult = await callGenerate(tempSession, settings,
+                            '(system note: your previous reply was cut off mid-sentence by a connection failure. Continue seamlessly from exactly where it stopped. Do not repeat what was already written.)',
+                            (t, r) => { _updateLiveUI(t, r); }, nativeTools);
+                        if (nextResult === null || !String(nextResult.text || '').trim()) {
+                            accumulatedText += '\n\n_⚠ Ответ оборван из-за сбоя соединения._';
+                            nextResult = null;
+                        }
+                    }
+                }
+                if (nextResult === null) {
                     // Stop посреди раунда: сохраняем настримленный кусок раунда,
                     // иначе он был бы виден на экране, но потерян в сохранённом тексте.
                     if (lastRoundPartialText.trim()) accumulatedText += '\n\n' + lastRoundPartialText;
@@ -1073,8 +1128,12 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
         if (result === null) {
             if (streamMsgId && isStreaming && streamAccumText) {
                 const msg = session.messages.find(m => m.id === streamMsgId);
-                if (msg) { msg.content = streamAccumText; msg.reasoning = streamAccumReasoning || null; saveSessionsToMetadata(); }
-                if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(streamAccumText); postProcessHTMLBlocks(streamContentEl); }
+                // Сбой (не Stop — тот вышел раньше): частичный текст честно помечаем.
+                const orphanPartial = !state.generationStopped
+                    ? streamAccumText + '\n\n_⚠ Ответ оборван из-за сбоя соединения._'
+                    : streamAccumText;
+                if (msg) { msg.content = orphanPartial; msg.reasoning = streamAccumReasoning || null; saveSessionsToMetadata(); }
+                if (streamContentEl) { streamContentEl.innerHTML = renderMarkdown(orphanPartial); postProcessHTMLBlocks(streamContentEl); }
             } else if (streamMsgId) {
                 const idx = session.messages.findIndex(m => m.id === streamMsgId);
                 if (idx >= 0 && !session.messages[idx].content) {

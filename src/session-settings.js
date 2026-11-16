@@ -105,6 +105,7 @@ const DEFAULT_SETTINGS = {
     toolsThinking: false,
     toolsMaxRounds: 5,
     toolsProtocol: 'text',
+    toolsGenRetryMax: 1,
     toolsEnabled_search_chat: true,
     toolsEnabled_search_lorebook: true,
     toolsEnabled_get_lorebooks: true,
