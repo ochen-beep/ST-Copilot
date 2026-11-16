@@ -353,7 +353,7 @@ export async function executeTool(toolName, toolInput) {
                     send_date: m.send_date ?? null,
                     content: (m.mes || '').length > maxLen ? m.mes.slice(0, maxLen) + '...[truncated — request full=true]' : (m.mes || ''),
                 })),
-                note: 'Use "index" values in chat-changes proposals for precise targeting, and copy each message\'s send_date into msg_date/msg_dates so the edit is skipped if the chat shifted.',
+                note: 'Use "index" values in chat-changes proposals for precise targeting, and copy each message\'s send_date into msg_date/msg_dates so the edit is skipped if the chat shifted. Copy send_date VERBATIM from THIS turn\'s output — never invent or reformat dates; if you did not call get_recent_messages in this turn, omit msg_date/msg_dates.',
             };
         }
         default: return { error: `Unknown tool: ${toolName}` };

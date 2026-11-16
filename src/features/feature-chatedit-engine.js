@@ -292,12 +292,27 @@ export async function applyChatChanges(changes, afterMsgId = null) {
             if (change.action === 'bulk_replace' || change.action === 'regex') {
                 let targetIndices = [];
                 if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
-                    const dated = change.msg_indices.filter(i => msgDateMatches(msgs[shifted(i)], msgDateFor(change, i)));
-                    if (dated.length < change.msg_indices.length) {
-                        toastr.warning(`[Редактор чата] ${change.msg_indices.length - dated.length} сообщ. пропущено: send_date не совпал (чат менялся с момента proposals)`, EXT_DISPLAY, { timeOut: 8000 });
-                        if (!dated.length) continue;
+                    const byDate = change.msg_indices.filter(i => msgDateMatches(msgs[shifted(i)], msgDateFor(change, i)));
+                    const dateStale = change.msg_indices.length - byDate.length;
+                    let includeIndices = byDate;
+                    if (dateStale) {
+                        // Date-stale messages are NOT auto-dropped from
+                        // bulk_replace: replacement anchors prove identity better
+                        // than a model-recalled date (models fabricate msg_date
+                        // when no fresh get_recent_messages ran this turn). Only
+                        // distinctive anchors (>= 12 chars) are trusted — a short
+                        // one ('m') matches strangers just as easily. regex has
+                        // no anchors, so it keeps the hard filter.
+                        const anchorsSpecific = (change.replacements || []).every(rp => ((rp.search ?? '') || rp.anchor || '').trim().length >= 12);
+                        if (change.action === 'regex' || !anchorsSpecific) {
+                            toastr.warning(`[Редактор чата] ${dateStale} сообщ. пропущено: send_date не совпал (чат менялся с момента proposals)`, EXT_DISPLAY, { timeOut: 8000 });
+                            if (!byDate.length) continue;
+                        } else {
+                            toastr.warning(`[Редактор чата] ${dateStale} сообщ.: send_date не совпал — применяю по совпадению якорей`, EXT_DISPLAY, { timeOut: 8000 });
+                            includeIndices = change.msg_indices;
+                        }
                     }
-                    targetIndices = dated.map(shifted).filter(i => i >= 0 && i < msgs.length);
+                    targetIndices = includeIndices.map(shifted).filter(i => i >= 0 && i < msgs.length);
                 } else {
                     let startIdx = 0, endIdx = msgs.length - 1;
                     if (Array.isArray(change.msg_range)) {
@@ -405,8 +420,14 @@ export async function applyChatChanges(changes, afterMsgId = null) {
             const { idx, msg } = resolved;
 
             // Identity guard: the live message must be the one the proposal was
-            // made against (send_date copied from get_recent_messages).
-            if (!msgDateMatches(msg, msgDateFor(change, change.msg_index))) {
+            // made against (send_date copied from get_recent_messages). A date
+            // mismatch alone no longer hard-skips 'replace' — its patch anchors
+            // prove identity better than a model-recalled date (models sometimes
+            // fabricate msg_date when no fresh snapshot ran this turn). Hard
+            // guard stays for actions without anchors (overwrite/prepend/
+            // append/delete) — those mutate unconditionally.
+            const dateOk = msgDateMatches(msg, msgDateFor(change, change.msg_index));
+            if (!dateOk && change.action !== 'replace') {
                 toastr.warning(`[Редактор чата] Сообщение изменилось с момента proposals (send_date не совпал) — изменение #${idx} пропущено`, EXT_DISPLAY, { timeOut: 8000 });
                 continue;
             }

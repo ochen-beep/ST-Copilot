@@ -184,3 +184,61 @@ describe('send_date identity: proposals с датами переживают в�
         expect(ctx.chat.map(m => m.mes)).toEqual(['m1', 'rewritten-m2']);
     });
 });
+
+// Fabricated msg_date (model recalled a date without a fresh snapshot this
+// turn) must not block an edit whose anchors prove identity — the Christopher
+// false-block. Anchors only land on content the model actually saw.
+describe('fabricated msg_date: якоря доказывают идентичность лучше даты', () => {
+    beforeEach(() => {
+        const ctx = SillyTavern.getContext();
+        ctx.chat = [
+            { mes: 'POV Тим. Cheap vietnamese eateries.', is_user: false, send_date: '2026-11-08T11:58:02.191Z' },
+            { mes: 'm1', is_user: true, send_date: '2026-11-09T10:00:00.000Z' },
+        ];
+        ctx.saveChat = async () => {};
+    });
+
+    it('bulk_replace: дата выдумана, якорь совпал — правка применяется', async () => {
+        const applied = await applyChatChanges([{
+            action: 'bulk_replace',
+            msg_indices: [0],
+            msg_dates: ['2026-03-30T17:34:03.111Z'],
+            replacements: [{ search: 'Cheap vietnamese eateries', replace: 'generic campus eateries' }],
+        }]);
+        expect(applied).toHaveLength(1);
+        expect(SillyTavern.getContext().chat[0].mes).toBe('POV Тим. generic campus eateries.');
+    });
+
+    it('bulk_replace: дата выдумана и якорь не совпал — пропуск (защита жива)', async () => {
+        const applied = await applyChatChanges([{
+            action: 'bulk_replace',
+            msg_indices: [0],
+            msg_dates: ['2026-03-30T17:34:03.111Z'],
+            replacements: [{ search: 'ZZZ-НЕТ-ТАКОГО', replace: 'x' }],
+        }]);
+        expect(applied).toHaveLength(1); // изменение вернулось с affectedCount: 0
+        expect(SillyTavern.getContext().chat[0].mes).toContain('Cheap vietnamese');
+    });
+
+    it('replace: дата выдумана, все якоря совпали — применяется', async () => {
+        const applied = await applyChatChanges([{
+            action: 'replace',
+            msg_index: 0,
+            msg_date: '2026-03-30T17:34:03.111Z',
+            patches: [{ search: 'vietnamese eateries', replace: 'campus eateries' }],
+        }]);
+        expect(applied).toHaveLength(1);
+        expect(SillyTavern.getContext().chat[0].mes).toBe('POV Тим. Cheap campus eateries.');
+    });
+
+    it('overwrite с выдуманной датой по-прежнему блокируется (нет якорей)', async () => {
+        const applied = await applyChatChanges([{
+            action: 'overwrite',
+            msg_index: 0,
+            msg_date: '2026-03-30T17:34:03.111Z',
+            content: 'hijacked',
+        }]);
+        expect(applied).toHaveLength(0);
+        expect(SillyTavern.getContext().chat[0].mes).toContain('Cheap vietnamese');
+    });
+});
