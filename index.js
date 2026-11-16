@@ -13817,8 +13817,19 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
     function setupMessagesScrollTracking() {
         const c = document.getElementById('scp-messages');
         if (!c) return;
+        // Wheel-up intent escapes autoscroll at once; a distance threshold let
+        // stream chunks snap the view back mid-wheel, cancelling the scroll.
+        c.addEventListener('wheel', (e) => {
+            if (e.deltaY < 0 && c.scrollHeight > c.clientHeight) state.userScrolledUp = true;
+        }, { passive: true });
+        // Direction-based escape (scrollbar drags, touch): scrolling up escapes,
+        // landing back at the bottom re-arms stick-to-bottom.
+        let lastTop = c.scrollTop;
         c.addEventListener('scroll', () => {
-            state.userScrolledUp = c.scrollHeight - c.scrollTop - c.clientHeight > 80;
+            const atBottom = c.scrollHeight - c.scrollTop - c.clientHeight <= 1;
+            if (c.scrollTop < lastTop && !atBottom) state.userScrolledUp = true;
+            else if (atBottom) state.userScrolledUp = false;
+            lastTop = c.scrollTop;
         }, { passive: true });
     }
 
