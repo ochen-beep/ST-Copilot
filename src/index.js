@@ -1,4 +1,4 @@
-import { EXT_DISPLAY, CHANGELOG, I, WIN_ID, ICON_ID, MODAL_ID } from './constants.js';
+import { EXT_DISPLAY, CHANGELOG, I, SPRITE_SVG, WIN_ID, ICON_ID, MODAL_ID } from './constants.js';
 import { state, invalidateSystemPromptCache } from './state.js';
 import { getSettings, saveSettings, getChatBucket, setActiveSession, deleteCurrentSession, getCurrentSession, exportCurrentSession, importSession, showSessionDialog } from './session.js';
 import { _dbgSetupGlobalErrorHandlers, _dbgAdd, _dbgSnapshotSettings } from './utils/util-debug.js';
@@ -11,7 +11,7 @@ import { setupSettingsPanelListeners, setupSettingsHandlers, updateSettingsUI, u
 import { setupLorebookManagerListeners, openLorebookManager } from './features/feature-lorebook-ui.js';
 import { setupCharacterManagerListeners, openCharacterManager } from './features/feature-character-manager-ui.js';
 import { updateMemoryDot } from './features/feature-memory.js';
-import { setupChatPickerListeners, onChatChanged, updateDepthSlidersMax, renderSession, openSearch, navigateSearch, performSearch, closeSearch, openChatPicker, toggleSearchWholeWord, setupDepthClickEdit, updateMsgCount, setupSearchHotkey, setupMessagesScrollTracking, setupCodeBlockActions } from './ui/ui-chat.js';
+import { setupChatPickerListeners, onChatChanged, updateDepthSlidersMax, renderSession, openSearch, navigateSearch, performSearch, closeSearch, openChatPicker, toggleSearchWholeWord, setupDepthClickEdit, updateMsgCount, setupSearchHotkey, setupMessagesScrollTracking, setupMsgActionsDelegation, setupCodeBlockActions } from './ui/ui-chat.js';
 import { checkChangelogAutoShow, setupChangelogListeners, openFavoritesPanel, closeFavoritesPanel, openInspector, renderQuickPromptsBar } from './ui/ui-widgets.js';
 import { _setupAttachButton } from './features/feature-attachments.js';
 
@@ -47,6 +47,13 @@ async function loadManifestVersion() {
 
 async function injectUI() {
     const ctx = SillyTavern.getContext();
+    // Icon sprite must exist before any <use href="#scp-ic-*"> hits the DOM.
+    if (!document.getElementById('scp-icon-defs')) {
+        const holder = document.createElement('div');
+        holder.innerHTML = SPRITE_SVG;
+        const sprite = holder.firstElementChild;
+        if (sprite) { sprite.id = 'scp-icon-defs'; document.body.appendChild(sprite); }
+    }
     const parseTemplate = (html) => {
         if (!html) return '';
         return html.replace(/\$\{I\.([a-zA-Z0-9_]+)\}/g, (_, iconName) => I[iconName] || '');
@@ -555,6 +562,7 @@ async function _initInner() {
     setupSearchHotkey();
     setupHotkey();
     setupMessagesScrollTracking();
+    setupMsgActionsDelegation();
     setupCodeBlockActions();
     
     const s = getSettings();

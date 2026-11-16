@@ -13,14 +13,17 @@
 
 .scp-messages > * + * { margin-top: 2px; }
 
-/* No content-visibility here on purpose: its render-in growth while the
-   user scrolls into never-rendered blocks is cancelled by scroll anchoring
-   (view freezes) or drags the view back without it (view glued to the
-   bottom edge) — measured at ~75% of each wheel notch eaten near the
-   bottom. Stable heights are worth more than the raster savings.
-   ponytail: if giant-message raster jank returns (100k+ token single
-   message on mobile GPUs), reintroduce content-visibility gated per
-   message by rendered size, not blanket on every block. */
+/* Per-block content-visibility, but only inside giant single messages
+   (>MSG_CV_MIN_CHARS, class set by _renderMsgBodyContent): offscreen blocks
+   skip raster work, which huge messages need on weak/mobile GPUs. Blanket
+   CV is forbidden here on purpose — its render-in growth while scrolling
+   eats wheel notches (measured ~75% near the feed bottom, frozen by scroll
+   anchoring on block layout). Normal sessions keep stable heights. */
+.scp-msg-content.scp-msg-cv > *,
+.scp-msg-content.scp-msg-cv li {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 120px;
+}
 
 /* ── Empty State ─────────────────────────────────────────────── */
 

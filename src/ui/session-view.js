@@ -78,7 +78,7 @@ export function renderSession(session, opts = {}) {
         if (msg.isLBHistory || msg.isCharEditHistory || msg.isChatEditHistory) {
             appendLBHistoryEl(msg);
         } else {
-            const el = createMsgEl(msg, handleCopy, handleEdit, handleDelete, handleMessageRegen);
+            const el = createMsgEl(msg);
             c.appendChild(el);
         }
     }
@@ -99,7 +99,7 @@ export function appendMsgEl(msg, isStreamInit = false) {
     if (!c) return;
     c.querySelector('.scp-empty-state')?.remove();
 
-    const el = createMsgEl(msg, handleCopy, handleEdit, handleDelete, handleMessageRegen);
+    const el = createMsgEl(msg);
     c.appendChild(el);
     
     if (!isStreamInit) {
@@ -450,9 +450,45 @@ export function setupDepthClickEdit() {
     });
 }
 
+// ─── Message actions (delegated) ─────────────────────────────────────────────
+
+function handleStarToggle(wrap, msg, btn) {
+    const nowStarred = toggleStarMessage(msg.id);
+    btn.innerHTML = nowStarred ? I.starFill : I.star;
+    btn.title = nowStarred ? 'Убрать из избранного' : 'В избранное';
+    btn.classList.toggle('starred', nowStarred);
+    wrap.classList.toggle('scp-msg-starred', nowStarred);
+    if (document.getElementById('scp-fav-panel')?.style.display !== 'none' && uiWdgMod) {
+        uiWdgMod.renderFavoritesPanel();
+    }
+}
+
+export function setupMsgActionsDelegation() {
+    const c = document.getElementById('scp-messages');
+    if (!c || c.dataset.scpMsgActionsBound) return;
+    c.dataset.scpMsgActionsBound = '1';
+    c.addEventListener('click', (e) => {
+        const btn = e.target instanceof Element ? e.target.closest('.scp-msg-actions .scp-msg-btn') : null;
+        if (!btn) return;
+        const wrap = btn.closest('.scp-msg');
+        if (!wrap) return;
+        const session = getCurrentSession();
+        const msg = session.messages.find(m => m.id === wrap.dataset.id);
+        if (!msg) return;
+        switch (btn.dataset.act) {
+            case 'copy': handleCopy(msg); break;
+            case 'edit': handleEdit(wrap, msg); break;
+            case 'regen': handleMessageRegen(wrap, msg); break;
+            case 'delete': handleDelete(wrap, msg); break;
+            case 'star': handleStarToggle(wrap, msg, btn); break;
+            case 'continue': if (apiMod) apiMod.runContinue(session, msg.id); break;
+        }
+    });
+}
+
 // ─── Message element ─────────────────────────────────────────────────────────
 
-export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
+export function createMsgEl(msg) {
     const isUser = msg.role === 'user';
     const wrap = document.createElement('div');
     wrap.className = `scp-msg ${isUser ? 'scp-msg-user' : 'scp-msg-assistant'}`;
@@ -494,38 +530,31 @@ export function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
     const actions = document.createElement('div');
     actions.className = 'scp-msg-actions';
 
-    const makeBtn = (icon, label, cls, cb) => {
+    // Buttons carry data-act only: a single delegated listener on the feed
+    // (setupMsgActionsDelegation) dispatches all actions — one listener
+    // instead of ~6 per message, and per-render listener churn is gone.
+    const makeBtn = (act, icon, label, cls) => {
         const b = document.createElement('button');
         b.className = `scp-msg-btn${cls ? ' ' + cls : ''}`;
+        b.dataset.act = act;
         b.innerHTML = icon; b.title = label;
-        b.addEventListener('click', cb);
         return b;
     };
 
-    actions.appendChild(makeBtn(I.copy, 'Копировать', '', () => onCopy(msg)));
-    actions.appendChild(makeBtn(I.edit, 'Изменить', '', () => onEdit(wrap, msg)));
-    actions.appendChild(makeBtn(I.refresh, 'Перегенерировать', '', () => onRegen(wrap, msg)));
-    actions.appendChild(makeBtn(I.trash, 'Удалить', 'scp-msg-btn-danger', () => onDelete(wrap, msg)));
+    actions.appendChild(makeBtn('copy', I.copy, 'Копировать'));
+    actions.appendChild(makeBtn('edit', I.edit, 'Изменить'));
+    actions.appendChild(makeBtn('regen', I.refresh, 'Перегенерировать'));
+    actions.appendChild(makeBtn('delete', I.trash, 'Удалить', 'scp-msg-btn-danger'));
 
     const isStarred = isMessageStarred(msg.id);
-    const starBtn = makeBtn(isStarred ? I.starFill : I.star, isStarred ? 'Убрать из избранного' : 'В избранное', `scp-msg-btn-star${isStarred ? ' starred' : ''}`, () => {
-        const nowStarred = toggleStarMessage(msg.id);
-        starBtn.innerHTML = nowStarred ? I.starFill : I.star;
-        starBtn.title = nowStarred ? 'Убрать из избранного' : 'В избранное';
-        starBtn.classList.toggle('starred', nowStarred);
-        wrap.classList.toggle('scp-msg-starred', nowStarred);
-        if (document.getElementById('scp-fav-panel')?.style.display !== 'none' && uiWdgMod) {
-            uiWdgMod.renderFavoritesPanel();
-        }
-    });
-    actions.appendChild(starBtn);
+    actions.appendChild(makeBtn('star',
+        isStarred ? I.starFill : I.star,
+        isStarred ? 'Убрать из избранного' : 'В избранное',
+        `scp-msg-btn-star${isStarred ? ' starred' : ''}`));
     if (isStarred) wrap.classList.add('scp-msg-starred');
 
     if (!isUser) {
-        const continueBtn = makeBtn(I.continueArrow, 'Продолжить ответ', 'scp-msg-btn-continue', () => {
-            if (apiMod) apiMod.runContinue(getCurrentSession(), msg.id);
-        });
-        actions.appendChild(continueBtn);
+        actions.appendChild(makeBtn('continue', I.continueArrow, 'Продолжить ответ', 'scp-msg-btn-continue'));
     }
 
     body.appendChild(actions);

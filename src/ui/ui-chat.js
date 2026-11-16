@@ -46,6 +46,7 @@ export {
     onChatChanged,
     setupDepthClickEdit,
     createMsgEl,
+    setupMsgActionsDelegation,
 } from './session-view.js';
 
 export {

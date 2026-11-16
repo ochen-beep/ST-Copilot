@@ -1,4 +1,4 @@
-import { I, THEME_PRESETS } from '../constants.js';
+import { I, THEME_PRESETS, MSG_CV_MIN_CHARS } from '../constants.js';
 import { state } from '../state.js';
 import { getSettings, saveSettings, deleteMsg, truncateAfter, truncateFrom, expandMacros, getEffectiveSettings, getBindingKey, initChatBucket } from '../session.js';
 import { escHtml, autoResize, copyText } from '../utils/util-dom.js';
@@ -389,6 +389,10 @@ export function _renderMsgBodyContent(msgEl, msg) {
     msgEl.querySelectorAll('.scp-tool-call-item').forEach(c => c.remove());
 
     const cleanContent = stripMemoryBlock(msg.content);
+    // Giant single messages raster huge layers on every scroll tick; normal
+    // ones must keep stable heights (blanket content-visibility ate ~75% of
+    // each wheel notch near the feed bottom — see 02-messages.css).
+    msgEl.querySelector('.scp-msg-content')?.classList.toggle('scp-msg-cv', cleanContent.length >= MSG_CV_MIN_CHARS);
     let displayText = cleanContent;
     let reasoning = msg.reasoning !== undefined ? (msg.reasoning || null) : null;
 

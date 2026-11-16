@@ -694,7 +694,7 @@ export const TOOL_DEFINITIONS = [
         },
     ];
 
-export const I = {
+const ICONS_RAW = {
         diff: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>`,
         copy: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
         edit: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
@@ -723,3 +723,39 @@ export const I = {
         menu: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`,
         lock: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
     };
+
+// Icons render ~165 times per session: embedding the full svg markup on every
+// use bloats the feed DOM and every style recalc walks all of it. Each raw svg
+// is split once into a shared <symbol> sprite (SPRITE_SVG — injectUI appends it
+// to document.body before any template) plus a 2-node <use> reference per
+// instance. currentColor / fill / stroke-width live inside the symbols, so
+// styling is unchanged; the outer <svg> keeps the icon's original size.
+const parseIconSvg = (raw) => {
+    const open = raw.match(/<svg[^>]*>/)[0];
+    const attr = (name) => open.match(new RegExp(`${name}="([^"]+)"`))?.[1];
+    const viewBox = attr('viewBox') || '0 0 24 24';
+    const width = attr('width') || '13';
+    const height = attr('height') || '13';
+    // Root-level paint attrs (stroke, fill, stroke-width, linecap…) must ride
+    // on the <symbol>: stripping them would leave shapes with svg defaults
+    // (stroke: none → invisible icons). Shape-level attrs still win.
+    const paintAttrs = open.match(/[\w-]+="[^"]*"/g)
+        ?.filter(a => !/^(xmlns|width|height|viewBox)=/.test(a))
+        .join(' ') || '';
+    const inner = raw.replace(/<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
+    return { viewBox, width, height, paintAttrs, inner };
+};
+
+const ICON_DEFS = Object.entries(ICONS_RAW).map(([name, raw]) => ({ name, ...parseIconSvg(raw) }));
+
+export const SPRITE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">${ICON_DEFS.map(d => `<symbol id="scp-ic-${d.name}" viewBox="${d.viewBox}"${d.paintAttrs ? ' ' + d.paintAttrs : ''}>${d.inner}</symbol>`).join('')}</svg>`;
+
+export const I = Object.fromEntries(ICON_DEFS.map(d => [
+    d.name,
+    `<svg width="${d.width}" height="${d.height}" aria-hidden="true"><use href="#scp-ic-${d.name}"></use></svg>`,
+]));
+
+// Single-message content size above which per-block content-visibility kicks
+// in (see .scp-msg-cv in 02-messages.css). ~7.5k tokens: big enough that the
+// render-in cost outweighs the scroll-anchoring tradeoff, rare in normal RP.
+export const MSG_CV_MIN_CHARS = 30000;
