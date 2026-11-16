@@ -930,7 +930,7 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
             },
         ];
 
-    const I = {
+    const ICONS_RAW = {
             diff: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>`,
             copy: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
             edit: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
@@ -959,6 +959,42 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
             menu: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`,
             lock: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
         };
+
+    // Icons render ~165 times per session: embedding the full svg markup on every
+    // use bloats the feed DOM and every style recalc walks all of it. Each raw svg
+    // is split once into a shared <symbol> sprite (SPRITE_SVG — injectUI appends it
+    // to document.body before any template) plus a 2-node <use> reference per
+    // instance. currentColor / fill / stroke-width live inside the symbols, so
+    // styling is unchanged; the outer <svg> keeps the icon's original size.
+    const parseIconSvg = (raw) => {
+        const open = raw.match(/<svg[^>]*>/)[0];
+        const attr = (name) => open.match(new RegExp(`${name}="([^"]+)"`))?.[1];
+        const viewBox = attr('viewBox') || '0 0 24 24';
+        const width = attr('width') || '13';
+        const height = attr('height') || '13';
+        // Root-level paint attrs (stroke, fill, stroke-width, linecap…) must ride
+        // on the <symbol>: stripping them would leave shapes with svg defaults
+        // (stroke: none → invisible icons). Shape-level attrs still win.
+        const paintAttrs = open.match(/[\w-]+="[^"]*"/g)
+            ?.filter(a => !/^(xmlns|width|height|viewBox)=/.test(a))
+            .join(' ') || '';
+        const inner = raw.replace(/<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
+        return { viewBox, width, height, paintAttrs, inner };
+    };
+
+    const ICON_DEFS = Object.entries(ICONS_RAW).map(([name, raw]) => ({ name, ...parseIconSvg(raw) }));
+
+    const SPRITE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">${ICON_DEFS.map(d => `<symbol id="scp-ic-${d.name}" viewBox="${d.viewBox}"${d.paintAttrs ? ' ' + d.paintAttrs : ''}>${d.inner}</symbol>`).join('')}</svg>`;
+
+    const I = Object.fromEntries(ICON_DEFS.map(d => [
+        d.name,
+        `<svg width="${d.width}" height="${d.height}" aria-hidden="true"><use href="#scp-ic-${d.name}"></use></svg>`,
+    ]));
+
+    // Single-message content size above which per-block content-visibility kicks
+    // in (see .scp-msg-cv in 02-messages.css). ~7.5k tokens: big enough that the
+    // render-in cost outweighs the scroll-anchoring tradeoff, rare in normal RP.
+    const MSG_CV_MIN_CHARS = 30000;
 
     const state = {
         generating: false,
@@ -12927,7 +12963,7 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
             if (msg.isLBHistory || msg.isCharEditHistory || msg.isChatEditHistory) {
                 appendLBHistoryEl(msg);
             } else {
-                const el = createMsgEl(msg, handleCopy, handleEdit, handleDelete, handleMessageRegen);
+                const el = createMsgEl(msg);
                 c.appendChild(el);
             }
         }
@@ -12948,7 +12984,7 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
         if (!c) return;
         c.querySelector('.scp-empty-state')?.remove();
 
-        const el = createMsgEl(msg, handleCopy, handleEdit, handleDelete, handleMessageRegen);
+        const el = createMsgEl(msg);
         c.appendChild(el);
         
         if (!isStreamInit) {
@@ -13299,9 +13335,45 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
         });
     }
 
+    // ─── Message actions (delegated) ─────────────────────────────────────────────
+
+    function handleStarToggle(wrap, msg, btn) {
+        const nowStarred = toggleStarMessage(msg.id);
+        btn.innerHTML = nowStarred ? I.starFill : I.star;
+        btn.title = nowStarred ? 'Убрать из избранного' : 'В избранное';
+        btn.classList.toggle('starred', nowStarred);
+        wrap.classList.toggle('scp-msg-starred', nowStarred);
+        if (document.getElementById('scp-fav-panel')?.style.display !== 'none' && uiWdgMod) {
+            uiWdgMod.renderFavoritesPanel();
+        }
+    }
+
+    function setupMsgActionsDelegation() {
+        const c = document.getElementById('scp-messages');
+        if (!c || c.dataset.scpMsgActionsBound) return;
+        c.dataset.scpMsgActionsBound = '1';
+        c.addEventListener('click', (e) => {
+            const btn = e.target instanceof Element ? e.target.closest('.scp-msg-actions .scp-msg-btn') : null;
+            if (!btn) return;
+            const wrap = btn.closest('.scp-msg');
+            if (!wrap) return;
+            const session = getCurrentSession();
+            const msg = session.messages.find(m => m.id === wrap.dataset.id);
+            if (!msg) return;
+            switch (btn.dataset.act) {
+                case 'copy': handleCopy(msg); break;
+                case 'edit': handleEdit(wrap, msg); break;
+                case 'regen': handleMessageRegen(wrap, msg); break;
+                case 'delete': handleDelete(wrap, msg); break;
+                case 'star': handleStarToggle(wrap, msg, btn); break;
+                case 'continue': if (apiMod) apiMod.runContinue(session, msg.id); break;
+            }
+        });
+    }
+
     // ─── Message element ─────────────────────────────────────────────────────────
 
-    function createMsgEl(msg, onCopy, onEdit, onDelete, onRegen) {
+    function createMsgEl(msg) {
         const isUser = msg.role === 'user';
         const wrap = document.createElement('div');
         wrap.className = `scp-msg ${isUser ? 'scp-msg-user' : 'scp-msg-assistant'}`;
@@ -13343,38 +13415,31 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
         const actions = document.createElement('div');
         actions.className = 'scp-msg-actions';
 
-        const makeBtn = (icon, label, cls, cb) => {
+        // Buttons carry data-act only: a single delegated listener on the feed
+        // (setupMsgActionsDelegation) dispatches all actions — one listener
+        // instead of ~6 per message, and per-render listener churn is gone.
+        const makeBtn = (act, icon, label, cls) => {
             const b = document.createElement('button');
             b.className = `scp-msg-btn${cls ? ' ' + cls : ''}`;
+            b.dataset.act = act;
             b.innerHTML = icon; b.title = label;
-            b.addEventListener('click', cb);
             return b;
         };
 
-        actions.appendChild(makeBtn(I.copy, 'Копировать', '', () => onCopy(msg)));
-        actions.appendChild(makeBtn(I.edit, 'Изменить', '', () => onEdit(wrap, msg)));
-        actions.appendChild(makeBtn(I.refresh, 'Перегенерировать', '', () => onRegen(wrap, msg)));
-        actions.appendChild(makeBtn(I.trash, 'Удалить', 'scp-msg-btn-danger', () => onDelete(wrap, msg)));
+        actions.appendChild(makeBtn('copy', I.copy, 'Копировать'));
+        actions.appendChild(makeBtn('edit', I.edit, 'Изменить'));
+        actions.appendChild(makeBtn('regen', I.refresh, 'Перегенерировать'));
+        actions.appendChild(makeBtn('delete', I.trash, 'Удалить', 'scp-msg-btn-danger'));
 
         const isStarred = isMessageStarred(msg.id);
-        const starBtn = makeBtn(isStarred ? I.starFill : I.star, isStarred ? 'Убрать из избранного' : 'В избранное', `scp-msg-btn-star${isStarred ? ' starred' : ''}`, () => {
-            const nowStarred = toggleStarMessage(msg.id);
-            starBtn.innerHTML = nowStarred ? I.starFill : I.star;
-            starBtn.title = nowStarred ? 'Убрать из избранного' : 'В избранное';
-            starBtn.classList.toggle('starred', nowStarred);
-            wrap.classList.toggle('scp-msg-starred', nowStarred);
-            if (document.getElementById('scp-fav-panel')?.style.display !== 'none' && uiWdgMod) {
-                uiWdgMod.renderFavoritesPanel();
-            }
-        });
-        actions.appendChild(starBtn);
+        actions.appendChild(makeBtn('star',
+            isStarred ? I.starFill : I.star,
+            isStarred ? 'Убрать из избранного' : 'В избранное',
+            `scp-msg-btn-star${isStarred ? ' starred' : ''}`));
         if (isStarred) wrap.classList.add('scp-msg-starred');
 
         if (!isUser) {
-            const continueBtn = makeBtn(I.continueArrow, 'Продолжить ответ', 'scp-msg-btn-continue', () => {
-                if (apiMod) apiMod.runContinue(getCurrentSession(), msg.id);
-            });
-            actions.appendChild(continueBtn);
+            actions.appendChild(makeBtn('continue', I.continueArrow, 'Продолжить ответ', 'scp-msg-btn-continue'));
         }
 
         body.appendChild(actions);
@@ -14547,6 +14612,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         msgEl.querySelectorAll('.scp-tool-call-item').forEach(c => c.remove());
 
         const cleanContent = stripMemoryBlock(msg.content);
+        // Giant single messages raster huge layers on every scroll tick; normal
+        // ones must keep stable heights (blanket content-visibility ate ~75% of
+        // each wheel notch near the feed bottom — see 02-messages.css).
+        msgEl.querySelector('.scp-msg-content')?.classList.toggle('scp-msg-cv', cleanContent.length >= MSG_CV_MIN_CHARS);
         let displayText = cleanContent;
         let reasoning = msg.reasoning !== undefined ? (msg.reasoning || null) : null;
 
@@ -14780,6 +14849,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         setupCodeBlockActions: setupCodeBlockActions,
         setupDepthClickEdit: setupDepthClickEdit,
         setupMessagesScrollTracking: setupMessagesScrollTracking,
+        setupMsgActionsDelegation: setupMsgActionsDelegation,
         setupSearchHotkey: setupSearchHotkey,
         showGenerationError: showGenerationError,
         smartScrollToBottom: smartScrollToBottom,
@@ -19518,6 +19588,13 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
     async function injectUI() {
         const ctx = SillyTavern.getContext();
+        // Icon sprite must exist before any <use href="#scp-ic-*"> hits the DOM.
+        if (!document.getElementById('scp-icon-defs')) {
+            const holder = document.createElement('div');
+            holder.innerHTML = SPRITE_SVG;
+            const sprite = holder.firstElementChild;
+            if (sprite) { sprite.id = 'scp-icon-defs'; document.body.appendChild(sprite); }
+        }
         const parseTemplate = (html) => {
             if (!html) return '';
             return html.replace(/\$\{I\.([a-zA-Z0-9_]+)\}/g, (_, iconName) => I[iconName] || '');
@@ -20026,6 +20103,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         setupSearchHotkey();
         setupHotkey();
         setupMessagesScrollTracking();
+        setupMsgActionsDelegation();
         setupCodeBlockActions();
         
         const s = getSettings();
