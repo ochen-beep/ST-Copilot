@@ -20,6 +20,34 @@ export function getEnabledTools() {
     });
 }
 
+// Normalizes raw provider payloads into a compact {title,url,snippet} list so the
+// model sees one format regardless of provider and the result budget isn't wasted
+// on provider metadata. Field mappings verified against Extension-WebSearch parsers.
+const SEARCH_SNIPPET_MAX = 300;
+const SEARCH_RESULTS_MAX = 10;
+
+function normalizeSearchResults(provider, data) {
+    let items = [];
+    let answer = null;
+    if (provider === 'serper' && Array.isArray(data.organic)) {
+        items = data.organic.map(x => ({ title: x.title, url: x.link, snippet: x.snippet }));
+    } else if (provider === 'serpapi' && Array.isArray(data.organic_results)) {
+        items = data.organic_results.map(x => ({ title: x.title, url: x.link, snippet: x.snippet }));
+    } else if (provider === 'tavily' && Array.isArray(data.results)) {
+        answer = typeof data.answer === 'string' ? data.answer : null;
+        items = data.results.map(x => ({ title: x.title, url: x.url, snippet: x.content }));
+    } else if (provider === 'zai' && Array.isArray(data.search_result)) {
+        items = data.search_result.map(x => ({ title: x.title, url: x.link, snippet: x.content }));
+    } else {
+        return null; // searxng (HTML) and unknown shapes stay raw
+    }
+    items = items
+        .filter(x => x.url || x.title)
+        .slice(0, SEARCH_RESULTS_MAX)
+        .map(x => ({ ...x, snippet: String(x.snippet || '').slice(0, SEARCH_SNIPPET_MAX) }));
+    return { items, answer };
+}
+
 export async function executeTool(toolName, toolInput) {
     const ctx = SillyTavern.getContext();
     switch (toolName) {
@@ -252,8 +280,19 @@ export async function executeTool(toolName, toolInput) {
             const raw = await res.text();
             let parsed;
             try { parsed = JSON.parse(raw); } catch (_) { parsed = null; }
-            const max = 4000;
-            const payload = parsed !== null && raw.length > max ? raw.slice(0, max) + '…[truncated]' : (parsed ?? raw);
+            const norm = parsed !== null ? normalizeSearchResults(provider, parsed) : null;
+            if (norm) {
+                // Drop tail results instead of cutting the JSON string mid-token.
+                let results = norm.items;
+                while (results.length > 1 && JSON.stringify(results).length > 3800) results = results.slice(0, -1);
+                const trimmed = norm.items.length - results.length;
+                return {
+                    provider, query, results,
+                    ...(norm.answer ? { answer: norm.answer } : {}),
+                    ...(trimmed ? { note: `${trimmed} results trimmed — refine the query or use read_url` } : {}),
+                };
+            }
+            const payload = parsed !== null && raw.length > 4000 ? raw.slice(0, 4000) + '…[truncated]' : (parsed ?? raw);
             return { provider, query, results: payload };
         }
         case 'todo_write': {
