@@ -72,6 +72,86 @@ export function postProcessToolCalls(containerEl, toolCalls) {
         }
         i = end + 1;
     }
+
+    collapseToolChains(containerEl);
+}
+
+// Collapse long chains (ChatGPT/Codex "Searched the web" pattern): consecutive
+// finished cards fold behind one summary header. Idempotent — safe on every
+// postProcess pass; existing groups just refresh their summary/status.
+const TC_COLLAPSE_DEFAULT_MIN = 3;
+
+function toolGroupStatus(cards) {
+    if (cards.some(c => c.querySelector('.scp-tool-call-status.running'))) return 'running';
+    if (cards.some(c => c.querySelector('.scp-tool-call-status.error'))) return 'error';
+    return 'done';
+}
+
+function toolGroupSummary(cards, status) {
+    const counts = new Map();
+    for (const c of cards) {
+        const label = c.querySelector('.scp-tool-call-name')?.textContent?.trim() || 'инструмент';
+        counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    const parts = [...counts.entries()].map(([l, n]) => n > 1 ? `${l.toLowerCase()} ×${n}` : l.toLowerCase());
+    const statusText = status === 'running' ? 'Выполняется…' : status === 'error' ? 'Есть ошибка' : 'Готово';
+    return { head: `${cards.length} вызов(ов) · ${parts.join(' · ')}`, statusText };
+}
+
+function refreshToolGroup(group) {
+    const body = group.querySelector('.scp-tc-group-body');
+    const cards = body ? [...body.querySelectorAll(':scope > .scp-inline-tool-call')] : [];
+    if (!cards.length) { group.remove(); return; }
+    const status = toolGroupStatus(cards);
+    const { head, statusText } = toolGroupSummary(cards, status);
+    const sumEl = group.querySelector('.scp-tc-group-summary');
+    const stEl = group.querySelector('.scp-tc-group-status');
+    if (sumEl) sumEl.textContent = head;
+    if (stEl) { stEl.textContent = statusText; stEl.className = `scp-tc-group-status ${status}`; }
+}
+
+function collapseToolChains(containerEl) {
+    const s = getSettings();
+    if (s.toolsCollapseChains === false) return;
+    const min = Math.max(2, parseInt(s.toolsCollapseThreshold ?? TC_COLLAPSE_DEFAULT_MIN, 10) || TC_COLLAPSE_DEFAULT_MIN);
+
+    // Refresh statuses of groups built on an earlier pass.
+    containerEl.querySelectorAll('.scp-tc-group').forEach(refreshToolGroup);
+
+    // Collect top-level consecutive runs that are not already inside a group.
+    const allTCs = [...containerEl.querySelectorAll('.scp-inline-tool-call')]
+        .filter(c => !c.closest('.scp-tc-group'));
+    let i = 0;
+    while (i < allTCs.length) {
+        let end = i;
+        while (end + 1 < allTCs.length) {
+            let sib = allTCs[end].nextSibling;
+            while (sib && ((sib.nodeType === Node.TEXT_NODE && !sib.textContent.trim()) || sib.tagName === 'BR')) sib = sib.nextSibling;
+            if (sib === allTCs[end + 1]) end++; else break;
+        }
+        const run = allTCs.slice(i, end + 1);
+        if (run.length >= min) {
+            const group = document.createElement('div');
+            group.className = 'scp-tc-group';
+            const status = toolGroupStatus(run);
+            const { head, statusText } = toolGroupSummary(run, status);
+            const header = document.createElement('div');
+            header.className = 'scp-tc-group-header';
+            header.innerHTML = `<i class="fa-solid fa-screwdriver-wrench" style="font-size:11px;opacity:.7"></i>` +
+                `<span class="scp-tc-group-summary">${escHtml(head)}</span>` +
+                `<span class="scp-tc-group-status ${status}">${escHtml(statusText)}</span>` +
+                `<span class="scp-tc-group-chevron">▶</span>`;
+            const body = document.createElement('div');
+            body.className = 'scp-tc-group-body';
+            header.addEventListener('click', () => group.classList.toggle('open'));
+            group.append(header, body);
+            run[0].before(group);
+            body.append(...run);
+            // Live pass: keep the group open while something is still running or failed.
+            if (status !== 'done') group.classList.add('open');
+        }
+        i = end + 1;
+    }
 }
 
 let _toolsUIBound = false;
@@ -106,6 +186,12 @@ export function setupToolsSettingsUI() {
         document.getElementById('scp-sp-tools-gen-retry')?.addEventListener('input', e => {
             getSettings().toolsGenRetryMax = Math.max(0, Math.min(3, parseInt(e.target.value) || 0)); saveSettings();
         });
+        document.getElementById('scp-sp-tools-collapse')?.addEventListener('change', e => {
+            getSettings().toolsCollapseChains = e.target.checked; saveSettings();
+        });
+        document.getElementById('scp-sp-tools-collapse-min')?.addEventListener('input', e => {
+            getSettings().toolsCollapseThreshold = Math.max(2, Math.min(10, parseInt(e.target.value) || 3)); saveSettings();
+        });
 
         const protoSel = document.getElementById('scp-sp-tools-protocol');
         if (protoSel) {
@@ -122,6 +208,8 @@ export function setupToolsSettingsUI() {
     setC('scp-sp-tools-enabled', s.toolsEnabled);
     setV('scp-sp-tools-max-rounds', s.toolsMaxRounds ?? 5);
     setV('scp-sp-tools-gen-retry', s.toolsGenRetryMax ?? 1);
+    setC('scp-sp-tools-collapse', s.toolsCollapseChains !== false);
+    setV('scp-sp-tools-collapse-min', s.toolsCollapseThreshold ?? 3);
 
     const protoSel2 = document.getElementById('scp-sp-tools-protocol');
     if (protoSel2) protoSel2.value = s.toolsProtocol === 'native' ? 'native' : 'text';

@@ -288,3 +288,57 @@
     content: "\f13a" !important;
 }
 
+
+/* ── Collapsed tool chain group ("Searched the web" pattern) ── */
+.scp-tc-group {
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    margin: 4px 0;
+    overflow: hidden;
+    background: rgba(0,0,0,0.15);
+}
+.scp-tc-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    cursor: pointer;
+    user-select: none;
+    background: rgba(255,255,255,0.03);
+    transition: background 0.12s;
+}
+.scp-tc-group-header:hover { background: rgba(255,255,255,0.06); }
+.scp-tc-group-summary {
+    flex: 1;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--scp-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.scp-tc-group-status {
+    font-size: 10px;
+    flex-shrink: 0;
+    color: var(--scp-text-muted);
+}
+.scp-tc-group-status.running { color: #ffb432; }
+.scp-tc-group-status.error { color: #e57373; }
+.scp-tc-group-status.done { color: #4caf7d; }
+.scp-tc-group-chevron {
+    font-size: 9px;
+    color: var(--scp-text-muted);
+    transition: transform 0.15s;
+    flex-shrink: 0;
+}
+.scp-tc-group.open .scp-tc-group-chevron { transform: rotate(90deg); }
+.scp-tc-group-body { display: none; flex-direction: column; }
+.scp-tc-group.open .scp-tc-group-body { display: flex; }
+.scp-tc-group-body .scp-inline-tool-call {
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    border-radius: 0;
+    margin: 0;
+}
+.scp-tc-group-body .scp-inline-tool-call:last-child { border-bottom: 1px solid rgba(255,255,255,0.08); }
