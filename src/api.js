@@ -959,7 +959,12 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 };
 
                 lastRoundPartialText = '';
-                let nextResult = await callGenerate(tempSession, settings, null, (t, r) => {
+                // Last round: tell the model the budget is over BEFORE it spends
+                // this generation on another tool call (pattern: OpenCode MAX_STEPS_PROMPT).
+                const lastRoundNote = round === maxRounds - 1
+                    ? '(system note: that was your last tool round — the tool budget is now exhausted. Write your complete final answer to the user now. Do not output any more tool_call blocks.)'
+                    : null;
+                let nextResult = await callGenerate(tempSession, settings, lastRoundNote, (t, r) => {
                     if (t) lastRoundPartialText = t;
                     _updateLiveUI(t, r);
                     if (streamContentEl) streamContentEl.appendChild(cursor2);
