@@ -300,7 +300,10 @@ export const MEMORY_FORMAT_BLOCK = `\`\`\`memory-update\n[\n  {"action":"add","s
 
 export const DEFAULT_TOOLS_PROMPT = `Imperative: NEVER hallucinate missing context. If chat history, specific lore, or data appears absent, DO NOT assume the chat hasn't started or the data doesn't exist. You MUST proactively use your tools to fetch, verify, and retrieve the actual state before answering.
 
-Process: Output \`tool_call\` JSON block -> Receive result -> Finalize response to the Human. You may chain tools sequentially.
+Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to the Human.
+- Batch: if you intend several INDEPENDENT tool calls (e.g. searches with different queries), emit ALL their \`tool_call\` blocks in ONE response — they execute in parallel. Chain sequentially only when a call needs a previous call's result.
+- Search discipline: if search results are irrelevant or empty, do NOT re-run the same search with reworded queries more than once. Answer from what you have or state clearly that nothing relevant was found.
+- ALWAYS finish with a text answer to the Human, even when tools fail or return nothing useful.
 
 <available_tools>
 {{tools_list}}
