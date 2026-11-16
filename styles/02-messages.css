@@ -3,31 +3,29 @@
 .scp-messages {
     flex: 1; overflow-y: auto;
     padding: 10px 10px 4px;
-    display: flex; flex-direction: column; gap: 2px;
-    /* At list top/bottom don't chain the scroll into the SillyTavern page
-       behind the window: on translucent themes the page moving behind looks
-       like the panel itself is jerking, and on mobile touch the drag would
-       rubber-band the whole page instead of stopping at the edge. */
+    /* Block flow, not flex-column: Chromium scroll anchoring does not run
+       in flex containers, so content-visibility height corrections while
+       scrolling dragged the viewport back to the bottom edge. */
+    display: block;
+    /* replaces the old flex `gap: 2px` between feed children */
     overscroll-behavior: contain;
 }
 
-/* Giant messages (100k+ tokens in a single message) make every scroll
-   tick re-raster a huge layer on weak/mobile GPUs — the visible content
-   jitters and scroll feels stuck (ghost tiles of the same text at other
-   offsets). Per-block content-visibility lets the compositor skip
-   offscreen blocks entirely, shrinking the live layer to the viewport.
-   contain-intrinsic-size (auto = remember last rendered size) keeps the
-   scrollbar stable instead of jumping as blocks render in. */
-.scp-msg-content > *,
-.scp-msg-content li {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 120px;
-}
+.scp-messages > * + * { margin-top: 2px; }
+
+/* No content-visibility here on purpose: its render-in growth while the
+   user scrolls into never-rendered blocks is cancelled by scroll anchoring
+   (view freezes) or drags the view back without it (view glued to the
+   bottom edge) — measured at ~75% of each wheel notch eaten near the
+   bottom. Stable heights are worth more than the raster savings.
+   ponytail: if giant-message raster jank returns (100k+ token single
+   message on mobile GPUs), reintroduce content-visibility gated per
+   message by rendered size, not blanket on every block. */
 
 /* ── Empty State ─────────────────────────────────────────────── */
 
 .scp-empty-state {
-    flex: 1; display: flex; flex-direction: column;
+    flex: 1; min-height: 100%; display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     gap: 14px; padding: 32px 24px;
     color: var(--scp-text-muted); text-align: center;
