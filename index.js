@@ -11836,7 +11836,10 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
         const sumEl = group.querySelector('.scp-tc-group-summary');
         const stEl = group.querySelector('.scp-tc-group-status');
         if (sumEl) sumEl.textContent = head;
-        if (stEl) { stEl.textContent = statusText; stEl.className = `scp-tc-group-status ${status}`; }
+        if (stEl) {
+            stEl.innerHTML = status === 'running' ? '<span class="scp-tool-spin">⟳</span> Выполняется…' : escHtml(statusText);
+            stEl.className = `scp-tc-group-status ${status}`;
+        }
     }
 
     function collapseToolChains(containerEl) {
@@ -11864,11 +11867,12 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
                 group.className = 'scp-tc-group';
                 const status = toolGroupStatus(run);
                 const { head, statusText } = toolGroupSummary(run, status);
+                const statusHtml = status === 'running' ? '<span class="scp-tool-spin">⟳</span> Выполняется…' : escHtml(statusText);
                 const header = document.createElement('div');
                 header.className = 'scp-tc-group-header';
                 header.innerHTML = `<i class="fa-solid fa-screwdriver-wrench" style="font-size:11px;opacity:.7"></i>` +
                     `<span class="scp-tc-group-summary">${escHtml(head)}</span>` +
-                    `<span class="scp-tc-group-status ${status}">${escHtml(statusText)}</span>` +
+                    `<span class="scp-tc-group-status ${status}">${statusHtml}</span>` +
                     `<span class="scp-tc-group-chevron">▶</span>`;
                 const body = document.createElement('div');
                 body.className = 'scp-tc-group-body';
@@ -11876,8 +11880,8 @@ ${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="mar
                 group.append(header, body);
                 run[0].before(group);
                 body.append(...run);
-                // Live pass: keep the group open while something is still running or failed.
-                if (status !== 'done') group.classList.add('open');
+                // Groups stay collapsed from the moment they appear (also while
+                // running) — the header line is the live "where it's digging" view.
             }
             i = end + 1;
         }

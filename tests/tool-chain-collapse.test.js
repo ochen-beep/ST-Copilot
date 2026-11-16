@@ -44,15 +44,16 @@ describe('collapseToolChains via postProcessToolCalls', () => {
         expect(group.classList.contains('open')).toBe(false);
     });
 
-    it('keeps a live group open while a card is running', () => {
+    it('keeps a live group collapsed while running, header shows live status', () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const calls = makeCards(container, 4, 'running');
         ui.postProcessToolCalls(container, calls);
 
         const group = container.querySelector('.scp-tc-group');
-        expect(group.classList.contains('open')).toBe(true);
+        expect(group.classList.contains('open')).toBe(false);
         expect(group.querySelector('.scp-tc-group-status').textContent).toContain('Выполняется');
+        expect(group.querySelector('.scp-tool-spin')).toBeTruthy();
     });
 
     it('leaves short chains and collapsed setting off untouched', () => {
