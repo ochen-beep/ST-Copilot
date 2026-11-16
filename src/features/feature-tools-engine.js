@@ -260,40 +260,41 @@ export async function executeTool(toolName, toolInput) {
             const provider = String(toolInput.provider || 'zai');
             const query = String(toolInput.query || '').trim();
             if (!query) return { error: 'Empty search query.' };
-            const bodies = {
-                zai: { query },
-                tavily: { query },
-                serper: { query },
-                serpapi: { query },
-                searxng: { baseUrl: toolInput.searxng_url, query },
-            };
-            const body = bodies[provider];
-            if (!body) return { error: `Unknown provider: ${provider}.` };
-            if (provider === 'searxng' && !body.baseUrl) return { error: 'provider=searxng requires the searxng_url parameter.' };
-            const res = await fetch(`/api/search/${provider}`, {
-                method: 'POST',
-                headers: ctx.getRequestHeaders(),
-                body: JSON.stringify(body),
-            });
-            if (res.status === 400) return { error: `Provider ${provider} is not configured: add an API key in ST (Secrets) or choose another provider.` };
+            if (!['zai', 'tavily', 'serper', 'serpapi', 'searxng'].includes(provider)) return { error: `Unknown provider: ${provider}.` };
+            if (provider === 'searxng' && !toolInput.searxng_url) return { error: 'provider=searxng requires the searxng_url parameter.' };
+            // On 400 (provider key missing server-side) try the next keyed provider
+            // instead of burning a model round on the error; searxng needs a URL and never falls back.
+            const chain = provider === 'searxng'
+                ? ['searxng']
+                : [provider, ...['zai', 'tavily', 'serper', 'serpapi'].filter(p => p !== provider)];
+            let usedProvider = provider;
+            let res = null;
+            for (const p of chain) {
+                usedProvider = p;
+                res = await fetch(`/api/search/${p}`, {
+                    method: 'POST',
+                    headers: ctx.getRequestHeaders(),
+                    body: JSON.stringify({ query, ...(p === 'searxng' ? { baseUrl: toolInput.searxng_url } : {}) }),
+                });
+                if (res.status !== 400) break;
+            }
+            if (res.status === 400) return { error: `None of the search providers (${chain.join(', ')}) is configured: add an API key in ST Secrets or use a SearXNG instance URL.` };
             if (!res.ok) return { error: `Search failed (HTTP ${res.status}).` };
             const raw = await res.text();
             let parsed;
             try { parsed = JSON.parse(raw); } catch (_) { parsed = null; }
-            const norm = parsed !== null ? normalizeSearchResults(provider, parsed) : null;
+            const norm = parsed !== null ? normalizeSearchResults(usedProvider, parsed) : null;
+            const notes = [];
+            if (usedProvider !== provider) notes.push(`requested provider ${provider} is not configured (no API key); served by ${usedProvider}`);
             if (norm) {
                 // Drop tail results instead of cutting the JSON string mid-token.
                 let results = norm.items;
                 while (results.length > 1 && JSON.stringify(results).length > 3800) results = results.slice(0, -1);
-                const trimmed = norm.items.length - results.length;
-                return {
-                    provider, query, results,
-                    ...(norm.answer ? { answer: norm.answer } : {}),
-                    ...(trimmed ? { note: `${trimmed} results trimmed — refine the query or use read_url` } : {}),
-                };
+                if (norm.items.length - results.length) notes.push(`${norm.items.length - results.length} results trimmed — refine the query or use read_url`);
+                return { provider: usedProvider, query, results, ...(norm.answer ? { answer: norm.answer } : {}), ...(notes.length ? { note: notes.join('; ') } : {}) };
             }
             const payload = parsed !== null && raw.length > 4000 ? raw.slice(0, 4000) + '…[truncated]' : (parsed ?? raw);
-            return { provider, query, results: payload };
+            return { provider: usedProvider, query, results: payload, ...(notes.length ? { note: notes.join('; ') } : {}) };
         }
         case 'todo_write': {
             const todos = Array.isArray(toolInput.todos) ? toolInput.todos : [];
