@@ -818,6 +818,9 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 smartScrollToBottom();
             };
 
+            // ponytail: fixed per-generation search budget, make configurable when users ask
+            let searchBudgetLeft = 3;
+
             for (let round = 0; round < maxRounds; round++) {
                 genToolRound = round + 1;
                 const tcs = nativeTools ? (roundToolCalls || []) : parseToolCallsFromText(roundText);
@@ -845,6 +848,15 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                             entry.result = { note: 'This exact call was already executed this generation — the result is above in context. Refine the arguments or answer the user now.' };
                             entry.status = 'done';
                             return;
+                        }
+                        if (entry.name === 'search_web') {
+                            if (searchBudgetLeft <= 0) {
+                                _dbgAdd('TOOL_CALL_SEARCH_BUDGET', {});
+                                entry.result = { note: 'Search budget for this generation is exhausted (3 calls already made). Answer using the results collected above.' };
+                                entry.status = 'done';
+                                return;
+                            }
+                            searchBudgetLeft--;
                         }
                         const t0 = performance.now();
                         const res = await withTimeout(executeTool(entry.name, entry.input));
