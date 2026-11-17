@@ -8,5 +8,5 @@
     "author": "QQ-Corporation",
     "version": "2.10.1",
     "homePage": "https://github.com/Supker/ST-Copilot",
-    "auto_update": true
+    "auto_update": false
 }
