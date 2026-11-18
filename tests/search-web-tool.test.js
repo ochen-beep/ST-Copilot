@@ -204,3 +204,32 @@ describe('search_web: WebSearch extension as provider source of truth', () => {
         expect(body.baseUrl).toBe('http://override.lan');
     });
 });
+
+describe('search_web: rate-limited providers (429)', () => {
+    beforeEach(async () => {
+        engine = await import('../src/features/feature-tools-engine.js');
+        ctx.extensionSettings['st_copilot'] = { toolsEnabled: true };
+        calls = [];
+        globalThis.fetch = async (url) => { calls.push(String(url)); return noKey(); };
+    });
+
+    it('429 on a provider silently falls through to a working one', async () => {
+        globalThis.fetch = async (url) => {
+            calls.push(String(url));
+            const u = String(url);
+            if (u.endsWith('/zai') || u.endsWith('/tavily')) return { status: 429, ok: false, text: async () => '' };
+            if (u.endsWith('/serper')) return ok(serperPayload(1));
+            return noKey();
+        };
+        const r = await engine.executeTool('search_web', { query: 'q', provider: 'zai' });
+        expect(r.provider).toBe('serper');
+        expect(r.note).toContain('served by serper');
+    });
+
+    it('all-429 yields a rate-limit error, no partial results', async () => {
+        globalThis.fetch = async () => ({ status: 429, ok: false, text: async () => '' });
+        const r = await engine.executeTool('search_web', { query: 'q' });
+        expect(r.error).toContain('rate-limited');
+        expect(r.results).toBeUndefined();
+    });
+});
