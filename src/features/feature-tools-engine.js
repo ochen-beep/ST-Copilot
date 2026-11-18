@@ -279,9 +279,6 @@ export async function executeTool(toolName, toolInput) {
             let res = null;
             for (const p of chain) {
                 usedProvider = p;
-                // Exa runs as an ST server plugin (plugins/, update-safe): its
-                // route lives outside the core /api/search namespace.
-                const url = p === 'exa' ? '/api/plugins/exa-search/exa' : `/api/search/${p}`;
                 // Exa: trimmed page text keeps the raw payload inside the tool's
                 // result budget; the model follows up with read_url for full pages.
                 const exaExtras = p === 'exa' ? {
@@ -289,7 +286,7 @@ export async function executeTool(toolName, toolInput) {
                     ...(Number.isInteger(Math.round(Number(toolInput.num_results))) && Number(toolInput.num_results) >= 1
                         ? { numResults: Math.min(100, Math.round(Number(toolInput.num_results))) } : {}),
                 } : {};
-                res = await fetch(url, {
+                res = await fetch(`/api/search/${p}`, {
                     method: 'POST',
                     headers: ctx.getRequestHeaders(),
                     body: JSON.stringify({
