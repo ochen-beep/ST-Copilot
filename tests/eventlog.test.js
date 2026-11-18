@@ -30,11 +30,15 @@ beforeEach(() => {
 });
 
 describe('util-eventlog', () => {
-    it('signal filter: GEN_*/TOOL_*/SESSION_*/STORAGE_* and error classes pass, noise families do not', async () => {
+    it('signal filter: GEN_*/TOOL_*, storage/session failures pass, boot chatter and noise families do not', async () => {
         const { isSignalEvent, recordEvent, dumpEventLog } = await import('../src/utils/util-eventlog.js');
         expect(isSignalEvent('GEN_DONE')).toBe(true);
         expect(isSignalEvent('TOOL_EXECUTION_FAILED')).toBe(true);
-        expect(isSignalEvent('SESSION_DELETED')).toBe(true);
+        expect(isSignalEvent('SESSION_CLEAR_DONE')).toBe(true);
+        expect(isSignalEvent('STORAGE_SHAPE_INVALID')).toBe(true);
+        // Boot chatter on every page load is excluded by design.
+        expect(isSignalEvent('SESSION_CREATED')).toBe(false);
+        expect(isSignalEvent('STORAGE_MIGRATION_V4_INIT')).toBe(false);
         expect(isSignalEvent('STORAGE_WRITE_FAILED')).toBe(true);
         expect(isSignalEvent('WINDOW_ERROR')).toBe(true);
         expect(isSignalEvent('UI_ERROR_POPUP')).toBe(true);

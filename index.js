@@ -1132,7 +1132,13 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
     // DBG_STATE ring (in-memory, floods within minutes on noisy paths; the
     // 2026-11-15 dump arrived with every TOOL_*/GEN_* event evicted by a
     // TEXT_REPLACE flood). Kept deliberately tiny: one line per significant
-    // transition, debounced write, best effort everywhere.
+    // transition, best effort everywhere.
+    //
+    // Persistence is IMMEDIATE on every recorded event, with no debounce: async
+    // IndexedDB writes issued at page-hide are best-effort and may not complete
+    // (web.dev page-lifecycle guidance) — the 2026-11-16 dump lost its whole
+    // generation tail that way. The ring is low-frequency, so a write per event
+    // costs nothing and unload flushes become pure redundancy.
     //
     // Store: SillyTavern.libs.localforage, provided by ST core (public/lib.js
     // sets window.localforage / SillyTavern.libs) — nothing to bundle. Read or
@@ -1144,9 +1150,18 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
 
     // Signal allowlist: rare, significant transitions only. Deliberately excludes
     // the noisy families (LB_*/MEM_*/SEARCH_*/PICKER_*/CHAR_*/PROFILE_*/SWIPE_*/
-    // TEXT_REPLACE_*/SETTINGS_*) — those live in the volatile debug ring.
-    const SIGNAL_PREFIXES = ['GEN_', 'TOOL_', 'SESSION_', 'STORAGE_'];
+    // TEXT_REPLACE_*/SETTINGS_*) and the per-reload boot chatter (SESSION_CREATED/
+    // STORAGE_MIGRATION_V4_INIT/STORAGE_BUCKET_EMPTY_INIT fire on every page load).
+    // Storage/session failures stay in: they are rare and explain data loss.
+    const SIGNAL_PREFIXES = ['GEN_', 'TOOL_'];
     const SIGNAL_TYPES = new Set([
+        'STORAGE_BUCKET_LOADED',
+        'STORAGE_WRITE_FAILED',
+        'STORAGE_DELETE_FAILED',
+        'STORAGE_SHAPE_INVALID',
+        'SESSION_CLEAR_REQUESTED',
+        'SESSION_CLEAR_DONE',
+        'SESSION_CLEAR_FAILED',
         'WINDOW_ERROR',
         'UNHANDLED_REJECTION',
         'CONSOLE_ERROR',
@@ -1163,7 +1178,6 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
     let _loaded = false;
     let _loadStarted = false;
     let _loadPromise = null;
-    let _persistTimer = null;
     let _inFlight = null;
 
     function _lf() {
@@ -1177,15 +1191,11 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
         return `${new Date(ts).toISOString()} ${type} ${body}`;
     }
 
-    function _schedulePersist() {
-        if (_persistTimer) return;
-        _persistTimer = setTimeout(() => {
-            _persistTimer = null;
-            try {
-                const p = _lf()?.setItem(LF_KEY, _events.slice());
-                _inFlight = p?.catch?.(() => {}) ?? null;
-            } catch (_) { /* store unavailable — memory only */ }
-        }, 500);
+    function _persistNow() {
+        try {
+            const p = _lf()?.setItem(LF_KEY, _events.slice());
+            _inFlight = p?.catch?.(() => {}) ?? null;
+        } catch (_) { /* store unavailable — memory only */ }
     }
 
     // Lazy load on the first recorded event: no init-order wiring needed. Persisted
@@ -1205,7 +1215,11 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
                 _events.unshift(...revived.slice(Math.max(0, revived.length - room)));
             }
             _loaded = true;
-            if (_events.length) _schedulePersist();
+            // Unconditional: events recorded while the load was in flight lived
+            // only in memory until now — this write captures them together with
+            // the revived history. Without it a page dying inside the load window
+            // loses its first events (the 2026-11-16 generation-tail loss).
+            _persistNow();
         })();
         return _loadPromise;
     }
@@ -1216,16 +1230,15 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
             _events.push(_line(type, payload, ts));
             while (_events.length > MAX_EVENTS) _events.shift();
             _ensureLoaded();
-            if (_loaded) _schedulePersist();
+            if (_loaded) _persistNow();
         } catch (_) { /* never break the caller */ }
     }
 
-    // Immediate write for page-hide paths (visibilitychange/pagehide below). If the
-    // lazy load is still in flight, flush waits for it — an event recorded and a
-    // page hidden in the same tick must not be lost.
+    // Best-effort write for page-hide paths (visibilitychange/pagehide below) —
+    // redundant with immediate persistence, kept so an in-flight write is awaited
+    // rather than dropped mid-transaction.
     function flushEventLog() {
         try {
-            if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
             if (!_loadStarted) return Promise.resolve();
             const write = () => {
                 const p = _lf()?.setItem(LF_KEY, _events.slice());
@@ -10223,11 +10236,13 @@ ${scopeHtml}
                         }),
                     });
                     // 400 = no key for this provider; 404 = this ST server has no
-                    // route for it at all (unpatched install). Either way the
-                    // provider is unavailable here — skip to the next in the chain.
-                    if (res.status !== 400 && res.status !== 404) break;
+                    // route for it at all (unpatched install); 429 = provider is
+                    // rate-limited right now. All three mean "this provider can't
+                    // serve the query" — skip to the next in the chain, silently.
+                    if (res.status !== 400 && res.status !== 404 && res.status !== 429) break;
                 }
                 if (res.status === 404) return { error: `Provider ${usedProvider} has no route on this ST server (/api/search/${usedProvider} missing) — the server needs the provider patch. Try another provider.` };
+                if (res.status === 429) return { error: 'All configured search providers are rate-limited right now — try again in a bit.' };
                 if (res.status === 400) return { error: `None of the search providers (${chain.join(', ')}) is configured: add an API key in ST Secrets or use a SearXNG instance URL.` };
                 if (!res.ok) return { error: `Search failed (HTTP ${res.status}).` };
                 const raw = await res.text();
@@ -11822,13 +11837,45 @@ ${scopeHtml}
         updateSettingsUI: updateSettingsUI
     });
 
+    function toolHost(url) {
+        try { return new URL(url).hostname; } catch (_) { return ''; }
+    }
+
+    // Human-readable result view for the cards the user actually reads: normalized
+    // search hits become a link list, page reads become link + preview. Raw JSON
+    // stays available in a collapsed details block — the model's copy lives in
+    // context, the card is for the human.
+    function humanToolResultHtml(name, result) {
+        if (!result || typeof result !== 'object') return null;
+        if (name === 'search_web' && Array.isArray(result.results) && result.results.length > 0 && typeof result.results[0] === 'object') {
+            const items = result.results.map(x => {
+                const title = String(x.title || toolHost(x.url) || 'результат');
+                const link = x.url
+                    ? `<a href="${escHtml(String(x.url))}" target="_blank" rel="noopener noreferrer">${escHtml(title)}</a>`
+                    : `<span>${escHtml(title)}</span>`;
+                const snip = x.snippet ? `<span class="scp-tool-hr-snippet"> — ${escHtml(String(x.snippet).slice(0, 220))}</span>` : '';
+                return `<li>${link}${snip}</li>`;
+            }).join('');
+            const answer = result.answer ? `<div class="scp-tool-hr-answer">${escHtml(String(result.answer))}</div>` : '';
+            const note = result.note ? `<div class="scp-tool-hr-note">${escHtml(String(result.note))}</div>` : '';
+            return `${answer}<ul class="scp-tool-hr-list">${items}</ul>${note}`;
+        }
+        if (name === 'read_url' && typeof result.url === 'string') {
+            const title = String(result.title || result.url);
+            const meta = result.total_length !== undefined ? `<span class="scp-tool-hr-meta">${escHtml(String(result.total_length))} симв.</span>` : '';
+            const text = result.text ? `<div class="scp-tool-hr-text">${escHtml(String(result.text).slice(0, 400))}${String(result.text).length > 400 ? '…' : ''}</div>` : '';
+            return `<div class="scp-tool-hr-link"><a href="${escHtml(result.url)}" target="_blank" rel="noopener noreferrer">${escHtml(title)}</a>${meta}</div>${text}`;
+        }
+        return null;
+    }
+
     function createToolCallEl(tc) {
         const item = document.createElement('div');
         item.className = 'scp-tool-call-item scp-inline-tool-call';
         item.dataset.toolId = tc.id;
         const def = TOOL_DEFINITIONS.find(d => d.name === tc.name);
         const iconClass = def?.icon || 'fa-screwdriver-wrench';
-        
+
         const isWarning = tc.status === 'warning';
         const statusClass = tc.status === 'running' ? 'running' : tc.status === 'error' ? 'error' : isWarning ? 'warning' : 'done';
         const statusLabel = tc.status === 'running' ? 'Выполняется' : tc.status === 'error' ? 'Ошибка' : isWarning ? 'Недоступно' : 'Готово';
@@ -11839,6 +11886,14 @@ ${scopeHtml}
             ? '<span class="scp-tool-spin" style="font-size:11px">⟳</span>'
             : `<i class="fa-solid ${iconClass}" style="font-size:11px"></i>`;
 
+        const rawJson = escHtml(typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2));
+        const humanHtml = humanToolResultHtml(tc.name, tc.result);
+        const resultHtml = tc.result !== undefined
+            ? humanHtml
+                ? `<div class="scp-tool-call-section-label" style="margin-top:8px">Результат</div><div class="scp-tool-hr">${humanHtml}</div><details class="scp-tool-raw"><summary>JSON</summary><pre class="scp-tool-call-result${tc.status === 'error' ? ' error-result' : ''}" ${isWarning ? `style="${colorStyle}"` : ''}>${rawJson}</pre></details>`
+                : `<div class="scp-tool-call-section-label" style="margin-top:8px">Результат</div><pre class="scp-tool-call-result${tc.status === 'error' ? ' error-result' : ''}" ${isWarning ? `style="${colorStyle}"` : ''}>${rawJson}</pre>`
+            : '';
+
         item.innerHTML = `<div class="scp-tool-call-header">
 <div class="scp-tool-call-icon ${statusClass}" ${isWarning ? `style="${colorStyle}"` : ''}>${iconHtml}</div>
 <div class="scp-tool-call-name">${escHtml(def?.label || tc.name)}</div>
@@ -11848,7 +11903,7 @@ ${scopeHtml}
 <div class="scp-tool-call-body">
 <div class="scp-tool-call-section-label">Ввод</div>
 <pre class="scp-tool-call-args">${escHtml(JSON.stringify(tc.input, null, 2))}</pre>
-${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="margin-top:8px">Результат</div><pre class="scp-tool-call-result${tc.status === 'error' ? ' error-result' : ''}" ${isWarning ? `style="${colorStyle}"` : ''}>${escHtml(typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2))}</pre>` : ''}
+${resultHtml}
 </div>`;
         item.querySelector('.scp-tool-call-header').addEventListener('click', () => {
             const isOpen = !item.classList.contains('open');
