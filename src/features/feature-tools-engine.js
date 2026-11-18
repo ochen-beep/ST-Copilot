@@ -38,6 +38,13 @@ function normalizeSearchResults(provider, data) {
         items = data.results.map(x => ({ title: x.title, url: x.url, snippet: x.content }));
     } else if (provider === 'zai' && Array.isArray(data.search_result)) {
         items = data.search_result.map(x => ({ title: x.title, url: x.link, snippet: x.content }));
+    } else if (provider === 'exa' && Array.isArray(data.results)) {
+        // Exa: page text (trimmed by the route) with summary/highlights fallbacks.
+        items = data.results.map(x => ({
+            title: x.title,
+            url: x.url,
+            snippet: x.text || x.summary || (Array.isArray(x.highlights) ? x.highlights.join(' ') : ''),
+        }));
     } else {
         return null; // searxng (HTML) and unknown shapes stay raw
     }
@@ -260,21 +267,33 @@ export async function executeTool(toolName, toolInput) {
             const provider = String(toolInput.provider || 'zai');
             const query = String(toolInput.query || '').trim();
             if (!query) return { error: 'Empty search query.' };
-            if (!['zai', 'tavily', 'serper', 'serpapi', 'searxng'].includes(provider)) return { error: `Unknown provider: ${provider}.` };
+            if (!['zai', 'tavily', 'serper', 'serpapi', 'exa', 'searxng'].includes(provider)) return { error: `Unknown provider: ${provider}.` };
             if (provider === 'searxng' && !toolInput.searxng_url) return { error: 'provider=searxng requires the searxng_url parameter.' };
             // On 400 (provider key missing server-side) try the next keyed provider
             // instead of burning a model round on the error; searxng needs a URL and never falls back.
+            const keyedProviders = ['zai', 'tavily', 'serper', 'serpapi', 'exa'];
             const chain = provider === 'searxng'
                 ? ['searxng']
-                : [provider, ...['zai', 'tavily', 'serper', 'serpapi'].filter(p => p !== provider)];
+                : [provider, ...keyedProviders.filter(p => p !== provider)];
             let usedProvider = provider;
             let res = null;
             for (const p of chain) {
                 usedProvider = p;
+                // Exa: trimmed page text keeps the raw payload inside the tool's
+                // result budget; the model follows up with read_url for full pages.
+                const exaExtras = p === 'exa' ? {
+                    contents: { text: { maxCharacters: 600 } },
+                    ...(Number.isInteger(Math.round(Number(toolInput.num_results))) && Number(toolInput.num_results) >= 1
+                        ? { numResults: Math.min(100, Math.round(Number(toolInput.num_results))) } : {}),
+                } : {};
                 res = await fetch(`/api/search/${p}`, {
                     method: 'POST',
                     headers: ctx.getRequestHeaders(),
-                    body: JSON.stringify({ query, ...(p === 'searxng' ? { baseUrl: toolInput.searxng_url } : {}) }),
+                    body: JSON.stringify({
+                        query,
+                        ...(p === 'searxng' ? { baseUrl: toolInput.searxng_url } : {}),
+                        ...exaExtras,
+                    }),
                 });
                 if (res.status !== 400) break;
             }

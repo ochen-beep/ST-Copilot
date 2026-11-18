@@ -16,6 +16,7 @@ const serperPayload = (n = 10, urlLen = 30) => ({
   })),
 });
 const zaiPayload = { search_result: [{ title: 'ZAI', link: 'https://z.ai/1', content: 'zai content' }] };
+const exaPayload = { requestId: 'r1', results: [{ title: 'EXA', url: 'https://exa.ai/1', text: 'exa page text' }, { title: 'EXA2', url: 'https://exa.ai/2', summary: 'exa summary', highlights: ['h1', 'h2'] }] };
 const tavilyPayload = { answer: 'direct answer', results: [{ title: 'T', url: 'https://t.com', content: 'tavily content' }] };
 
 let calls;
@@ -55,6 +56,26 @@ describe('search_web normalization', () => {
     expect(r.results[0].snippet).toBe('tavily content');
   });
 
+  it('maps exa results (text | summary | highlights fallbacks)', async () => {
+    route = () => ok(exaPayload);
+    const r = await engine.executeTool('search_web', { query: 'q', provider: 'exa' });
+    expect(r.provider).toBe('exa');
+    expect(r.results[0]).toEqual({ title: 'EXA', url: 'https://exa.ai/1', snippet: 'exa page text' });
+    expect(r.results[1].snippet).toBe('exa summary');
+    expect(r.results).toHaveLength(2);
+  });
+
+  it('exa request carries trimmed contents and num_results', async () => {
+    route = () => ok(exaPayload);
+    let body = null;
+    globalThis.fetch = async (url, opts) => { body = JSON.parse(opts.body); return ok(exaPayload); };
+    await engine.executeTool('search_web', { query: 'q', provider: 'exa', num_results: 8 });
+    expect(body.contents).toEqual({ text: { maxCharacters: 600 } });
+    expect(body.numResults).toBe(8);
+    await engine.executeTool('search_web', { query: 'q', provider: 'exa' });
+    expect(body.numResults).toBeUndefined();
+  });
+
   it('caps snippet length at 300 chars', async () => {
     route = () => ok({ organic: [{ title: 't', link: 'https://e.com', snippet: 'x'.repeat(500) }] });
     const r = await engine.executeTool('search_web', { query: 'q', provider: 'serper' });
@@ -87,7 +108,7 @@ describe('search_web provider fallback', () => {
     route = () => noKey();
     const r = await engine.executeTool('search_web', { query: 'q' });
     expect(r.error).toContain('None of the search providers');
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(5); // zai, tavily, serper, serpapi, exa
   });
 
   it('rejects unknown providers and searxng without a URL', async () => {

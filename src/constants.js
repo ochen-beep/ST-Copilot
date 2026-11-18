@@ -654,13 +654,14 @@ export const TOOL_DEFINITIONS = [
             name: 'search_web',
             label: 'Web Search',
             icon: 'fa-magnifying-glass',
-            description: 'Web search via the SillyTavern server. Requires a search provider key configured in ST Secrets (Z.AI, Tavily, Serper, SerpApi) or a SearXNG instance URL. Returns provider results (title/link/snippet). Follow up with read_url on promising links.',
+            description: 'Web search via the SillyTavern server. Requires a search provider key configured in ST Secrets (Z.AI, Tavily, Serper, SerpApi, Exa) or a SearXNG instance URL. Returns normalized results (title/url/snippet). Follow up with read_url on promising links. exa = neural/semantic search, good for broad or fuzzy queries.',
             settingKey: 'toolsEnabled_search_web',
             schema: {
                 type: 'object',
                 properties: {
                     query: { type: 'string', description: 'Search query' },
-                    provider: { type: 'string', enum: ['zai', 'tavily', 'serper', 'serpapi', 'searxng'], description: 'Search provider (default: zai)' },
+                    provider: { type: 'string', enum: ['zai', 'tavily', 'serper', 'serpapi', 'exa', 'searxng'], description: 'Search provider (default: zai)' },
+                    num_results: { type: 'number', description: 'exa only: max results 1-100 (default 5)' },
                     searxng_url: { type: 'string', description: 'SearXNG instance base URL (required when provider is searxng)' },
                 },
                 required: ['query'],
