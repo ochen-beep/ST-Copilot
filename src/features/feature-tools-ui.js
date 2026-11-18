@@ -4,13 +4,45 @@ import { _dbgAdd } from '../utils/util-debug.js';
 import { getSettings, saveSettings } from '../session.js';
 import { openSettingsPanel } from '../ui/ui-settings.js';
 
+function toolHost(url) {
+    try { return new URL(url).hostname; } catch (_) { return ''; }
+}
+
+// Human-readable result view for the cards the user actually reads: normalized
+// search hits become a link list, page reads become link + preview. Raw JSON
+// stays available in a collapsed details block — the model's copy lives in
+// context, the card is for the human.
+function humanToolResultHtml(name, result) {
+    if (!result || typeof result !== 'object') return null;
+    if (name === 'search_web' && Array.isArray(result.results) && result.results.length > 0 && typeof result.results[0] === 'object') {
+        const items = result.results.map(x => {
+            const title = String(x.title || toolHost(x.url) || 'результат');
+            const link = x.url
+                ? `<a href="${escHtml(String(x.url))}" target="_blank" rel="noopener noreferrer">${escHtml(title)}</a>`
+                : `<span>${escHtml(title)}</span>`;
+            const snip = x.snippet ? `<span class="scp-tool-hr-snippet"> — ${escHtml(String(x.snippet).slice(0, 220))}</span>` : '';
+            return `<li>${link}${snip}</li>`;
+        }).join('');
+        const answer = result.answer ? `<div class="scp-tool-hr-answer">${escHtml(String(result.answer))}</div>` : '';
+        const note = result.note ? `<div class="scp-tool-hr-note">${escHtml(String(result.note))}</div>` : '';
+        return `${answer}<ul class="scp-tool-hr-list">${items}</ul>${note}`;
+    }
+    if (name === 'read_url' && typeof result.url === 'string') {
+        const title = String(result.title || result.url);
+        const meta = result.total_length !== undefined ? `<span class="scp-tool-hr-meta">${escHtml(String(result.total_length))} симв.</span>` : '';
+        const text = result.text ? `<div class="scp-tool-hr-text">${escHtml(String(result.text).slice(0, 400))}${String(result.text).length > 400 ? '…' : ''}</div>` : '';
+        return `<div class="scp-tool-hr-link"><a href="${escHtml(result.url)}" target="_blank" rel="noopener noreferrer">${escHtml(title)}</a>${meta}</div>${text}`;
+    }
+    return null;
+}
+
 export function createToolCallEl(tc) {
     const item = document.createElement('div');
     item.className = 'scp-tool-call-item scp-inline-tool-call';
     item.dataset.toolId = tc.id;
     const def = TOOL_DEFINITIONS.find(d => d.name === tc.name);
     const iconClass = def?.icon || 'fa-screwdriver-wrench';
-    
+
     const isWarning = tc.status === 'warning';
     const statusClass = tc.status === 'running' ? 'running' : tc.status === 'error' ? 'error' : isWarning ? 'warning' : 'done';
     const statusLabel = tc.status === 'running' ? 'Выполняется' : tc.status === 'error' ? 'Ошибка' : isWarning ? 'Недоступно' : 'Готово';
@@ -21,6 +53,14 @@ export function createToolCallEl(tc) {
         ? '<span class="scp-tool-spin" style="font-size:11px">⟳</span>'
         : `<i class="fa-solid ${iconClass}" style="font-size:11px"></i>`;
 
+    const rawJson = escHtml(typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2));
+    const humanHtml = humanToolResultHtml(tc.name, tc.result);
+    const resultHtml = tc.result !== undefined
+        ? humanHtml
+            ? `<div class="scp-tool-call-section-label" style="margin-top:8px">Результат</div><div class="scp-tool-hr">${humanHtml}</div><details class="scp-tool-raw"><summary>JSON</summary><pre class="scp-tool-call-result${tc.status === 'error' ? ' error-result' : ''}" ${isWarning ? `style="${colorStyle}"` : ''}>${rawJson}</pre></details>`
+            : `<div class="scp-tool-call-section-label" style="margin-top:8px">Результат</div><pre class="scp-tool-call-result${tc.status === 'error' ? ' error-result' : ''}" ${isWarning ? `style="${colorStyle}"` : ''}>${rawJson}</pre>`
+        : '';
+
     item.innerHTML = `<div class="scp-tool-call-header">
 <div class="scp-tool-call-icon ${statusClass}" ${isWarning ? `style="${colorStyle}"` : ''}>${iconHtml}</div>
 <div class="scp-tool-call-name">${escHtml(def?.label || tc.name)}</div>
@@ -30,7 +70,7 @@ export function createToolCallEl(tc) {
 <div class="scp-tool-call-body">
 <div class="scp-tool-call-section-label">Ввод</div>
 <pre class="scp-tool-call-args">${escHtml(JSON.stringify(tc.input, null, 2))}</pre>
-${tc.result !== undefined ? `<div class="scp-tool-call-section-label" style="margin-top:8px">Результат</div><pre class="scp-tool-call-result${tc.status === 'error' ? ' error-result' : ''}" ${isWarning ? `style="${colorStyle}"` : ''}>${escHtml(typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2))}</pre>` : ''}
+${resultHtml}
 </div>`;
     item.querySelector('.scp-tool-call-header').addEventListener('click', () => {
         const isOpen = !item.classList.contains('open');

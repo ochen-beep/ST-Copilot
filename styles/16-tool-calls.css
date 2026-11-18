@@ -342,3 +342,18 @@
     margin: 0;
 }
 .scp-tc-group-body .scp-inline-tool-call:last-child { border-bottom: 1px solid rgba(255,255,255,0.08); }
+
+/* ── Human-readable tool results ── */
+.scp-tool-hr { font-size: 12px; line-height: 1.5; color: var(--scp-text); }
+.scp-tool-hr ul { margin: 4px 0; padding-left: 16px; display: flex; flex-direction: column; gap: 6px; }
+.scp-tool-hr a { color: var(--scp-accent); text-decoration: none; word-break: break-word; }
+.scp-tool-hr a:hover { text-decoration: underline; }
+.scp-tool-hr-snippet { color: var(--scp-text-muted); }
+.scp-tool-hr-answer { padding: 4px 8px; background: var(--scp-accent-bg); border-radius: 4px; margin-bottom: 4px; }
+.scp-tool-hr-note { font-size: 11px; color: var(--scp-text-muted); margin-top: 6px; font-style: italic; }
+.scp-tool-hr-meta { font-size: 10px; color: var(--scp-text-muted); margin-left: 6px; }
+.scp-tool-hr-text { margin-top: 6px; font-size: 11px; color: var(--scp-text-muted); max-height: 160px; overflow-y: auto; white-space: pre-wrap; }
+.scp-tool-raw summary { cursor: pointer; font-size: 10px; color: var(--scp-text-muted); opacity: .7; margin-top: 6px; user-select: none; list-style: none; }
+.scp-tool-raw summary::-webkit-details-marker { display: none; }
+.scp-tool-raw[open] summary { opacity: 1; }
+.scp-tool-raw pre { margin-top: 4px; }
