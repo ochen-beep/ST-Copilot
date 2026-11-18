@@ -10214,8 +10214,12 @@ ${scopeHtml}
                             ...exaExtras,
                         }),
                     });
-                    if (res.status !== 400) break;
+                    // 400 = no key for this provider; 404 = this ST server has no
+                    // route for it at all (unpatched install). Either way the
+                    // provider is unavailable here — skip to the next in the chain.
+                    if (res.status !== 400 && res.status !== 404) break;
                 }
+                if (res.status === 404) return { error: `Provider ${usedProvider} has no route on this ST server (/api/search/${usedProvider} missing) — the server needs the provider patch. Try another provider.` };
                 if (res.status === 400) return { error: `None of the search providers (${chain.join(', ')}) is configured: add an API key in ST Secrets or use a SearXNG instance URL.` };
                 if (!res.ok) return { error: `Search failed (HTTP ${res.status}).` };
                 const raw = await res.text();

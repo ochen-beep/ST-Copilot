@@ -117,3 +117,32 @@ describe('search_web provider fallback', () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe('search_web: unpatched server routes (404)', () => {
+    beforeEach(async () => {
+        engine = await import('../src/features/feature-tools-engine.js');
+        ctx.extensionSettings['st_copilot'] = { toolsEnabled: true };
+        calls = [];
+    });
+
+    it('404 on a provider (no route) falls through to a working one', async () => {
+        globalThis.fetch = async (url) => {
+            calls.push(String(url));
+            const u = String(url);
+            if (u.endsWith('/zai') || u.endsWith('/exa')) return { status: 404, ok: false, text: async () => '' };
+            if (u.endsWith('/tavily')) return { status: 400, ok: false, text: async () => '' };
+            if (u.endsWith('/serper')) return ok(serperPayload(1));
+            return { status: 400, ok: false, text: async () => '' };
+        };
+        const r = await engine.executeTool('search_web', { query: 'q', provider: 'exa' });
+        expect(calls.map(c => c.split('/').pop())).toEqual(['exa', 'zai', 'tavily', 'serper']);
+        expect(r.provider).toBe('serper');
+        expect(r.note).toContain('served by serper');
+    });
+
+    it('all-404 yields an explicit "server needs patch" error', async () => {
+        globalThis.fetch = async () => ({ status: 404, ok: false, text: async () => '' });
+        const r = await engine.executeTool('search_web', { query: 'q', provider: 'exa' });
+        expect(r.error).toContain('needs the provider patch');
+    });
+});
