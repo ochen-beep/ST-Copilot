@@ -146,3 +146,61 @@ describe('search_web: unpatched server routes (404)', () => {
         expect(r.error).toContain('needs the provider patch');
     });
 });
+
+describe('search_web: WebSearch extension as provider source of truth', () => {
+    beforeEach(async () => {
+        engine = await import('../src/features/feature-tools-engine.js');
+        ctx.extensionSettings['st_copilot'] = { toolsEnabled: true };
+        calls = [];
+        globalThis.fetch = async (url, opts) => {
+            calls.push(String(url));
+            const u = String(url);
+            if (u.endsWith('/serper')) return ok(serperPayload(1));
+            if (u.endsWith('/searxng')) return ok({ results: [] });
+            return noKey();
+        };
+    });
+
+    it('defaults to the WebSearch extension source when set', async () => {
+        ctx.extensionSettings['websearch'] = { source: 'serper' };
+        const r = await engine.executeTool('search_web', { query: 'q' });
+        expect(calls[0]).toBe('/api/search/serper');
+        expect(r.provider).toBe('serper');
+        expect(r.note).toBeUndefined();
+    });
+
+    it('explicit provider in the call wins over the WebSearch source', async () => {
+        ctx.extensionSettings['websearch'] = { source: 'serper' };
+        await engine.executeTool('search_web', { query: 'q', provider: 'zai' });
+        expect(calls[0]).toBe('/api/search/zai');
+    });
+
+    it('ignores WebSearch sources without server routes (extras/plugin)', async () => {
+        ctx.extensionSettings['websearch'] = { source: 'plugin' };
+        const r = await engine.executeTool('search_web', { query: 'q' });
+        expect(calls[0]).toBe('/api/search/zai');
+        expect(r.note).toContain('served by');
+    });
+
+    it('no WebSearch extension → legacy zai default', async () => {
+        const r = await engine.executeTool('search_web', { query: 'q' });
+        expect(calls[0]).toBe('/api/search/zai');
+    });
+
+    it('searxng_url is taken from the WebSearch extension when not passed', async () => {
+        ctx.extensionSettings['websearch'] = { source: 'searxng', searxng_url: 'http://searx.lan' };
+        let body = null;
+        globalThis.fetch = async (url, opts) => { body = JSON.parse(opts.body); calls.push(String(url)); return ok({ results: [] }); };
+        const r = await engine.executeTool('search_web', { query: 'q' });
+        expect(r.provider).toBe('searxng');
+        expect(body.baseUrl).toBe('http://searx.lan');
+    });
+
+    it('explicit searxng_url still wins over the extension value', async () => {
+        ctx.extensionSettings['websearch'] = { source: 'searxng', searxng_url: 'http://searx.lan' };
+        let body = null;
+        globalThis.fetch = async (url, opts) => { body = JSON.parse(opts.body); calls.push(String(url)); return ok({ results: [] }); };
+        await engine.executeTool('search_web', { query: 'q', searxng_url: 'http://override.lan' });
+        expect(body.baseUrl).toBe('http://override.lan');
+    });
+});

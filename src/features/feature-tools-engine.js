@@ -264,11 +264,19 @@ export async function executeTool(toolName, toolInput) {
             };
         }
         case 'search_web': {
-            const provider = String(toolInput.provider || 'zai');
+            // Default provider: the source configured in the WebSearch extension
+            // (shared extension_settings) — one place to pick a search engine and
+            // enter keys. An explicit provider in this call wins; sources without
+            // a matching server route (extras/koboldcpp/plugin) fall back to zai.
+            const ws = ctx.extensionSettings?.websearch;
+            const knownProviders = ['zai', 'tavily', 'serper', 'serpapi', 'exa', 'searxng'];
+            const wsSource = String(ws?.source || '');
+            const provider = String(toolInput.provider || (knownProviders.includes(wsSource) ? wsSource : 'zai'));
             const query = String(toolInput.query || '').trim();
             if (!query) return { error: 'Empty search query.' };
-            if (!['zai', 'tavily', 'serper', 'serpapi', 'exa', 'searxng'].includes(provider)) return { error: `Unknown provider: ${provider}.` };
-            if (provider === 'searxng' && !toolInput.searxng_url) return { error: 'provider=searxng requires the searxng_url parameter.' };
+            if (!knownProviders.includes(provider)) return { error: `Unknown provider: ${provider}.` };
+            const searxUrl = toolInput.searxng_url || ws?.searxng_url;
+            if (provider === 'searxng' && !searxUrl) return { error: 'provider=searxng requires the searxng_url parameter (or set it in the WebSearch extension).' };
             // On 400 (provider key missing server-side) try the next keyed provider
             // instead of burning a model round on the error; searxng needs a URL and never falls back.
             const keyedProviders = ['zai', 'tavily', 'serper', 'serpapi', 'exa'];
@@ -291,7 +299,7 @@ export async function executeTool(toolName, toolInput) {
                     headers: ctx.getRequestHeaders(),
                     body: JSON.stringify({
                         query,
-                        ...(p === 'searxng' ? { baseUrl: toolInput.searxng_url } : {}),
+                        ...(p === 'searxng' ? { baseUrl: searxUrl } : {}),
                         ...exaExtras,
                     }),
                 });
