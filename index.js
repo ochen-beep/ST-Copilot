@@ -1154,7 +1154,15 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
     // STORAGE_MIGRATION_V4_INIT/STORAGE_BUCKET_EMPTY_INIT fire on every page load).
     // Storage/session failures stay in: they are rare and explain data loss.
     const SIGNAL_PREFIXES = ['GEN_', 'TOOL_'];
+    // Apply outcomes live under excluded prefixes (LB_*/CHAR_*) but are rare,
+    // user-action results — kept explicitly, like the session/storage transitions.
     const SIGNAL_TYPES = new Set([
+        'LB_APPLY_DONE',
+        'CHAR_APPLY_DONE',
+        'CHATEDIT_APPLIED',
+        'SESSION_SWITCHED',
+        'SESSION_DELETED',
+        'SESSION_RENAMED',
         'STORAGE_BUCKET_LOADED',
         'STORAGE_WRITE_FAILED',
         'STORAGE_DELETE_FAILED',
@@ -4789,6 +4797,7 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
             : successfulChanges;
         for (const c of successfulChanges) delete c._resolvedBook;
 
+        _dbgAdd('LB_APPLY_DONE', { applied: applied.length, failedBooks: [...failedBooks] });
         if (applied.length > 0) {
             recordStat(SM.lb, applied.length);
             logLBHistoryChanges(applied, 'Accepted', afterMsgId);
@@ -6890,6 +6899,7 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
             logCharEditHistory(successLog, 'Applied', afterMsgId, char.name);
             toastr.success(`[Редактор персонажа] Применено изменений: ${successLog.length} к «${char.name}».`, EXT_DISPLAY);
         }
+        _dbgAdd('CHAR_APPLY_DONE', { applied: successLog.length, total: changes.length, char: char.name });
         // UI reconciles card states against this: a field that failed server-side
         // must stay pending instead of being marked applied.
         return successLog;
@@ -9070,6 +9080,7 @@ ${scopeHtml}
             await logChatEditHistory$1(successLog, 'Applied', afterMsgId);
             toastr.success(`[Редактор чата] Применено изменений: ${successLog.length}.`, EXT_DISPLAY);
         }
+        _dbgAdd('CHATEDIT_APPLIED', { applied: successLog.length, total: changes.length });
         // Возвращаем фактически применённые изменения: UI сверяется с ними,
         // чтобы не помечать «применено» правки, у которых не совпал якорь.
         return successLog;
@@ -19061,9 +19072,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                                 } else {
                                     const answer = await awaitAskUserAnswer(executeAskUser(res, streamMsgEl));
                                     if (answer?.__ask_timeout) {
+                                        _dbgAdd('ASK_USER_TIMEOUT', {});
                                         entry.result = { error: 'Пользователь не ответил за 5 минут.' };
                                         entry.status = 'warning';
                                     } else if (answer?.__ask_cancelled) {
+                                        _dbgAdd('ASK_USER_CANCELLED', { reason: answer.reason });
                                         entry.result = { error: `Ожидание ответа прервано (${answer.reason}).` };
                                         entry.status = 'error';
                                     } else {
@@ -19073,7 +19086,12 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                                 }
                             } else {
                                 entry.result = res;
-                                entry.status = 'done';
+                                // Tools report failures via { error } instead of
+                                // throwing (search_web provider fallback, guards) —
+                                // those must show red, not a green 'Готово'.
+                                entry.status = (res && typeof res === 'object' && typeof res.error === 'string' && res.error.trim())
+                                    ? 'error'
+                                    : 'done';
                             }
                             // Successful executions were invisible in the debug log —
                             // the interruption diagnosis needs the full per-tool trail.

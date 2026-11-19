@@ -24,7 +24,15 @@ const LF_KEY = 'st_copilot_event_log_v1';
 // STORAGE_MIGRATION_V4_INIT/STORAGE_BUCKET_EMPTY_INIT fire on every page load).
 // Storage/session failures stay in: they are rare and explain data loss.
 const SIGNAL_PREFIXES = ['GEN_', 'TOOL_'];
+// Apply outcomes live under excluded prefixes (LB_*/CHAR_*) but are rare,
+// user-action results — kept explicitly, like the session/storage transitions.
 const SIGNAL_TYPES = new Set([
+    'LB_APPLY_DONE',
+    'CHAR_APPLY_DONE',
+    'CHATEDIT_APPLIED',
+    'SESSION_SWITCHED',
+    'SESSION_DELETED',
+    'SESSION_RENAMED',
     'STORAGE_BUCKET_LOADED',
     'STORAGE_WRITE_FAILED',
     'STORAGE_DELETE_FAILED',

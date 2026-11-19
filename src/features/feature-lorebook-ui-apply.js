@@ -354,6 +354,7 @@ async function _applyLBChangesInner(changes, afterMsgId = null) {
         : successfulChanges;
     for (const c of successfulChanges) delete c._resolvedBook;
 
+    _dbgAdd('LB_APPLY_DONE', { applied: applied.length, failedBooks: [...failedBooks] });
     if (applied.length > 0) {
         recordStat(SM.lb, applied.length);
         logLBHistoryChanges(applied, 'Accepted', afterMsgId);

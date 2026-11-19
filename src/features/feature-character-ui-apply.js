@@ -1,5 +1,6 @@
 import { EXT_DISPLAY } from '../constants.js';
 import { getCurrentSession, addMessage } from '../session.js';
+import { _dbgAdd } from '../utils/util-debug.js';
 import { applyPatchToField } from '../utils/util-text.js';
 import { escHtml } from '../utils/util-dom.js';
 import { getCharFieldValue, saveCharacterField } from './feature-character-engine-apply.js';
@@ -78,6 +79,7 @@ export async function applyCharChanges(changes, char, afterMsgId = null) {
         logCharEditHistory(successLog, 'Applied', afterMsgId, char.name);
         toastr.success(`[Редактор персонажа] Применено изменений: ${successLog.length} к «${char.name}».`, EXT_DISPLAY);
     }
+    _dbgAdd('CHAR_APPLY_DONE', { applied: successLog.length, total: changes.length, char: char.name });
     // UI reconciles card states against this: a field that failed server-side
     // must stay pending instead of being marked applied.
     return successLog;

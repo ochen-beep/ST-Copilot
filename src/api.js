@@ -887,9 +887,11 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                             } else {
                                 const answer = await awaitAskUserAnswer(executeAskUser(res, streamMsgEl));
                                 if (answer?.__ask_timeout) {
+                                    _dbgAdd('ASK_USER_TIMEOUT', {});
                                     entry.result = { error: 'Пользователь не ответил за 5 минут.' };
                                     entry.status = 'warning';
                                 } else if (answer?.__ask_cancelled) {
+                                    _dbgAdd('ASK_USER_CANCELLED', { reason: answer.reason });
                                     entry.result = { error: `Ожидание ответа прервано (${answer.reason}).` };
                                     entry.status = 'error';
                                 } else {
@@ -899,7 +901,12 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                             }
                         } else {
                             entry.result = res;
-                            entry.status = 'done';
+                            // Tools report failures via { error } instead of
+                            // throwing (search_web provider fallback, guards) —
+                            // those must show red, not a green 'Готово'.
+                            entry.status = (res && typeof res === 'object' && typeof res.error === 'string' && res.error.trim())
+                                ? 'error'
+                                : 'done';
                         }
                         // Successful executions were invisible in the debug log —
                         // the interruption diagnosis needs the full per-tool trail.

@@ -39,8 +39,7 @@ describe('event log persistence', () => {
     it('load chatter (migration/empty-init/session events) stays out', async () => {
         recordEvent('STORAGE_MIGRATION_V4_INIT', {});
         recordEvent('STORAGE_BUCKET_EMPTY_INIT', {});
-        recordEvent('SESSION_CREATED', { id: 'x' });
-        recordEvent('SESSION_RENAMED', { id: 'x' });
+        recordEvent('SESSION_CREATED', { id: 'x' }); // boot chatter — stays out
         recordEvent('GEN_START', {});
         await flushEventLog();
         const lines = store[KEY] || [];

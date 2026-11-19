@@ -2,6 +2,7 @@ import { EXT_DISPLAY, CHAT_EDIT_FORMAT_BLOCK, DEFAULT_CHAT_EDIT_DIRECTIVE } from
 import { getCurrentSession, addMessage } from '../session.js';
 import { applyPatchToField, parseLooseJSON, proposalFenceBodyRegex, proposalStripRegexes } from '../utils/util-text.js';
 import { escHtml } from '../utils/util-dom.js';
+import { _dbgAdd } from '../utils/util-debug.js';
 
 export function buildChatEditAIInstructions(settings) {
     if (!settings.chatEditAIEnabled) return '';
@@ -478,6 +479,7 @@ export async function applyChatChanges(changes, afterMsgId = null) {
         await logChatEditHistory(successLog, 'Applied', afterMsgId);
         toastr.success(`[Редактор чата] Применено изменений: ${successLog.length}.`, EXT_DISPLAY);
     }
+    _dbgAdd('CHATEDIT_APPLIED', { applied: successLog.length, total: changes.length });
     // Возвращаем фактически применённые изменения: UI сверяется с ними,
     // чтобы не помечать «применено» правки, у которых не совпал якорь.
     return successLog;

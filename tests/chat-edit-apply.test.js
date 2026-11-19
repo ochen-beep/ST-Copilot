@@ -242,3 +242,28 @@ describe('fabricated msg_date: якоря доказывают идентичн�
         expect(SillyTavern.getContext().chat[0].mes).toContain('Cheap vietnamese');
     });
 });
+
+// The apply outcome is a persisted signal: one CHATEDIT_APPLIED line with
+// applied/total counts lands in the debug ring for every apply attempt.
+describe('applyChatChanges emits CHATEDIT_APPLIED', () => {
+    beforeEach(() => {
+        const ctx = SillyTavern.getContext();
+        ctx.chat = [
+            { mes: 'm0', is_user: false },
+            { mes: 'm1', is_user: true },
+        ];
+        ctx.saveChat = async () => {};
+    });
+
+    it('records applied/total after an apply attempt', async () => {
+        const { DBG_STATE } = await import('../src/state.js');
+        const before = DBG_STATE.log.length;
+        await applyChatChanges([
+            { action: 'replace', msg_index: 0, patches: [{ search: 'm0', replace: 'M0' }] },
+            { action: 'replace', msg_index: 0, patches: [{ search: 'ZZZ-НЕТ', replace: 'x' }] },
+        ]);
+        const ev = DBG_STATE.log.slice(before).find(e => e.type === 'CHATEDIT_APPLIED');
+        expect(ev).toBeTruthy();
+        expect(ev.payload).toEqual({ applied: 1, total: 2 });
+    });
+});
