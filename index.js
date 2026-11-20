@@ -18301,7 +18301,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         state.abortController = abort;
 
         const resolved = resolveUseStream(settings, nativeTools);
-        const useStream = resolved.useStream;
+        let useStream = resolved.useStream;
         nativeTools = resolved.nativeTools;
         const toolsPayload = nativeTools ? { tools: toOpenAITools(), tool_choice: 'auto' } : {};
 
