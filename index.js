@@ -18830,6 +18830,10 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         let streamReasoningSummaryEl = null;
         let streamReasoningStatusEl = null;
         let streamReasoningContentEl = null;
+        // Tracks whether the last reasoning chunk signalled completion: a provider
+        // failure mid-thinking never sends that chunk, and without this flag the
+        // pill would stay 'running' forever on an aborted reply.
+        let streamReasoningDoneSeen = false;
         let cursorEl = null;
         let isStreaming = false;
         let streamAccumText = '';
@@ -18858,6 +18862,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             if (reasoningRenderer) { reasoningRenderer.destroy(); reasoningRenderer = null; }
             if (cursorEl && cursorEl.parentNode) cursorEl.remove();
             cursorEl = null;
+        };
+
+        // Terminal pill states: a provider failure or user stop mid-thinking never
+        // delivers the chunk that flips the pill to 'done', so every finalize path
+        // marks it explicitly instead of leaving a stuck 'running' pill.
+        const failReasoningPill = (label) => {
+            if (!streamReasoningStatusEl) return;
+            streamReasoningStatusEl.classList.remove('running');
+            streamReasoningStatusEl.classList.add('error');
+            streamReasoningStatusEl.textContent = label;
         };
 
         const onChunk = (text, reasoning, reasoningMs, reasoningDone) => {
@@ -18956,6 +18970,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 streamReasoningBlockEl.style.display = '';
                 if (reasoningRenderer) reasoningRenderer.push(procReasoning);
                 const secs = reasoningMs ? (reasoningMs / 1000).toFixed(1) : null;
+                streamReasoningDoneSeen = reasoningDone;
                 if (streamReasoningStatusEl) {
                     streamReasoningStatusEl.textContent = reasoningDone
                         ? `Думал ${secs} с`
@@ -19402,6 +19417,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             }
 
             if (result === null) {
+                failReasoningPill('ОБРЫВ');
                 if (streamMsgId && isStreaming && streamAccumText) {
                     const msg = session.messages.find(m => m.id === streamMsgId);
                     // Сбой (не Stop — тот вышел раньше): частичный текст честно помечаем.
@@ -19422,6 +19438,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             }
 
             const { text: rawFullText, reasoning: fullReasoning } = result;
+            // Success with unfinished thinking (e.g. reasoning-only 'empty success'):
+            // the reply effectively failed, the pill must not say done/running.
+            if (!streamReasoningDoneSeen) failReasoningPill('ОБРЫВ');
             const rawNormalized = normalizeCharNamesInBlock(rawFullText); 
             processMemoryUpdates(rawNormalized, streamMsgId);
             const fullText = stripMemoryBlock(rawNormalized);
@@ -19505,6 +19524,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 }
             }
             if (!err?._stalled && (state.abortController?.signal?.aborted || state.generationStopped || err?.message === 'userStopped')) {
+                failReasoningPill('ОСТАНОВЛЕНО');
                 if (genCoord.isCurrent(run)) {
                     state.generating = false;
                     setGeneratingState(false);
@@ -19520,6 +19540,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             _dbgAdd('GEN_ERROR', { msg: err?.message || String(err), stack: err?.stack, round: genToolRound, accumulatedChars: accumulatedText.length });
             console.error(`[${EXT_DISPLAY}] Generation failed:`, err);
 
+            failReasoningPill('ОБРЫВ');
             showGenerationError(err);
         } finally {
             // Сбой/стоп посреди tool-раунда: временные tool-сообщения вычищаем из
