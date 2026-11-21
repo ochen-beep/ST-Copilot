@@ -252,7 +252,15 @@ export async function assembleMessages(session, settings, pendingUserText, pendi
     const messages = [{ role: 'system', content: await buildSystemContent(settings, genOpts) }];
     const depth = Math.max(0, parseInt(settings.contextDepth) || 0);
     const hasPicked = !!(session.pickedChatIndices && session.pickedChatIndices.length > 0);
-    
+
+    // Сжатая память (Summaryception) инжектится независимо от глубины чата:
+    // при depth=0 (агентный режим) резюме — единственная RP-память в промпте.
+    let summaryText = '';
+    if (settings.includeSummaryception !== false) {
+        const scSummary = _getSummaryceptionSummary();
+        if (scSummary) summaryText = `\n<summary_context>\n${scSummary}\n</summary_context>\n\n`;
+    }
+
     if (depth > 0 || hasPicked) {
         const slice = getMainChatSlice(depth);
         if (slice.length) {
@@ -291,17 +299,15 @@ export async function assembleMessages(session, settings, pendingUserText, pendi
                 return `<msg index="${m.chatIndex}" role="${m.role === 'user' ? 'user' : 'assistant'}">\n${m.content}\n</msg>`;
             }).join('\n\n');
             
-            let summaryText = '';
-            if (settings.includeSummaryception !== false) {
-                const scSummary = _getSummaryceptionSummary();
-                if (scSummary) summaryText = `\n<summary_context>\n${scSummary}\n</summary_context>\n\n`;
-            }
-
             const ctxAttr = hasPicked ? `picked_messages="${visibleSlice.length}"` : `last_messages="${visibleSlice.length}"`;
             messages.push({
                 role: 'user',
                 content: `<roleplay_context ${ctxAttr}>\n${summaryText}${block}\n\n</roleplay_context>`,
             });
+            messages.push({ role: 'assistant', content: 'Understood. I have reviewed the current roleplay context. How can I help?' });
+        } else if (summaryText) {
+            // depth=0 без слайса: резюме остаётся в промпте даже в агентном режиме
+            messages.push({ role: 'user', content: `<roleplay_context>\n${summaryText}\n\n</roleplay_context>` });
             messages.push({ role: 'assistant', content: 'Understood. I have reviewed the current roleplay context. How can I help?' });
         }
     }

@@ -865,6 +865,7 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
                     properties: {
                         count: { type: 'number', description: 'Number of recent messages to retrieve (default 10, max 50)' },
                         from_end: { type: 'boolean', description: 'If true, count from end of chat (default true)' },
+                        offset: { type: 'number', description: 'Only include messages at or after this chat index. Use with from_end:false and count to read the middle of a long chat, e.g. offset:N count:1 from_end:false reads message #N (default 0)' },
                         role: { type: 'string', enum: ['all', 'user', 'assistant'], description: 'Filter by role (default all)' },
                         full: { type: 'boolean', description: 'Return full untruncated text. REQUIRED before editing a message — anchors must quote the exact text (default false)' },
                     },
@@ -10324,9 +10325,13 @@ ${scopeHtml}
                 const role = toolInput.role || 'all';
                 // full=true: модель обязана видеть точный текст перед правкой (якоря дословные).
                 const maxLen = toolInput.full ? 20000 : 600;
+                // offset режет по индексам нативного чата — тому же пространству, что
+                // в поле index результатов: «прочитай сообщение №N» = offset:N, count:1.
+                const offset = Math.max(0, parseInt(toolInput.offset) || 0);
                 let filtered = (ctx.chat || []).map((m, i) => ({ ...m, _idx: i })).filter(m => !isMsgHidden(m, incHidden));
                 if (role === 'user') filtered = filtered.filter(m => m.is_user);
                 if (role === 'assistant') filtered = filtered.filter(m => !m.is_user);
+                if (offset > 0) filtered = filtered.filter(m => m._idx >= offset);
                 if (fromEnd) filtered = filtered.slice(-count);
                 else filtered = filtered.slice(0, count);
                 return {
@@ -13852,12 +13857,24 @@ ${resultHtml}
             const tempSession = { ...session, messages: session.messages.filter(m => m.id !== msgId) };
             if (!apiMod) throw new Error("API module not loaded");
             
-            const builtMessages = await apiMod.assembleMessages(tempSession, settings, null);
+            // Регенерация — single-shot без tools-цикла: noTools убирает блок инструментов
+            // из промпта (иначе модель зовёт их и обрезается посреди текста), а GEN_START
+            // держит путь в дебаг-логе наравне с runGenerate/runContinue.
+            const builtMessages = await apiMod.assembleMessages(tempSession, settings, null, null, { noTools: true });
             // Same text-only flattening as runGenerate: array content (attachments)
             // would string-join as "[object Object]" and poison the token cache.
             const fullPromptText = builtMessages.map(m => typeof m.content === 'string' ? m.content
                 : (Array.isArray(m.content) ? m.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : '')).join('\n');
             const tokensIn = await apiMod.estimateTokens(fullPromptText);
+            _dbgAdd('GEN_START', {
+                src: settings.connectionSource,
+                profile: settings.connectionProfileId || null,
+                maxTokens: settings.maxTokens,
+                streaming: settings.forceStreaming,
+                ctxDepth: settings.contextDepth,
+                tokensIn,
+                path: 'swipe-regen',
+            });
 
             const result = await apiMod.callGenerate(tempSession, settings, null, onChunk);
             cleanupCursor();
@@ -17571,7 +17588,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const messages = [{ role: 'system', content: await buildSystemContent(settings, genOpts) }];
         const depth = Math.max(0, parseInt(settings.contextDepth) || 0);
         const hasPicked = !!(session.pickedChatIndices && session.pickedChatIndices.length > 0);
-        
+
+        // Сжатая память (Summaryception) инжектится независимо от глубины чата:
+        // при depth=0 (агентный режим) резюме — единственная RP-память в промпте.
+        let summaryText = '';
+        if (settings.includeSummaryception !== false) {
+            const scSummary = _getSummaryceptionSummary();
+            if (scSummary) summaryText = `\n<summary_context>\n${scSummary}\n</summary_context>\n\n`;
+        }
+
         if (depth > 0 || hasPicked) {
             const slice = getMainChatSlice(depth);
             if (slice.length) {
@@ -17610,17 +17635,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     return `<msg index="${m.chatIndex}" role="${m.role === 'user' ? 'user' : 'assistant'}">\n${m.content}\n</msg>`;
                 }).join('\n\n');
                 
-                let summaryText = '';
-                if (settings.includeSummaryception !== false) {
-                    const scSummary = _getSummaryceptionSummary();
-                    if (scSummary) summaryText = `\n<summary_context>\n${scSummary}\n</summary_context>\n\n`;
-                }
-
                 const ctxAttr = hasPicked ? `picked_messages="${visibleSlice.length}"` : `last_messages="${visibleSlice.length}"`;
                 messages.push({
                     role: 'user',
                     content: `<roleplay_context ${ctxAttr}>\n${summaryText}${block}\n\n</roleplay_context>`,
                 });
+                messages.push({ role: 'assistant', content: 'Understood. I have reviewed the current roleplay context. How can I help?' });
+            } else if (summaryText) {
+                // depth=0 без слайса: резюме остаётся в промпте даже в агентном режиме
+                messages.push({ role: 'user', content: `<roleplay_context>\n${summaryText}\n\n</roleplay_context>` });
                 messages.push({ role: 'assistant', content: 'Understood. I have reviewed the current roleplay context. How can I help?' });
             }
         }
@@ -18939,6 +18962,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 tokensIn
             });
 
+            // Диагностика, не блокировка: промпт крупнее заявленного окна — в дебаг-лог
+            // для разбора (провайдер вправе молча деградировать, см. GEN_DONE chars:0).
+            const stCtx = SillyTavern.getContext();
+            const stWindow = stCtx.chatCompletionSettings?.openai_max_context
+                || stCtx.textCompletionSettings?.max_context
+                || window.token_max || 0;
+            if (stWindow > 0 && tokensIn > stWindow) {
+                _dbgAdd('GEN_OVER_WINDOW', { tokensIn, window: stWindow, maxTokens: settings.maxTokens });
+            }
+
             const nativeTools = settings.toolsEnabled && settings.toolsProtocol === 'native';
             // Transparent retry for a failure before any streamed output (setting:
             // toolsGenRetryMax). A failure after output started is NOT retried here —
@@ -18953,8 +18986,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
             cleanupCursor();
 
-            if (result && !result.text.trim() && !result.reasoning?.trim()) {
-                toastr.warning('⚠ Генерация не удалась: ИИ вернул пустой ответ.', EXT_DISPLAY, { timeOut: 10000 });
+            // Reasoning без текста — тоже сбой (провайдер проглотил ошибку и вернул
+            // «пустой успех»). Пустой текст при нативных tool_calls — норма (модель
+            // сразу зовёт инструмент), при текстовом протоколе фенс остаётся в text.
+            if (result && !String(result.text || '').trim() && !(result.toolCalls || []).length) {
+                toastr.warning('⚠ Генерация не удалась: ИИ вернул пустой ответ (только размышления). Попробуйте повторить или уменьшить контекст.', EXT_DISPLAY, { timeOut: 10000 });
             }
 
             if (result !== null && settings.toolsEnabled && getEnabledTools().length > 0) {
@@ -19575,7 +19611,9 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         };
 
         try {
-            const fullMessages = await assembleMessages(session, settings, CONTINUE_PROMPT);
+            // Продолжение идёт без tools-цикла: не рекламуем инструменты в промпте,
+            // иначе модель пытается их звать и обрезается GEN_TOOL_CALL_CUT посреди текста.
+            const fullMessages = await assembleMessages(session, settings, CONTINUE_PROMPT, null, { noTools: true });
             const fullPromptText = fullMessages.map(m => typeof m.content === 'string' ? m.content
                 : (Array.isArray(m.content) ? m.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : '')).join('\n');
             

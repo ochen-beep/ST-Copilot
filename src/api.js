@@ -748,8 +748,9 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
         // Диагностика, не блокировка: промпт крупнее заявленного окна — в дебаг-лог
         // для разбора (провайдер вправе молча деградировать, см. GEN_DONE chars:0).
-        const stWindow = ctx.chatCompletionSettings?.openai_max_context
-            || ctx.textCompletionSettings?.max_context
+        const stCtx = SillyTavern.getContext();
+        const stWindow = stCtx.chatCompletionSettings?.openai_max_context
+            || stCtx.textCompletionSettings?.max_context
             || window.token_max || 0;
         if (stWindow > 0 && tokensIn > stWindow) {
             _dbgAdd('GEN_OVER_WINDOW', { tokensIn, window: stWindow, maxTokens: settings.maxTokens });
