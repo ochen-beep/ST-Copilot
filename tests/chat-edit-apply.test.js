@@ -267,3 +267,57 @@ describe('applyChatChanges emits CHATEDIT_APPLIED', () => {
         expect(ev.payload).toEqual({ applied: 1, total: 2 });
     });
 });
+
+describe('applyChatChanges: fabricated msg_dates + anchor fallback (msg_indices)', () => {
+    beforeEach(() => {
+        const ctx = SillyTavern.getContext();
+        ctx.chat = [
+            { mes: 'а не слушать || на пятилетку.', is_user: true, send_date: '2026-03-28T03:07:01.595Z' },
+            { mes: 'Боги, Кроу, смылись || с ручника.', is_user: false, send_date: '2026-03-28T19:01:59.989Z' },
+            { mes: ' filler ', is_user: false, send_date: '2026-03-28T20:00:00.000Z' },
+        ];
+        ctx.saveChat = async () => {};
+        ctx.saveChatConditional = async () => {};
+    });
+
+    it('replace с выдуманными датами и конкретными якорями применяется по якорям', async () => {
+        // One change per message: every patch of a change targets that message.
+        const changes = [
+            {
+                action: 'replace',
+                msg_indices: [0],
+                msg_dates: ['2026-03-28T22:31:39.117Z'],
+                patches: [{ search: 'а не слушать || на пятилетку.', replace: 'а не слушать ваши планы на годы вперёд.' }],
+            },
+            {
+                action: 'replace',
+                msg_indices: [1],
+                msg_dates: ['2026-03-28T23:02:12.784Z'],
+                patches: [{ search: 'смылись || с ручника.', replace: 'очинись уже.' }],
+            },
+        ];
+        const applied = await applyChatChanges(changes);
+        expect(applied).toEqual(changes);
+        expect(SillyTavern.getContext().chat[0].mes).toContain('ваши планы');
+        expect(SillyTavern.getContext().chat[1].mes).toContain('очинись');
+    });
+
+    it('replace с выдуманными датами и короткими якорями пропускается', async () => {
+        const change = {
+            action: 'replace',
+            msg_indices: [0],
+            msg_dates: ['2026-03-28T22:31:39.117Z'],
+            patches: [{ search: 'а не', replace: 'X' }],
+        };
+        const applied = await applyChatChanges([change]);
+        expect(applied).toEqual([]);
+        expect(SillyTavern.getContext().chat[0].mes).toBe('а не слушать || на пятилетку.');
+    });
+
+    it('delete с выдуманными датами по-прежнему жёстко пропускается', async () => {
+        const change = { action: 'delete', msg_indices: [0], msg_dates: ['2026-03-28T22:31:39.117Z'] };
+        const applied = await applyChatChanges([change]);
+        expect(applied).toEqual([]);
+        expect(SillyTavern.getContext().chat).toHaveLength(3);
+    });
+});

@@ -97,12 +97,25 @@ export function renderChatProposalCard(changes, msgEl) {
         // Identity guard (send_date): dates, when present in the proposal, must
         // match the live messages — a mismatch means the chat shifted since the
         // proposals were made and applying would hit the wrong messages.
+        // Exception mirrors the apply-side policy: for anchor-backed actions
+        // ('replace', 'bulk_replace') specific anchors (>= 12 chars) prove
+        // identity better than a model-recalled date — a stale date with such
+        // anchors falls through to the anchor validation below instead of a
+        // hard reject. Models fabricate msg_dates when no fresh
+        // get_recent_messages ran this turn; the anchors still match.
+        const anchorsSpecific = change.action === 'replace'
+            ? (change.patches || []).every(p => ((p.search ?? '') || p.anchor || '').trim().length >= 12)
+            : change.action === 'bulk_replace'
+                ? (change.replacements || []).every(rp => ((rp.search ?? '') || rp.anchor || '').trim().length >= 12)
+                : false;
         if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
             const stale = change.msg_indices.some(i => !msgDateMatches(stMsgs[i], msgDateFor(change, i)));
-            if (stale) return { valid: false, reason: 'Сообщение изменилось с момента proposals (send_date не совпал) — запросите свежий get_recent_messages' };
+            if (stale && !anchorsSpecific) return { valid: false, reason: 'Сообщение изменилось с момента proposals (send_date не совпал) — запросите свежий get_recent_messages' };
         } else if (typeof change.msg_index === 'number') {
             const m = stMsgs[change.msg_index];
-            if (m && !msgDateMatches(m, change.msg_date)) return { valid: false, reason: 'Сообщение изменилось с момента proposals (send_date не совпал) — запросите свежий get_recent_messages' };
+            // Single-message replace: the engine verifies anchors in that exact
+            // message (no specificity gate there), so fall through the same way.
+            if (m && !msgDateMatches(m, change.msg_date) && change.action !== 'replace') return { valid: false, reason: 'Сообщение изменилось с момента proposals (send_date не совпал) — запросите свежий get_recent_messages' };
         }
         let startIdx, endIdx;
         if (['bulk_replace', 'regex', 'hide', 'unhide'].includes(change.action)) {

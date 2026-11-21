@@ -364,12 +364,29 @@ export async function applyChatChanges(changes, afterMsgId = null) {
             if (Array.isArray(change.msg_indices) && change.msg_indices.length) {
                 let allSuccess = true;
                 const dated = change.msg_indices.filter(i => msgDateMatches(msgs[shifted(i)], msgDateFor(change, i)));
-                if (dated.length < change.msg_indices.length) {
-                    toastr.warning(`[Редактор чата] ${change.msg_indices.length - dated.length} сообщ. пропущено: send_date не совпал (чат менялся с момента proposals)`, EXT_DISPLAY, { timeOut: 8000 });
-                    allSuccess = false;
+                const dateStale = change.msg_indices.length - dated.length;
+                let includeIndices = dated;
+                if (dateStale) {
+                    // Same policy as bulk_replace above: for 'replace' the patch
+                    // anchors prove identity better than a model-recalled date
+                    // (models fabricate msg_dates when no fresh snapshot ran this
+                    // turn). Only distinctive anchors (>= 12 chars) are trusted —
+                    // each patch is re-verified inside the target message below.
+                    // Other actions mutate unconditionally, so they keep the hard
+                    // date filter.
+                    const anchorsSpecific = change.action === 'replace'
+                        && (change.patches || []).every(p => ((p.search ?? '') || p.anchor || '').trim().length >= 12);
+                    if (!anchorsSpecific) {
+                        toastr.warning(`[Редактор чата] ${dateStale} сообщ. пропущено: send_date не совпал (чат менялся с момента proposals)`, EXT_DISPLAY, { timeOut: 8000, preventDuplicates: true });
+                        allSuccess = false;
+                        if (!dated.length) continue;
+                    } else {
+                        toastr.warning(`[Редактор чата] ${dateStale} сообщ.: send_date не совпал — применяю по совпадению якорей`, EXT_DISPLAY, { timeOut: 8000, preventDuplicates: true });
+                        includeIndices = change.msg_indices;
+                    }
                 }
-                if (!dated.length) continue;
-                const sortedIndices = dated.map(shifted).sort((a, b) =>
+                if (!includeIndices.length) continue;
+                const sortedIndices = includeIndices.map(shifted).sort((a, b) =>
                     change.action === 'delete' ? b - a : a - b
                 );
                 let deletedCount = 0;
