@@ -746,6 +746,15 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
             tokensIn
         });
 
+        // Диагностика, не блокировка: промпт крупнее заявленного окна — в дебаг-лог
+        // для разбора (провайдер вправе молча деградировать, см. GEN_DONE chars:0).
+        const stWindow = ctx.chatCompletionSettings?.openai_max_context
+            || ctx.textCompletionSettings?.max_context
+            || window.token_max || 0;
+        if (stWindow > 0 && tokensIn > stWindow) {
+            _dbgAdd('GEN_OVER_WINDOW', { tokensIn, window: stWindow, maxTokens: settings.maxTokens });
+        }
+
         const nativeTools = settings.toolsEnabled && settings.toolsProtocol === 'native';
         // Transparent retry for a failure before any streamed output (setting:
         // toolsGenRetryMax). A failure after output started is NOT retried here —
@@ -760,8 +769,11 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
 
         cleanupCursor();
 
-        if (result && !result.text.trim() && !result.reasoning?.trim()) {
-            toastr.warning('⚠ Генерация не удалась: ИИ вернул пустой ответ.', EXT_DISPLAY, { timeOut: 10000 });
+        // Reasoning без текста — тоже сбой (провайдер проглотил ошибку и вернул
+        // «пустой успех»). Пустой текст при нативных tool_calls — норма (модель
+        // сразу зовёт инструмент), при текстовом протоколе фенс остаётся в text.
+        if (result && !String(result.text || '').trim() && !(result.toolCalls || []).length) {
+            toastr.warning('⚠ Генерация не удалась: ИИ вернул пустой ответ (только размышления). Попробуйте повторить или уменьшить контекст.', EXT_DISPLAY, { timeOut: 10000 });
         }
 
         if (result !== null && settings.toolsEnabled && getEnabledTools().length > 0) {
@@ -1382,7 +1394,9 @@ export async function runContinue(session, targetMsgId) {
     };
 
     try {
-        const fullMessages = await assembleMessages(session, settings, CONTINUE_PROMPT);
+        // Продолжение идёт без tools-цикла: не рекламуем инструменты в промпте,
+        // иначе модель пытается их звать и обрезается GEN_TOOL_CALL_CUT посреди текста.
+        const fullMessages = await assembleMessages(session, settings, CONTINUE_PROMPT, null, { noTools: true });
         const fullPromptText = fullMessages.map(m => typeof m.content === 'string' ? m.content
             : (Array.isArray(m.content) ? m.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : '')).join('\n');
         

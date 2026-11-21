@@ -216,12 +216,24 @@ export async function _runSwipeRegen(session, msgId, wrapEl) {
         const tempSession = { ...session, messages: session.messages.filter(m => m.id !== msgId) };
         if (!apiMod) throw new Error("API module not loaded");
         
-        const builtMessages = await apiMod.assembleMessages(tempSession, settings, null);
+        // Регенерация — single-shot без tools-цикла: noTools убирает блок инструментов
+        // из промпта (иначе модель зовёт их и обрезается посреди текста), а GEN_START
+        // держит путь в дебаг-логе наравне с runGenerate/runContinue.
+        const builtMessages = await apiMod.assembleMessages(tempSession, settings, null, null, { noTools: true });
         // Same text-only flattening as runGenerate: array content (attachments)
         // would string-join as "[object Object]" and poison the token cache.
         const fullPromptText = builtMessages.map(m => typeof m.content === 'string' ? m.content
             : (Array.isArray(m.content) ? m.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : '')).join('\n');
         const tokensIn = await apiMod.estimateTokens(fullPromptText);
+        _dbgAdd('GEN_START', {
+            src: settings.connectionSource,
+            profile: settings.connectionProfileId || null,
+            maxTokens: settings.maxTokens,
+            streaming: settings.forceStreaming,
+            ctxDepth: settings.contextDepth,
+            tokensIn,
+            path: 'swipe-regen',
+        });
 
         const result = await apiMod.callGenerate(tempSession, settings, null, onChunk);
         cleanupCursor();
