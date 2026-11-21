@@ -155,3 +155,19 @@ describe('setupCodeBlockActions: делегированное копирован
         expect(writeText).not.toHaveBeenCalled();
     });
 });
+
+describe('renderMarkdown: языки фенсов с дефисом', () => {
+    it('сохраняет полный тег lorebook-changes и не утекает в контент', () => {
+        const html = renderMarkdown('```lorebook-changes\n{"changes":[1]}\n```');
+        expect(html).toContain('lang-lorebook-changes');
+        expect(html).toContain('{"changes":[1]}');
+        expect(html).not.toContain('>-changes');
+    });
+
+    it('полный тег и в незакрытом фенсе', () => {
+        const html = renderMarkdown('текст\n```memory-update\n{"k":1}');
+        expect(html).toContain('lang-memory-update');
+        expect(html).toContain('{"k":1}');
+        expect(html).not.toContain('>-update');
+    });
+});

@@ -45,7 +45,9 @@ export function renderMarkdown(text) {
         );
         return `\x00B${i}\x00`;
     };
-    let out = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    // [\w-]: теги фенсов содержат дефисы (lorebook-changes, memory-update) —
+    // \w* обрезал язык по дефису и хвост тега утекал в контент блока.
+    let out = text.replace(/```([\w-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
         if (lang && lang.toLowerCase() === 'html') {
             const id = `scp-hb-${state.htmlBlockCounter++}`;
             state.htmlBlockRegistry.set(id, code.trim());
@@ -63,7 +65,7 @@ export function renderMarkdown(text) {
     // как код-блок до конца текста, иначе сырой маркер ``` висит в сообщении.
     // html-фенс тут сознательно НЕ исполняется: частичный скрипт запускать нельзя.
     if (/```/.test(out)) {
-        out = out.replace(/```(\w*)\n?([\s\S]*)$/, (_, lang, code) => pushCodeBlock(lang, code));
+        out = out.replace(/```([\w-]*)\n?([\s\S]*)$/, (_, lang, code) => pushCodeBlock(lang, code));
     }
 
     out = out.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
