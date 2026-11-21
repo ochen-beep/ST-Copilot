@@ -432,7 +432,7 @@ export function _renderMsgBodyContent(msgEl, msg) {
         if (!rBlock) {
             rBlock = document.createElement('details');
             rBlock.className = 'scp-reasoning-block';
-            rBlock.innerHTML = `<summary class="scp-reasoning-summary">Размышления</summary><div class="scp-reasoning-content"></div>`;
+            rBlock.innerHTML = `<summary class="scp-reasoning-summary"><span class="scp-reasoning-label">Размышления</span><span class="scp-tc-group-chevron">▶</span></summary><div class="scp-reasoning-content"></div>`;
             body.insertBefore(rBlock, body.firstChild);
         }
         rBlock.style.display = '';

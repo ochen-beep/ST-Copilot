@@ -582,6 +582,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
     let streamContentEl = null;
     let streamReasoningBlockEl = null;
     let streamReasoningSummaryEl = null;
+    let streamReasoningStatusEl = null;
     let streamReasoningContentEl = null;
     let cursorEl = null;
     let isStreaming = false;
@@ -633,9 +634,14 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 streamReasoningBlockEl = document.createElement('details');
                 streamReasoningBlockEl.className = 'scp-reasoning-block';
                 streamReasoningBlockEl.style.display = 'none';
+                // Единая анатомия гармошки с тулами: [метка] [статус-пилюля] [▶].
+                // Классы пилюли/шеврона общие с 16-tool-calls.css.
                 streamReasoningSummaryEl = document.createElement('summary');
                 streamReasoningSummaryEl.className = 'scp-reasoning-summary';
-                streamReasoningSummaryEl.textContent = 'Думаю…';
+                streamReasoningSummaryEl.innerHTML = '<span class="scp-reasoning-label">Размышления</span>'
+                    + '<span class="scp-reasoning-status scp-tool-call-status running">Думаю…</span>'
+                    + '<span class="scp-tc-group-chevron">▶</span>';
+                streamReasoningStatusEl = streamReasoningSummaryEl.querySelector('.scp-reasoning-status');
                 streamReasoningContentEl = document.createElement('div');
                 streamReasoningContentEl.className = 'scp-reasoning-content';
                 streamReasoningBlockEl.appendChild(streamReasoningSummaryEl);
@@ -704,9 +710,13 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
             streamReasoningBlockEl.style.display = '';
             if (reasoningRenderer) reasoningRenderer.push(procReasoning);
             const secs = reasoningMs ? (reasoningMs / 1000).toFixed(1) : null;
-            streamReasoningSummaryEl.textContent = reasoningDone
-                ? `Думал ${secs} с`
-                : secs ? `Думаю ${secs} с…` : 'Думаю…';
+            if (streamReasoningStatusEl) {
+                streamReasoningStatusEl.textContent = reasoningDone
+                    ? `Думал ${secs} с`
+                    : secs ? `Думаю ${secs} с…` : 'Думаю…';
+                streamReasoningStatusEl.classList.toggle('running', !reasoningDone);
+                streamReasoningStatusEl.classList.toggle('done', reasoningDone);
+            }
         }
 
         // Инкрементальный рендер: рендерер фиксирует дельту по безопасным

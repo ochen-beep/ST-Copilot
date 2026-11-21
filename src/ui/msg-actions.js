@@ -536,7 +536,7 @@ export function handleEdit(wrapEl, msg) {
         } else {
             const nb = document.createElement('details');
             nb.className = 'scp-reasoning-block';
-            nb.innerHTML = `<summary class="scp-reasoning-summary">Размышления</summary><div class="scp-reasoning-content"></div>`;
+            nb.innerHTML = `<summary class="scp-reasoning-summary"><span class="scp-reasoning-label">Размышления</span><span class="scp-tc-group-chevron">▶</span></summary><div class="scp-reasoning-content"></div>`;
             rc = nb.querySelector('.scp-reasoning-content');
             rc.innerHTML = renderMarkdown(msg.reasoning);
             const body = wrapEl.querySelector('.scp-msg-body');

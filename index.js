@@ -14177,7 +14177,7 @@ ${resultHtml}
             } else {
                 const nb = document.createElement('details');
                 nb.className = 'scp-reasoning-block';
-                nb.innerHTML = `<summary class="scp-reasoning-summary">Размышления</summary><div class="scp-reasoning-content"></div>`;
+                nb.innerHTML = `<summary class="scp-reasoning-summary"><span class="scp-reasoning-label">Размышления</span><span class="scp-tc-group-chevron">▶</span></summary><div class="scp-reasoning-content"></div>`;
                 rc = nb.querySelector('.scp-reasoning-content');
                 rc.innerHTML = renderMarkdown(msg.reasoning);
                 const body = wrapEl.querySelector('.scp-msg-body');
@@ -14778,7 +14778,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             if (!rBlock) {
                 rBlock = document.createElement('details');
                 rBlock.className = 'scp-reasoning-block';
-                rBlock.innerHTML = `<summary class="scp-reasoning-summary">Размышления</summary><div class="scp-reasoning-content"></div>`;
+                rBlock.innerHTML = `<summary class="scp-reasoning-summary"><span class="scp-reasoning-label">Размышления</span><span class="scp-tc-group-chevron">▶</span></summary><div class="scp-reasoning-content"></div>`;
                 body.insertBefore(rBlock, body.firstChild);
             }
             rBlock.style.display = '';
@@ -18798,6 +18798,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         let streamContentEl = null;
         let streamReasoningBlockEl = null;
         let streamReasoningSummaryEl = null;
+        let streamReasoningStatusEl = null;
         let streamReasoningContentEl = null;
         let cursorEl = null;
         let isStreaming = false;
@@ -18849,9 +18850,14 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     streamReasoningBlockEl = document.createElement('details');
                     streamReasoningBlockEl.className = 'scp-reasoning-block';
                     streamReasoningBlockEl.style.display = 'none';
+                    // Единая анатомия гармошки с тулами: [метка] [статус-пилюля] [▶].
+                    // Классы пилюли/шеврона общие с 16-tool-calls.css.
                     streamReasoningSummaryEl = document.createElement('summary');
                     streamReasoningSummaryEl.className = 'scp-reasoning-summary';
-                    streamReasoningSummaryEl.textContent = 'Думаю…';
+                    streamReasoningSummaryEl.innerHTML = '<span class="scp-reasoning-label">Размышления</span>'
+                        + '<span class="scp-reasoning-status scp-tool-call-status running">Думаю…</span>'
+                        + '<span class="scp-tc-group-chevron">▶</span>';
+                    streamReasoningStatusEl = streamReasoningSummaryEl.querySelector('.scp-reasoning-status');
                     streamReasoningContentEl = document.createElement('div');
                     streamReasoningContentEl.className = 'scp-reasoning-content';
                     streamReasoningBlockEl.appendChild(streamReasoningSummaryEl);
@@ -18920,9 +18926,13 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 streamReasoningBlockEl.style.display = '';
                 if (reasoningRenderer) reasoningRenderer.push(procReasoning);
                 const secs = reasoningMs ? (reasoningMs / 1000).toFixed(1) : null;
-                streamReasoningSummaryEl.textContent = reasoningDone
-                    ? `Думал ${secs} с`
-                    : secs ? `Думаю ${secs} с…` : 'Думаю…';
+                if (streamReasoningStatusEl) {
+                    streamReasoningStatusEl.textContent = reasoningDone
+                        ? `Думал ${secs} с`
+                        : secs ? `Думаю ${secs} с…` : 'Думаю…';
+                    streamReasoningStatusEl.classList.toggle('running', !reasoningDone);
+                    streamReasoningStatusEl.classList.toggle('done', reasoningDone);
+                }
             }
 
             // Инкрементальный рендер: рендерер фиксирует дельту по безопасным
