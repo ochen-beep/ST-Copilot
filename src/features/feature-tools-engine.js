@@ -380,9 +380,13 @@ export async function executeTool(toolName, toolInput) {
             const role = toolInput.role || 'all';
             // full=true: модель обязана видеть точный текст перед правкой (якоря дословные).
             const maxLen = toolInput.full ? 20000 : 600;
+            // offset режет по индексам нативного чата — тому же пространству, что
+            // в поле index результатов: «прочитай сообщение №N» = offset:N, count:1.
+            const offset = Math.max(0, parseInt(toolInput.offset) || 0);
             let filtered = (ctx.chat || []).map((m, i) => ({ ...m, _idx: i })).filter(m => !isMsgHidden(m, incHidden));
             if (role === 'user') filtered = filtered.filter(m => m.is_user);
             if (role === 'assistant') filtered = filtered.filter(m => !m.is_user);
+            if (offset > 0) filtered = filtered.filter(m => m._idx >= offset);
             if (fromEnd) filtered = filtered.slice(-count);
             else filtered = filtered.slice(0, count);
             return {

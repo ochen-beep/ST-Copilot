@@ -629,6 +629,7 @@ export const TOOL_DEFINITIONS = [
                 properties: {
                     count: { type: 'number', description: 'Number of recent messages to retrieve (default 10, max 50)' },
                     from_end: { type: 'boolean', description: 'If true, count from end of chat (default true)' },
+                    offset: { type: 'number', description: 'Only include messages at or after this chat index. Use with from_end:false and count to read the middle of a long chat, e.g. offset:N count:1 from_end:false reads message #N (default 0)' },
                     role: { type: 'string', enum: ['all', 'user', 'assistant'], description: 'Filter by role (default all)' },
                     full: { type: 'boolean', description: 'Return full untruncated text. REQUIRED before editing a message — anchors must quote the exact text (default false)' },
                 },
