@@ -1431,9 +1431,15 @@ export async function runContinue(session, targetMsgId) {
         processMemoryUpdates(rawContinuation, targetMsgId);
         const continuation = stripMemoryBlock(rawContinuation);
         const combined = _joinContinuation(originalContent, continuation);
-        
+
         if (isMaxTokens) {
             toastr.warning('Генерация остановлена: достигнут лимит максимальных токенов ответа.', EXT_DISPLAY, { timeOut: 10000 });
+        }
+        // Пустое продолжение (reasoning без текста — «пустой успех» провайдера):
+        // без предупреждения пользователь видит нажатие-в-пустоту, как в инциденте
+        // 01:15 из дебаг-лога. Присоединённый одиночный пробел склейки не считается.
+        if (!continuation.trim() && combined.trimEnd().length <= originalContent.trimEnd().length + 1) {
+            toastr.warning('⚠ ИИ не вернул продолжение (пустой ответ). Попробуйте ещё раз.', EXT_DISPLAY, { timeOut: 10000 });
         }
 
         targetMsg.content = combined;

@@ -23,7 +23,7 @@ const LF_KEY = 'st_copilot_event_log_v1';
 // TEXT_REPLACE_*/SETTINGS_*) and the per-reload boot chatter (SESSION_CREATED/
 // STORAGE_MIGRATION_V4_INIT/STORAGE_BUCKET_EMPTY_INIT fire on every page load).
 // Storage/session failures stay in: they are rare and explain data loss.
-const SIGNAL_PREFIXES = ['GEN_', 'TOOL_'];
+const SIGNAL_PREFIXES = ['GEN_', 'TOOL_', 'CONTINUE_'];
 // Apply outcomes live under excluded prefixes (LB_*/CHAR_*) but are rare,
 // user-action results — kept explicitly, like the session/storage transitions.
 const SIGNAL_TYPES = new Set([

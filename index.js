@@ -1155,7 +1155,7 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
     // TEXT_REPLACE_*/SETTINGS_*) and the per-reload boot chatter (SESSION_CREATED/
     // STORAGE_MIGRATION_V4_INIT/STORAGE_BUCKET_EMPTY_INIT fire on every page load).
     // Storage/session failures stay in: they are rare and explain data loss.
-    const SIGNAL_PREFIXES = ['GEN_', 'TOOL_'];
+    const SIGNAL_PREFIXES = ['GEN_', 'TOOL_', 'CONTINUE_'];
     // Apply outcomes live under excluded prefixes (LB_*/CHAR_*) but are rare,
     // user-action results — kept explicitly, like the session/storage transitions.
     const SIGNAL_TYPES = new Set([
@@ -17597,55 +17597,53 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             if (scSummary) summaryText = `\n<summary_context>\n${scSummary}\n</summary_context>\n\n`;
         }
 
-        if (depth > 0 || hasPicked) {
-            const slice = getMainChatSlice(depth);
-            if (slice.length) {
-                const chatTotal = SillyTavern.getContext().chat?.length ?? 0;
-                const processedSlice = await Promise.all(slice.map(async m => ({
-                    ...m, content: await applyRegexIfEnabled(m.content, m.role === 'user', chatTotal - m.chatIndex - 1),
-                })));
-                const ctx = SillyTavern.getContext();
-                const visibleSlice = processedSlice.filter(m => !m.is_hidden);
+        const slice = (depth > 0 || hasPicked) ? getMainChatSlice(depth) : [];
+        if (slice.length) {
+            const chatTotal = SillyTavern.getContext().chat?.length ?? 0;
+            const processedSlice = await Promise.all(slice.map(async m => ({
+                ...m, content: await applyRegexIfEnabled(m.content, m.role === 'user', chatTotal - m.chatIndex - 1),
+            })));
+            const ctx = SillyTavern.getContext();
+            const visibleSlice = processedSlice.filter(m => !m.is_hidden);
 
-                if (settings.includeAlternateSwipes && visibleSlice.length > 0) {
-                    let lastAstMsg = null;
-                    for (let i = visibleSlice.length - 1; i >= 0; i--) {
-                        if (visibleSlice[i].role === 'assistant') {
-                            lastAstMsg = visibleSlice[i];
-                            break;
-                        }
-                    }
-                    if (lastAstMsg) {
-                        const stChatMsg = ctx.chat[lastAstMsg.chatIndex];
-                        if (stChatMsg && Array.isArray(stChatMsg.swipes) && stChatMsg.swipes.length > 1) {
-                            let swipesXml = '<alternate_swipes>\n';
-                            const activeSwipeId = stChatMsg.swipe_id ?? 0;
-                            stChatMsg.swipes.forEach((sw, idx) => {
-                                if (idx === activeSwipeId) return;
-                                const text = typeof sw === 'string' ? sw : (sw.mes || '');
-                                if (text) swipesXml += `<swipe index="${idx}">\n${text}\n</swipe>\n`;
-                            });
-                            swipesXml += '</alternate_swipes>\n';
-                            lastAstMsg.content = swipesXml + lastAstMsg.content;
-                        }
+            if (settings.includeAlternateSwipes && visibleSlice.length > 0) {
+                let lastAstMsg = null;
+                for (let i = visibleSlice.length - 1; i >= 0; i--) {
+                    if (visibleSlice[i].role === 'assistant') {
+                        lastAstMsg = visibleSlice[i];
+                        break;
                     }
                 }
-
-                const block = visibleSlice.map(m => {
-                    return `<msg index="${m.chatIndex}" role="${m.role === 'user' ? 'user' : 'assistant'}">\n${m.content}\n</msg>`;
-                }).join('\n\n');
-                
-                const ctxAttr = hasPicked ? `picked_messages="${visibleSlice.length}"` : `last_messages="${visibleSlice.length}"`;
-                messages.push({
-                    role: 'user',
-                    content: `<roleplay_context ${ctxAttr}>\n${summaryText}${block}\n\n</roleplay_context>`,
-                });
-                messages.push({ role: 'assistant', content: 'Understood. I have reviewed the current roleplay context. How can I help?' });
-            } else if (summaryText) {
-                // depth=0 без слайса: резюме остаётся в промпте даже в агентном режиме
-                messages.push({ role: 'user', content: `<roleplay_context>\n${summaryText}\n\n</roleplay_context>` });
-                messages.push({ role: 'assistant', content: 'Understood. I have reviewed the current roleplay context. How can I help?' });
+                if (lastAstMsg) {
+                    const stChatMsg = ctx.chat[lastAstMsg.chatIndex];
+                    if (stChatMsg && Array.isArray(stChatMsg.swipes) && stChatMsg.swipes.length > 1) {
+                        let swipesXml = '<alternate_swipes>\n';
+                        const activeSwipeId = stChatMsg.swipe_id ?? 0;
+                        stChatMsg.swipes.forEach((sw, idx) => {
+                            if (idx === activeSwipeId) return;
+                            const text = typeof sw === 'string' ? sw : (sw.mes || '');
+                            if (text) swipesXml += `<swipe index="${idx}">\n${text}\n</swipe>\n`;
+                        });
+                        swipesXml += '</alternate_swipes>\n';
+                        lastAstMsg.content = swipesXml + lastAstMsg.content;
+                    }
+                }
             }
+
+            const block = visibleSlice.map(m => {
+                return `<msg index="${m.chatIndex}" role="${m.role === 'user' ? 'user' : 'assistant'}">\n${m.content}\n</msg>`;
+            }).join('\n\n');
+
+            const ctxAttr = hasPicked ? `picked_messages="${visibleSlice.length}"` : `last_messages="${visibleSlice.length}"`;
+            messages.push({
+                role: 'user',
+                content: `<roleplay_context ${ctxAttr}>\n${summaryText}${block}\n\n</roleplay_context>`,
+            });
+            messages.push({ role: 'assistant', content: 'Understood. I have reviewed the current roleplay context. How can I help?' });
+        } else if (summaryText) {
+            // depth=0 без слайса: резюме остаётся в промпте даже в агентном режиме
+            messages.push({ role: 'user', content: `<roleplay_context>\n${summaryText}\n\n</roleplay_context>` });
+            messages.push({ role: 'assistant', content: 'Understood. I have reviewed the current roleplay context. How can I help?' });
         }
         const limit = Math.max(1, parseInt(settings.localHistoryLimit) || 50);
         for (const m of session.messages.slice(-limit)) {
@@ -19647,9 +19645,15 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             processMemoryUpdates(rawContinuation, targetMsgId);
             const continuation = stripMemoryBlock(rawContinuation);
             const combined = _joinContinuation(originalContent, continuation);
-            
+
             if (isMaxTokens) {
                 toastr.warning('Генерация остановлена: достигнут лимит максимальных токенов ответа.', EXT_DISPLAY, { timeOut: 10000 });
+            }
+            // Пустое продолжение (reasoning без текста — «пустой успех» провайдера):
+            // без предупреждения пользователь видит нажатие-в-пустоту, как в инциденте
+            // 01:15 из дебаг-лога. Присоединённый одиночный пробел склейки не считается.
+            if (!continuation.trim() && combined.trimEnd().length <= originalContent.trimEnd().length + 1) {
+                toastr.warning('⚠ ИИ не вернул продолжение (пустой ответ). Попробуйте ещё раз.', EXT_DISPLAY, { timeOut: 10000 });
             }
 
             targetMsg.content = combined;
