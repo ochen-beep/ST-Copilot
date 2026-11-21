@@ -74,8 +74,11 @@ export async function executeTool(toolName, toolInput) {
             const role = toolInput.role || 'all';
             const fromIdx = toolInput.from_index ?? 0;
             const toIdx = toolInput.to_index ?? msgs.length - 1;
-            const maxResults = Math.min(toolInput.max_results ?? 10, 50);
-            const includeContent = toolInput.include_content !== false;
+            // full=true: модель обязана видеть точный текст перед правкой (якоря дословные).
+            const full = !!toolInput.full;
+            const maxLen = full ? 20000 : 500;
+            const maxResults = Math.min(toolInput.max_results ?? (full ? 5 : 10), 50);
+            const includeContent = full || toolInput.include_content !== false;
 
             const results = [];
             for (let i = Math.max(0, fromIdx); i <= Math.min(msgs.length - 1, toIdx); i++) {
@@ -99,7 +102,11 @@ export async function executeTool(toolName, toolInput) {
                 
                 if (matched) {
                     const entry = { index: i, role: m.is_user ? 'user' : 'assistant', name: m.name || (m.is_user ? (ctx.name1 || 'User') : (ctx.name2 || 'Character')) };
-                    if (includeContent) entry.content = text.length > 500 ? text.slice(0, 500) + '...[truncated]' : text;
+                    if (includeContent) {
+                        entry.content = text.length > maxLen
+                            ? text.slice(0, maxLen) + `...[truncated — ${text.length} chars total${full ? '' : ', pass full:true for complete text'}]`
+                            : text;
+                    }
                     results.push(entry);
                     if (results.length >= maxResults) break;
                 }

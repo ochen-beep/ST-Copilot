@@ -767,8 +767,9 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
                         role: { type: 'string', enum: ['all', 'user', 'assistant'], description: 'Which messages to search' },
                         from_index: { type: 'number', description: 'Start search from this message index (optional)' },
                         to_index: { type: 'number', description: 'End search at this message index (optional)' },
-                        max_results: { type: 'number', description: 'Maximum number of results to return (default 10)' },
-                        include_content: { type: 'boolean', description: 'Include full message content in results (default true)' },
+                        max_results: { type: 'number', description: 'Maximum number of results to return (default 10, or 5 in full mode)' },
+                        include_content: { type: 'boolean', description: 'Include message content preview — first 500 chars (default true)' },
+                        full: { type: 'boolean', description: 'Return complete untruncated message text (cap 20000 chars) instead of a 500-char preview. Default max_results drops to 5 in this mode. REQUIRED before editing a message — anchors must quote the exact text (default false)' },
                     },
                     required: ['queries'],
                 },
@@ -10017,8 +10018,11 @@ ${scopeHtml}
                 const role = toolInput.role || 'all';
                 const fromIdx = toolInput.from_index ?? 0;
                 const toIdx = toolInput.to_index ?? msgs.length - 1;
-                const maxResults = Math.min(toolInput.max_results ?? 10, 50);
-                const includeContent = toolInput.include_content !== false;
+                // full=true: модель обязана видеть точный текст перед правкой (якоря дословные).
+                const full = !!toolInput.full;
+                const maxLen = full ? 20000 : 500;
+                const maxResults = Math.min(toolInput.max_results ?? (full ? 5 : 10), 50);
+                const includeContent = full || toolInput.include_content !== false;
 
                 const results = [];
                 for (let i = Math.max(0, fromIdx); i <= Math.min(msgs.length - 1, toIdx); i++) {
@@ -10042,7 +10046,11 @@ ${scopeHtml}
                     
                     if (matched) {
                         const entry = { index: i, role: m.is_user ? 'user' : 'assistant', name: m.name || (m.is_user ? (ctx.name1 || 'User') : (ctx.name2 || 'Character')) };
-                        if (includeContent) entry.content = text.length > 500 ? text.slice(0, 500) + '...[truncated]' : text;
+                        if (includeContent) {
+                            entry.content = text.length > maxLen
+                                ? text.slice(0, maxLen) + `...[truncated — ${text.length} chars total${full ? '' : ', pass full:true for complete text'}]`
+                                : text;
+                        }
                         results.push(entry);
                         if (results.length >= maxResults) break;
                     }
