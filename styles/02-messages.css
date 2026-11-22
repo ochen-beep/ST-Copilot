@@ -339,8 +339,10 @@
 
 /* Touch devices: a slow drag over selectable text flips Chrome into
    text-selection mode instead of scrolling, so the chat feels glued to
-   the bottom edge. Selection is disabled on touch; copying stays via the
-   message copy button and the code-block copy button. */
+   the bottom edge. Selection stays off until the JS long-press arbitration
+   (src/ui/touch-select.js) opts one message in via .scp-selecting: hold
+   ~400ms on message text to get native selection handles; any drag before
+   the hold fires scrolls as usual. */
 @media (pointer: coarse) {
     .scp-messages,
     .scp-messages * {
@@ -348,7 +350,11 @@
         user-select: none;
     }
     .scp-messages textarea,
-    .scp-messages input {
+    .scp-messages input,
+    .scp-msg.scp-selecting .scp-msg-content,
+    .scp-msg.scp-selecting .scp-msg-content *,
+    .scp-msg.scp-selecting .scp-reasoning-content,
+    .scp-msg.scp-selecting .scp-reasoning-content * {
         -webkit-user-select: text;
         user-select: text;
     }

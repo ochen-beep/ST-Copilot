@@ -12,6 +12,7 @@ import { setupLorebookManagerListeners, openLorebookManager } from './features/f
 import { setupCharacterManagerListeners, openCharacterManager } from './features/feature-character-manager-ui.js';
 import { updateMemoryDot } from './features/feature-memory.js';
 import { setupChatPickerListeners, onChatChanged, updateDepthSlidersMax, renderSession, openSearch, navigateSearch, performSearch, closeSearch, openChatPicker, toggleSearchWholeWord, setupDepthClickEdit, updateMsgCount, setupSearchHotkey, setupMessagesScrollTracking, setupMsgActionsDelegation, setupCodeBlockActions } from './ui/ui-chat.js';
+import { setupTouchTextSelection } from './ui/touch-select.js';
 import { checkChangelogAutoShow, setupChangelogListeners, openFavoritesPanel, closeFavoritesPanel, openInspector, renderQuickPromptsBar } from './ui/ui-widgets.js';
 import { _setupAttachButton } from './features/feature-attachments.js';
 
@@ -564,6 +565,7 @@ async function _initInner() {
     setupMessagesScrollTracking();
     setupMsgActionsDelegation();
     setupCodeBlockActions();
+    setupTouchTextSelection();
     
     const s = getSettings();
     const windowEl = document.getElementById(WIN_ID);
