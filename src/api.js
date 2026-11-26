@@ -599,10 +599,9 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
     let streamReasoningSummaryEl = null;
     let streamReasoningStatusEl = null;
     let streamReasoningContentEl = null;
-    // Tracks whether the last reasoning chunk signalled completion: a provider
-    // failure mid-thinking never sends that chunk, and without this flag the
-    // pill would stay 'running' forever on an aborted reply.
-    let streamReasoningDoneSeen = false;
+    // Last reasoning duration seen in onChunk: the terminal pill flip needs it
+    // when the final flush was canceled (see finalizeReasoningPill).
+    let lastReasoningMs = null;
     let cursorEl = null;
     let isStreaming = false;
     let streamAccumText = '';
@@ -643,10 +642,24 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
         streamReasoningStatusEl.textContent = label;
     };
 
+    // Terminal pill invariant: a finalized message must never keep a 'running'
+    // pill. The done-flip lives in the round-1 flush path only — its final RAF
+    // flush can be canceled by cleanupCursor(), and rounds 2+ never touch the
+    // pill — so the success path flips any surviving running pill explicitly.
+    const finalizeReasoningPill = () => {
+        if (!streamReasoningStatusEl) return;
+        if (!streamReasoningStatusEl.classList.contains('running')) return;
+        const secs = lastReasoningMs ? (lastReasoningMs / 1000).toFixed(1) : null;
+        streamReasoningStatusEl.classList.remove('running');
+        streamReasoningStatusEl.classList.add('done');
+        streamReasoningStatusEl.textContent = secs ? `Думал ${secs} с` : 'Думал';
+    };
+
     const onChunk = (text, reasoning, reasoningMs, reasoningDone) => {
         isStreaming = true;
         streamAccumText = text;
         streamAccumReasoning = reasoning;
+        if (reasoningMs !== null && reasoningMs !== undefined) lastReasoningMs = reasoningMs;
 
         if (!streamMsgId) {
             const placeholder = { id: `msg_${Date.now()}`, role: 'assistant', content: '', reasoning: null, timestamp: Date.now() };
@@ -739,7 +752,6 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
             streamReasoningBlockEl.style.display = '';
             if (reasoningRenderer) reasoningRenderer.push(procReasoning);
             const secs = reasoningMs ? (reasoningMs / 1000).toFixed(1) : null;
-            streamReasoningDoneSeen = reasoningDone;
             if (streamReasoningStatusEl) {
                 streamReasoningStatusEl.textContent = reasoningDone
                     ? `Думал ${secs} с`
@@ -877,6 +889,14 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 }
                 if (!reasoningRenderer && streamReasoningContentEl) {
                     reasoningRenderer = createStreamRenderer({ el: streamReasoningContentEl, preprocessed: true });
+                }
+
+                // Rounds 2+: the pill is owned by the round-1 flush path only —
+                // re-open it while a later round streams fresh reasoning.
+                if (tempReasoning && streamReasoningStatusEl) {
+                    streamReasoningStatusEl.classList.remove('done', 'error');
+                    streamReasoningStatusEl.classList.add('running');
+                    streamReasoningStatusEl.textContent = 'Думаю…';
                 }
 
                 if (combinedReasoning && streamReasoningBlockEl) {
@@ -1216,9 +1236,13 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
         }
 
         const { text: rawFullText, reasoning: fullReasoning } = result;
-        // Success with unfinished thinking (e.g. reasoning-only 'empty success'):
+        // Success with unfinished thinking (reasoning-only 'empty success'):
         // the reply effectively failed, the pill must not say done/running.
-        if (!streamReasoningDoneSeen) failReasoningPill('ОБРЫВ');
+        // With text present the thinking effectively completed — flip the pill
+        // (it may still show 'running': the final flush can have been canceled
+        // by cleanupCursor, and rounds 2+ never touch it).
+        if (!String(rawFullText || '').trim()) failReasoningPill('ОБРЫВ');
+        else finalizeReasoningPill();
         const rawNormalized = normalizeCharNamesInBlock(rawFullText); 
         processMemoryUpdates(rawNormalized, streamMsgId);
         const fullText = stripMemoryBlock(rawNormalized);
