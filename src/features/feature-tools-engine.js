@@ -2,11 +2,11 @@ import { DEFAULT_TOOLS_PROMPT, TOOL_CALL_FORMAT_BLOCK, TOOL_DEFINITIONS } from '
 import { getSettings, getEffectiveSettings } from '../session.js';
 import { state } from '../state.js';
 import { _ensureWrapped } from '../utils/util-text.js';
-import { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut } from '../utils/util-tool-parse.js';
+import { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut, MALFORMED_TOOL_CALL_ERROR } from '../utils/util-tool-parse.js';
 import { getCharInfo, getTagsForCharacter, isMsgHidden } from '../utils/util-st.js';
 import { fetchWorldInfoBook, getDisplayName, getActiveLorebookNames, wiEntriesToArray, isBookVisibleToTools, isEntryVisibleToTools, bookNameEq } from './feature-lorebook-engine.js';
 
-export { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut };
+export { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut, MALFORMED_TOOL_CALL_ERROR };
 
 export function getEnabledTools() {
     const s = getEffectiveSettings();

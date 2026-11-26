@@ -47,10 +47,62 @@ describe('parseToolCallsFromText — устойчивость', () => {
         expect(parseToolCallsFromText(text)).toHaveLength(2);
     });
 
-    it('тащит name из битого JSON', () => {
+    it('не может распарсить мусор — помечает вызов malformed (не диспетчится)', () => {
+        const text = '```tool_call\nмусор без json\n```';
+        expect(parseToolCallsFromText(text)).toEqual([
+            { name: 'malformed_tool_call', input: {}, malformed: true },
+        ]);
+    });
+});
+
+describe('parseToolCallsFromText — лестница починки JSON', () => {
+    it('чинит одиночные кавычки + незакрытые скобки', () => {
+        const text = "```tool_call\n{'name': 'get_recent_messages', 'input': {'count': 3}\n```";
+        expect(parseToolCallsFromText(text)).toEqual([
+            { name: 'get_recent_messages', input: { count: 3 } },
+        ]);
+    });
+
+    it('чинит голые переводы строк внутри строковых значений', () => {
+        const text = '```tool_call\n{"name": "search_chat", "input": {"queries": ["строка\nс переносом"]}}\n```';
+        expect(parseToolCallsFromText(text)).toEqual([
+            { name: 'search_chat', input: { queries: ['строка\nс переносом'] } },
+        ]);
+    });
+
+    it('чинит пропущенную запятую между полями', () => {
+        const text = '```tool_call\n{"name": "a" "input": {"x": 1}}\n```';
+        expect(parseToolCallsFromText(text)).toEqual([
+            { name: 'a', input: { x: 1 } },
+        ]);
+    });
+
+    it('извлекает вызовы по отдельности: битый сосед не хоронит живой', () => {
+        const text = '```tool_call\n{"name": "a", "input": {"ok": 1}}\n{"name": "b", "input": {oops}}\n```';
+        expect(parseToolCallsFromText(text)).toEqual([
+            { name: 'a', input: { ok: 1 } },
+            { name: 'b', input: {}, malformed: true },
+        ]);
+    });
+
+    it('обрезанный хвост объекта закрывается и парсится', () => {
+        const text = '```tool_call\n{"name": "a", "input": {"count": 3';
+        expect(parseToolCallsFromText(text)).toEqual([
+            { name: 'a', input: { count: 3 } },
+        ]);
+    });
+
+    it('OpenAI-форма function.name/arguments тоже принимается', () => {
+        const text = '```tool_call\n{"function": {"name": "search_web", "arguments": {"query": "lore"}}}\n```';
+        expect(parseToolCallsFromText(text)).toEqual([
+            { name: 'search_web', input: { query: 'lore' } },
+        ]);
+    });
+
+    it('имя извлечено, но аргументы не восстановимы — malformed с этим именем', () => {
         const text = '```tool_call\n{"name": "get_chat_stats", "input": {oops\n```';
         expect(parseToolCallsFromText(text)).toEqual([
-            { name: 'get_chat_stats', input: {} },
+            { name: 'get_chat_stats', input: {}, malformed: true },
         ]);
     });
 });

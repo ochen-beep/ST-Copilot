@@ -18,7 +18,7 @@ import { buildLorebookContextBlock, buildLBAIInstructions, expandOutletsAsync } 
 import { buildCharacterContextBlock, buildCharEditAIInstructions } from './features/feature-character-engine.js';
 import { buildChatEditAIInstructions } from './features/feature-chatedit-engine.js';
 import { buildMemoryContextBlock, buildMemoryAIInstructions, processMemoryUpdates, stripMemoryBlock } from './features/feature-memory.js';
-import { buildToolCallsSystemBlock, parseToolCallsFromText, stripToolCallsFromText, executeTool, getEnabledTools, toOpenAITools, extractProviderToolCalls, findToolCallCut, classifyToolError } from './features/feature-tools-engine.js';
+import { buildToolCallsSystemBlock, parseToolCallsFromText, stripToolCallsFromText, executeTool, getEnabledTools, toOpenAITools, extractProviderToolCalls, findToolCallCut, classifyToolError, MALFORMED_TOOL_CALL_ERROR } from './features/feature-tools-engine.js';
 
 import { updateMsgCount, smartScrollToBottom, setGeneratingState, showGenerationError, _renderMsgBodyContent, _refreshSwipeBars, appendMsgEl } from './ui/ui-chat.js';
 import { getDisplayContent, extractToolCallPlaceholders, renderMarkdown, postProcessHTMLBlocks } from './ui/ui-chat.js';
@@ -887,7 +887,7 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 roundEntries = [];
                 for (const tc of tcs) {
                     const tcId = `tc_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-                    const entry = { id: tcId, callId: tc.callId || null, name: tc.name, input: tc.input || {}, status: 'running', result: undefined };
+                    const entry = { id: tcId, callId: tc.callId || null, name: tc.name, input: tc.input || {}, malformed: !!tc.malformed, status: 'running', result: undefined };
                     state.activeToolCalls.push(entry);
                     roundEntries.push(entry);
                 }
@@ -896,6 +896,15 @@ export async function runGenerate(session, userText, addUserMsg = true, processe
                 const execEntry = async (entry) => {
                     if (state.generationStopped || state.abortController?.signal.aborted || !genCoord.isCurrent(run)) {
                         entry.result = { error: 'Generation stopped by user.' };
+                        entry.status = 'error';
+                        return;
+                    }
+                    // Malformed tool_call (unparseable JSON): never dispatched —
+                    // the model gets an actionable parse error and can re-emit
+                    // (same contract as is_error tool results).
+                    if (entry.malformed) {
+                        _dbgAdd('TOOL_CALL_MALFORMED', { toolName: entry.name });
+                        entry.result = { error: MALFORMED_TOOL_CALL_ERROR };
                         entry.status = 'error';
                         return;
                     }

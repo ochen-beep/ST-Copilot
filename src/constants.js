@@ -311,6 +311,7 @@ Process: Output \`tool_call\` blocks -> Receive results -> Finalize response to 
 
 <output_format>
 {{tool_call_format}}.
+Strict JSON only inside the fence: double quotes, escaped newlines in strings, no trailing commas, every bracket closed. An invalid JSON block is NOT executed — it comes back as a parse error.
 </output_format>`;
 export const TOOL_CALL_FORMAT_BLOCK = `\`\`\`tool_call\n{"name": "tool_name","input": {"parameter_name": "value"}}\n\`\`\``;
 
