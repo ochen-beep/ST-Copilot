@@ -284,6 +284,31 @@ export function findToolCallCut(text) {
     return lastEnd;
 }
 
+// Незакрытый ```tool_call-фенс с распознанным вызовом: обрезаем хвостовые
+// строки тела (последняя строка обычно — fabricated «результат», дописанный
+// до закрытия фенса) и добавляем закрывающие ```. Без этого cut не работает
+// (режет только ЗАКРЫТЫЕ блоки), а display-регэксп незакрытого фенса глотает
+// весь продолжающийся ответ. Возвращает null, если вызвать распознать не
+// удалось — тогда текст не трогаем. <tool_call>-теги без закрытия не
+// обрабатываем: надёжного признака конца вызова в них нет.
+export function closeUnclosedToolCallFence(text) {
+    if (!text) return null;
+    const markerIdx = text.lastIndexOf('```tool_call');
+    if (markerIdx === -1) return null;
+    const bodyStart = markerIdx + '```tool_call'.length;
+    const body = text.slice(bodyStart);
+    if (body.includes('```')) return null;
+    const bodyLines = body.replace(/\n+$/, '').split('\n');
+    for (;;) {
+        const candidate = bodyLines.join('\n');
+        if (parseToolCallBlock(candidate).some(c => !c.malformed)) {
+            return text.slice(0, bodyStart) + candidate + '\n```';
+        }
+        if (bodyLines.length <= 1) return null;
+        bodyLines.pop();
+    }
+}
+
 // Нативный function calling:choices[0].message.tool_calls из нестримингового
 // ответа → нормализованные вызовы для executeTool.
 export function extractProviderToolCalls(value) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut } from '../src/utils/util-tool-parse.js';
+import { parseToolCallsFromText, stripToolCallsFromText, extractProviderToolCalls, findToolCallCut, closeUnclosedToolCallFence } from '../src/utils/util-tool-parse.js';
 
 describe('parseToolCallsFromText — протокол ```tool_call', () => {
     it('парсит одиночный вызов', () => {
@@ -190,6 +190,31 @@ describe('findToolCallCut — точка обрыва после tool_call', () 
 // (плоский ре-парсинг в _renderMsgBodyContent использует тот же парсер —
 // расхождение числа слотов сдвигает карточки).
 import { extractToolCallPlaceholders } from '../src/ui/render-msg.js';
+
+describe('closeUnclosedToolCallFence — закрытие незакрытого фенса', () => {
+    it('обрезает fabricated-хвост и закрывает фенс', () => {
+        const text = '```tool_call\n{"name": "a", "input": {"count": 3\nI already checked: found it. (fabricated)';
+        const out = closeUnclosedToolCallFence(text);
+        expect(out).toBe('```tool_call\n{"name": "a", "input": {"count": 3\n```');
+        expect(parseToolCallsFromText(out)).toEqual([{ name: 'a', input: { count: 3 } }]);
+    });
+
+    it('сохраняет прозаический префикс до фенса', () => {
+        const text = 'Сейчас проверю.\n```tool_call\n{"name": "a", "input": {}\nfabricated tail';
+        const out = closeUnclosedToolCallFence(text);
+        expect(out?.startsWith('Сейчас проверю.\n```tool_call\n{"name": "a", "input": {}\n```')).toBe(true);
+    });
+
+    it('закрытый фенс не трогает', () => {
+        expect(closeUnclosedToolCallFence('```tool_call\n{"name": "a"}\n```\nхвост')).toBeNull();
+    });
+
+    it('полный мусор без вызова — null', () => {
+        expect(closeUnclosedToolCallFence('```tool_call\nсовсем не json и не вызов\n```')).toBeNull();
+        expect(closeUnclosedToolCallFence('просто текст')).toBeNull();
+        expect(closeUnclosedToolCallFence('')).toBeNull();
+    });
+});
 
 describe('extractToolCallPlaceholders — слоты по факту парсинга', () => {
     it('слоты равны числу вызовов плоского ре-парсинга (включая мусорные фенсы)', () => {

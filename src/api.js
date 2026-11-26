@@ -18,7 +18,7 @@ import { buildLorebookContextBlock, buildLBAIInstructions, expandOutletsAsync } 
 import { buildCharacterContextBlock, buildCharEditAIInstructions } from './features/feature-character-engine.js';
 import { buildChatEditAIInstructions } from './features/feature-chatedit-engine.js';
 import { buildMemoryContextBlock, buildMemoryAIInstructions, processMemoryUpdates, stripMemoryBlock } from './features/feature-memory.js';
-import { buildToolCallsSystemBlock, parseToolCallsFromText, stripToolCallsFromText, executeTool, getEnabledTools, toOpenAITools, extractProviderToolCalls, findToolCallCut, classifyToolError, MALFORMED_TOOL_CALL_ERROR } from './features/feature-tools-engine.js';
+import { buildToolCallsSystemBlock, parseToolCallsFromText, stripToolCallsFromText, executeTool, getEnabledTools, toOpenAITools, extractProviderToolCalls, findToolCallCut, closeUnclosedToolCallFence, classifyToolError, MALFORMED_TOOL_CALL_ERROR } from './features/feature-tools-engine.js';
 
 import { updateMsgCount, smartScrollToBottom, setGeneratingState, showGenerationError, _renderMsgBodyContent, _refreshSwipeBars, appendMsgEl } from './ui/ui-chat.js';
 import { getDisplayContent, extractToolCallPlaceholders, renderMarkdown, postProcessHTMLBlocks } from './ui/ui-chat.js';
@@ -119,6 +119,28 @@ async function _callGenerateInner(session, settings, pendingText, onChunk, nativ
     let useStream = resolved.useStream;
     nativeTools = resolved.nativeTools;
     const toolsPayload = nativeTools ? { tools: toOpenAITools(), tool_choice: 'auto' } : {};
+
+    // Текстовый протокол: хвост после закрытого tool_call — выдуманный моделью
+    // «результат» инструмента; отсекается на ЛЮБОМ транспорте. Custom-ветка
+    // раньше возвращалась рано и весь этот cut пропускала — fabricated-текст
+    // оставался в сообщении (profile+streaming проходил через генератор, где
+    // cut был). Незакрытый фенс закрывается: без этого cut бессилен (режет
+    // только закрытые блоки), а display-регэксп незакрытого фенса глотает весь
+    // продолжающийся ответ.
+    const cutFabricatedTail = (t) => {
+        if (!settings.toolsEnabled || nativeTools) return t;
+        const cut = findToolCallCut(t);
+        if (cut !== -1) {
+            _dbgAdd('GEN_TOOL_CALL_CUT', { cutAt: cut, droppedTail: t.length - cut });
+            return t.slice(0, cut).trim();
+        }
+        const closed = closeUnclosedToolCallFence(t);
+        if (closed !== null && closed !== t) {
+            _dbgAdd('GEN_TOOL_FENCE_CLOSED', {});
+            return closed.trim();
+        }
+        return t;
+    };
 
     function deepExtract(obj) {
         if (!obj || typeof obj !== 'object') return { t: '', r: null };
@@ -273,7 +295,7 @@ async function _callGenerateInner(session, settings, pendingText, onChunk, nativ
                 reasoning = ext.r;
                 const prov = extractProviderToolCalls(data);
             if (state.abortController === abort) state.abortController = null;
-                return { text: text.trim(), reasoning, isMaxTokens: false, toolCalls: prov?.calls || null, rawToolCalls: prov?.raw || null };
+                return { text: cutFabricatedTail(text.trim()), reasoning, isMaxTokens: false, toolCalls: prov?.calls || null, rawToolCalls: prov?.raw || null };
             }
         } catch (e) {
             if (state.abortController === abort) state.abortController = null;
@@ -285,7 +307,7 @@ async function _callGenerateInner(session, settings, pendingText, onChunk, nativ
         }
 
         if (state.abortController === abort) state.abortController = null;
-        return { text: text.trim(), reasoning, isMaxTokens: false, toolCalls: null, rawToolCalls: null };
+        return { text: cutFabricatedTail(text.trim()), reasoning, isMaxTokens: false, toolCalls: null, rawToolCalls: null };
     }
 
     const service = ctx.ConnectionManagerRequestService;
@@ -444,15 +466,8 @@ async function _callGenerateInner(session, settings, pendingText, onChunk, nativ
         const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason || lastValue?.choices?.[0]?.finish_reason;
         const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
-        // Текстовый протокол: хвост после закрытого tool_call — выдуманный
-        // моделью «результат»; отсекаем его и тут.
-        if (settings.toolsEnabled && !nativeTools) {
-            const cut = findToolCallCut(text);
-            if (cut !== -1) {
-                _dbgAdd('GEN_TOOL_CALL_CUT', { cutAt: cut, droppedTail: text.length - cut });
-                text = text.slice(0, cut).trim();
-            }
-        }
+        // Текстовый протокол: тот же cut на любом транспорте (см. cutFabricatedTail).
+        text = cutFabricatedTail(text);
 
         if (state.abortController === abort) state.abortController = null;
         return { text, reasoning, isMaxTokens, toolCalls, rawToolCalls };
@@ -518,7 +533,7 @@ async function _callGenerateInner(session, settings, pendingText, onChunk, nativ
     const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
     if (state.abortController === abort) state.abortController = null;
-    return { text: text.trim(), reasoning, isMaxTokens, toolCalls: null, rawToolCalls: null };
+    return { text: cutFabricatedTail(text.trim()), reasoning, isMaxTokens, toolCalls: null, rawToolCalls: null };
 }
 
 // Watchdog: an open SSE connection without chunks used to hold generation

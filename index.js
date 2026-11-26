@@ -10141,6 +10141,31 @@ ${scopeHtml}
         return lastEnd;
     }
 
+    // Незакрытый ```tool_call-фенс с распознанным вызовом: обрезаем хвостовые
+    // строки тела (последняя строка обычно — fabricated «результат», дописанный
+    // до закрытия фенса) и добавляем закрывающие ```. Без этого cut не работает
+    // (режет только ЗАКРЫТЫЕ блоки), а display-регэксп незакрытого фенса глотает
+    // весь продолжающийся ответ. Возвращает null, если вызвать распознать не
+    // удалось — тогда текст не трогаем. <tool_call>-теги без закрытия не
+    // обрабатываем: надёжного признака конца вызова в них нет.
+    function closeUnclosedToolCallFence(text) {
+        if (!text) return null;
+        const markerIdx = text.lastIndexOf('```tool_call');
+        if (markerIdx === -1) return null;
+        const bodyStart = markerIdx + '```tool_call'.length;
+        const body = text.slice(bodyStart);
+        if (body.includes('```')) return null;
+        const bodyLines = body.replace(/\n+$/, '').split('\n');
+        for (;;) {
+            const candidate = bodyLines.join('\n');
+            if (parseToolCallBlock(candidate).some(c => !c.malformed)) {
+                return text.slice(0, bodyStart) + candidate + '\n```';
+            }
+            if (bodyLines.length <= 1) return null;
+            bodyLines.pop();
+        }
+    }
+
     // Нативный function calling:choices[0].message.tool_calls из нестримингового
     // ответа → нормализованные вызовы для executeTool.
     function extractProviderToolCalls(value) {
@@ -18671,6 +18696,28 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         nativeTools = resolved.nativeTools;
         const toolsPayload = nativeTools ? { tools: toOpenAITools(), tool_choice: 'auto' } : {};
 
+        // Текстовый протокол: хвост после закрытого tool_call — выдуманный моделью
+        // «результат» инструмента; отсекается на ЛЮБОМ транспорте. Custom-ветка
+        // раньше возвращалась рано и весь этот cut пропускала — fabricated-текст
+        // оставался в сообщении (profile+streaming проходил через генератор, где
+        // cut был). Незакрытый фенс закрывается: без этого cut бессилен (режет
+        // только закрытые блоки), а display-регэксп незакрытого фенса глотает весь
+        // продолжающийся ответ.
+        const cutFabricatedTail = (t) => {
+            if (!settings.toolsEnabled || nativeTools) return t;
+            const cut = findToolCallCut(t);
+            if (cut !== -1) {
+                _dbgAdd('GEN_TOOL_CALL_CUT', { cutAt: cut, droppedTail: t.length - cut });
+                return t.slice(0, cut).trim();
+            }
+            const closed = closeUnclosedToolCallFence(t);
+            if (closed !== null && closed !== t) {
+                _dbgAdd('GEN_TOOL_FENCE_CLOSED', {});
+                return closed.trim();
+            }
+            return t;
+        };
+
         function deepExtract(obj) {
             if (!obj || typeof obj !== 'object') return { t: '', r: null };
             let r = null;
@@ -18824,7 +18871,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                     reasoning = ext.r;
                     const prov = extractProviderToolCalls(data);
                 if (state.abortController === abort) state.abortController = null;
-                    return { text: text.trim(), reasoning, isMaxTokens: false, toolCalls: prov?.calls || null, rawToolCalls: prov?.raw || null };
+                    return { text: cutFabricatedTail(text.trim()), reasoning, isMaxTokens: false, toolCalls: prov?.calls || null, rawToolCalls: prov?.raw || null };
                 }
             } catch (e) {
                 if (state.abortController === abort) state.abortController = null;
@@ -18836,7 +18883,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             }
 
             if (state.abortController === abort) state.abortController = null;
-            return { text: text.trim(), reasoning, isMaxTokens: false, toolCalls: null, rawToolCalls: null };
+            return { text: cutFabricatedTail(text.trim()), reasoning, isMaxTokens: false, toolCalls: null, rawToolCalls: null };
         }
 
         const service = ctx.ConnectionManagerRequestService;
@@ -18995,15 +19042,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const finishReason = lastValue?.finish_reason || lastValue?.state?.finish_reason || lastValue?.stop_reason || lastValue?.choices?.[0]?.finish_reason;
             const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
-            // Текстовый протокол: хвост после закрытого tool_call — выдуманный
-            // моделью «результат»; отсекаем его и тут.
-            if (settings.toolsEnabled && !nativeTools) {
-                const cut = findToolCallCut(text);
-                if (cut !== -1) {
-                    _dbgAdd('GEN_TOOL_CALL_CUT', { cutAt: cut, droppedTail: text.length - cut });
-                    text = text.slice(0, cut).trim();
-                }
-            }
+            // Текстовый протокол: тот же cut на любом транспорте (см. cutFabricatedTail).
+            text = cutFabricatedTail(text);
 
             if (state.abortController === abort) state.abortController = null;
             return { text, reasoning, isMaxTokens, toolCalls, rawToolCalls };
@@ -19069,7 +19109,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const isMaxTokens = finishReason === 'length' || finishReason === 'max_tokens' || finishReason === 'stop_limit';
 
         if (state.abortController === abort) state.abortController = null;
-        return { text: text.trim(), reasoning, isMaxTokens, toolCalls: null, rawToolCalls: null };
+        return { text: cutFabricatedTail(text.trim()), reasoning, isMaxTokens, toolCalls: null, rawToolCalls: null };
     }
 
     // Watchdog: an open SSE connection without chunks used to hold generation
