@@ -9,9 +9,34 @@
     display: block;
     /* replaces the old flex `gap: 2px` between feed children */
     overscroll-behavior: contain;
+    /* 6px inset keeps the whole scrollbar strip (thumb and track) out of the
+       east resize lane (.scp-rh-e covers the outer 4px of the window edge):
+       grabbing anything that looks like a scrollbar must never start a
+       resize — edge grabs there made the feed re-wrap every frame */
+    margin-right: 6px;
 }
 
 .scp-messages > * + * { margin-top: 2px; }
+
+/* Thin thumb on a wide invisible hit strip: the scrollbar reserves 10px,
+   a transparent thumb border paints only the middle 6px (native painted
+   width == hit width, so a bare thin thumb is barely grabbable). The strip
+   sits 6px inboard of the window edge (margin-right above), clear of the
+   resize lane. Never animate the scrollbar width on hover — it is layout
+   space, swap thumb color only. */
+.scp-messages::-webkit-scrollbar { width: 10px; }
+.scp-messages::-webkit-scrollbar-thumb {
+    background: var(--scp-text-muted);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 6px;
+}
+.scp-messages:hover::-webkit-scrollbar-thumb { background: var(--scp-text); }
+
+/* Touch scrolls natively; a styled scrollbar would permanently eat 16px of
+   the fullscreen feed, so remove it (and its inset) on the mobile layout. */
+#scp-window.scp_mobile .scp-messages::-webkit-scrollbar { display: none; }
+#scp-window.scp_mobile .scp-messages { margin-right: 0; }
 
 /* Per-block content-visibility, but only inside giant single messages
    (>MSG_CV_MIN_CHARS, class set by _renderMsgBodyContent): offscreen blocks
