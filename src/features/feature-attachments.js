@@ -127,15 +127,40 @@ export function _renderAttachmentPreviews() {
 let _lightboxEl = null;
 let _lightboxScale = 1;
 
-export function _openImageLightbox(att) {
-    _dbgAdd('ATTACHMENT_LIGHTBOX_OPEN', { isImage: true });
-
+// One overlay per page: drops the previous one together with its Esc handler.
+function _createLightbox() {
     if (_lightboxEl) _lightboxEl.remove();
-    _lightboxScale = 1;
-
     const overlay = document.createElement('div');
     overlay.className = 'scp-lightbox';
     _lightboxEl = overlay;
+    // Touch devices have no Esc and the backdrop is hard to hit, so the
+    // overlay always carries a visible close button.
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'scp-lightbox-close';
+    closeBtn.type = 'button';
+    closeBtn.title = 'Закрыть';
+    closeBtn.setAttribute('aria-label', 'Закрыть');
+    closeBtn.textContent = '×';
+    closeBtn.addEventListener('click', e => { e.stopPropagation(); _closeLightbox(overlay); });
+    overlay.appendChild(closeBtn);
+    overlay.addEventListener('click', e => { if (e.target === overlay) _closeLightbox(overlay); });
+    document.addEventListener('keydown', function onEsc(e) {
+        if (e.key === 'Escape') { _closeLightbox(overlay); document.removeEventListener('keydown', onEsc); }
+    });
+    return overlay;
+}
+
+function _closeLightbox(overlay) {
+    overlay.remove();
+    if (_lightboxEl === overlay) _lightboxEl = null;
+}
+
+export function _openImageLightbox(att) {
+    _dbgAdd('ATTACHMENT_LIGHTBOX_OPEN', { isImage: true });
+
+    _lightboxScale = 1;
+
+    const overlay = _createLightbox();
 
     const img = document.createElement('img');
     img.src = att.dataUrl;
@@ -156,21 +181,12 @@ export function _openImageLightbox(att) {
         img.style.transform = `scale(${_lightboxScale})`;
         img.style.cursor = _lightboxScale > 1 ? 'zoom-out' : 'zoom-in';
     });
-    overlay.addEventListener('click', e => {
-        if (e.target === overlay) { overlay.remove(); _lightboxEl = null; }
-    });
-    document.addEventListener('keydown', function onEsc(e) {
-        if (e.key === 'Escape') { overlay.remove(); _lightboxEl = null; document.removeEventListener('keydown', onEsc); }
-    });
 }
 
 export async function _openTextLightbox(att) {
     _dbgAdd('ATTACHMENT_LIGHTBOX_OPEN', { isImage: false });
 
-    if (_lightboxEl) _lightboxEl.remove();
-    const overlay = document.createElement('div');
-    overlay.className = 'scp-lightbox';
-    _lightboxEl = overlay;
+    const overlay = _createLightbox();
     const pre = document.createElement('pre');
     pre.className = 'scp-lightbox-text';
     
@@ -183,8 +199,6 @@ export async function _openTextLightbox(att) {
     
     overlay.appendChild(pre);
     document.body.appendChild(overlay);
-    overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); _lightboxEl = null; }});
-    document.addEventListener('keydown', function onEsc(e) { if (e.key === 'Escape') { overlay.remove(); _lightboxEl = null; document.removeEventListener('keydown', onEsc); }});
 }
 
 export async function _addAttachments(files) {

@@ -154,10 +154,27 @@
 }
 
 /* ── Lightbox ────────────────────────────────────────────────── */
+/* Lives in <body>, outside .scp-window: no access to the --scp-* vars
+   declared there, so it carries its own copies. Explicit viewport size
+   instead of inset:0 — on mobile ST core makes body itself position:fixed
+   with a zero-height containing block, and top/bottom stretching collapses
+   the overlay to height 0 (transparent text smeared over the chat). */
 .scp-lightbox {
+    --scp-lb-bg: rgb(18,18,22);
+    --scp-lb-text: #e2e2e6;
+    --scp-lb-border: 1px solid rgba(255,255,255,0.12);
+    --scp-lb-font-mono: var(--monospaceFontFamily, 'Consolas', monospace);
     position: fixed;
-    inset: 0;
-    z-index: 9999999;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    width: 100dvw;
+    height: 100vh;
+    height: 100dvh;
+    /* Above every Copilot layer: the mobile window is raised to
+       2147483000+ dynamically (see bringWindowToFront), which used to paint
+       the chat on top of the preview and swallow the closing clicks. */
+    z-index: 2147483070;
     background: rgba(0,0,0,0.92);
     display: flex;
     align-items: center;
@@ -169,18 +186,34 @@
 .scp-lightbox-text {
     width: 90vw;
     height: 90vh;
-    background: var(--scp-bg);
-    color: var(--scp-text);
+    height: 90dvh;
+    background: var(--scp-lb-bg);
+    color: var(--scp-lb-text);
     padding: 20px;
     overflow: auto;
-    font-family: var(--scp-font-mono);
+    font-family: var(--scp-lb-font-mono);
     font-size: 12px;
     border-radius: 8px;
-    border: var(--scp-border);
+    border: var(--scp-lb-border);
     white-space: pre-wrap;
     word-wrap: break-word;
     box-sizing: border-box;
     box-shadow: 0 0 60px rgba(0,0,0,0.8);
+}
+.scp-lightbox-close {
+    position: absolute;
+    top: max(10px, env(safe-area-inset-top, 0px));
+    right: max(10px, env(safe-area-inset-right, 0px));
+    z-index: 1;
+    width: 44px;
+    height: 44px;
+    border: var(--scp-lb-border);
+    border-radius: 50%;
+    background: var(--scp-lb-bg);
+    color: var(--scp-lb-text);
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
 }
 .scp-lightbox-img {
     max-width: 92vw;
