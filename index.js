@@ -10461,8 +10461,14 @@ ${scopeHtml}
         // Lorebook tools are part of the lorebook AI feature: the manage toggle
         // must gate them, not just the lorebook-changes prompt instructions.
         const lorebookGated = new Set(['search_lorebook_entry', 'get_lorebooks']);
+        // Same for get_preset_info: it belongs to the preset-editing feature —
+        // advertising it while the feature is off leaves the model holding a tool
+        // whose instructions are absent, and it second-guesses itself into not
+        // calling anything.
+        const presetGated = new Set(['get_preset_info']);
         return TOOL_DEFINITIONS.filter(t => {
             if (lorebookGated.has(t.name) && s.lorebookAIManageEnabled === false) return false;
+            if (presetGated.has(t.name) && s.presetEditAIEnabled !== true) return false;
             return s[t.settingKey] !== false;
         });
     }
