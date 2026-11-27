@@ -356,6 +356,34 @@ export async function executeTool(toolName, toolInput) {
             }
             return result;
         }
+        case 'get_preset_info': {
+            const oai = ctx.chatCompletionSettings;
+            if (!oai || !Array.isArray(oai.prompts)) return { error: 'Preset data unavailable.' };
+            const full = !!toolInput.full;
+            const orderEntry = (oai.prompt_order || []).find(o => Number(o.character_id) === 100001);
+            const enabledById = new Map((orderEntry?.order || []).map(e => [e.identifier, e.enabled]));
+            const items = oai.prompts.filter(p => !p.marker).map(p => {
+                const content = p.content || '';
+                return {
+                    identifier: p.identifier,
+                    name: p.name || p.identifier,
+                    class: p.system_prompt ? 'system' : 'user',
+                    role: p.role || 'system',
+                    enabled: enabledById.get(p.identifier) ?? false,
+                    injection_position: p.injection_position ?? 0,
+                    injection_depth: p.injection_depth ?? 4,
+                    content: full ? content : (content.length > 200 ? content.slice(0, 200) + '...[truncated — request full=true]' : content),
+                };
+            });
+            const markers = oai.prompts.filter(p => p.marker === true).map(p => p.identifier);
+            return {
+                preset: oai.preset_settings_openai,
+                prompt_order_note: 'Order is global (not per character); "enabled" flags come from prompt_order.',
+                prompts: items,
+                markers,
+                note: 'markers are content slots (Chat History, World Info, Char Description...) — do NOT target them. Propose changes with a ```preset-changes``` block: add_variant for content iterations, edit for metadata, toggle to switch blocks.',
+            };
+        }
         case 'get_chat_stats': {
             const incHidden = !!getEffectiveSettings().includeHiddenMessages;
             const msgs = (ctx.chat || []).filter(m => !isMsgHidden(m, incHidden));

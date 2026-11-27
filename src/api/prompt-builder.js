@@ -16,6 +16,7 @@ import { applyRegexIfEnabled } from '.././integrations/integ-regex.js';
 import { buildLorebookContextBlock, buildLBAIInstructions, expandOutletsAsync } from '.././features/feature-lorebook-engine.js';
 import { buildCharacterContextBlock, buildCharEditAIInstructions } from '.././features/feature-character-engine.js';
 import { buildChatEditAIInstructions } from '.././features/feature-chatedit-engine.js';
+import { buildPresetEditAIInstructions } from '.././features/feature-presetedit-engine.js';
 import { buildMemoryContextBlock, buildMemoryAIInstructions, processMemoryUpdates, stripMemoryBlock } from '.././features/feature-memory.js';
 import { buildToolCallsSystemBlock, parseToolCallsFromText, stripToolCallsFromText, executeTool, getEnabledTools, toOpenAITools, extractProviderToolCalls, findToolCallCut } from '.././features/feature-tools-engine.js';
 
@@ -137,10 +138,11 @@ async function _buildSystemContentInner(settings, genOpts = {}) {
     const aiInstructions = buildLBAIInstructions(settings).trim();
     const charEditDirective = buildCharEditAIInstructions(settings).trim();
     const chatEditDirective = buildChatEditAIInstructions(settings).trim();
+    const presetEditDirective = buildPresetEditAIInstructions(settings).trim();
     const memoryAIInstr = buildMemoryAIInstructions(settings).trim();
     const toolsBlock = genOpts.noTools ? '' : buildToolCallsSystemBlock().trim();
 
-    const modules = [memoryAIInstr, aiInstructions, charEditDirective, chatEditDirective, toolsBlock].filter(Boolean);
+    const modules = [memoryAIInstr, aiInstructions, charEditDirective, chatEditDirective, presetEditDirective, toolsBlock].filter(Boolean);
     if (modules.length > 0) {
         const reminder = `\n\n[SYSTEM REMINDER: If you intend to modify anything you MUST write the appropriate structured markdown block containing your instructions. The system strictly relies on these blocks to parse and apply your changes automatically. Simply describing your changes in plain text without outputting the corresponding markdown block will result in failure to apply them.]`;
         parts.push(`\n\n<modules>\n${modules.join('\n\n')}${reminder}\n</modules>`);

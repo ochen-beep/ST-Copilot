@@ -269,6 +269,31 @@ export const CHAT_EDIT_FORMAT_BLOCK = `\`\`\`chat-changes
 
 Identity guard: for every action that addresses existing messages (msg_index / msg_indices), copy the exact send_date value from get_recent_messages into msg_date (single) or msg_dates (array aligned with msg_indices). If the chat changed since the proposals were made, the engine skips the change instead of editing a shifted message.`;
 
+export const PRESET_EDIT_FORMAT_BLOCK = `\`\`\`preset-changes
+{"preset": "exact preset name from get_preset_info", "changes":[
+  {"action":"add_variant","target_identifier":"main","content":"Full new text of the block"},
+  {"action":"edit","identifier":"<identifier>","fields":{"injection_depth":4,"role":"system"}},
+  {"action":"toggle","identifier":"<identifier>","enabled":false}
+]}
+\`\`\``;
+
+export const DEFAULT_PRESET_EDIT_DIRECTIVE = `You may propose edits to the ACTIVE chat completion PRESET — the generation preset that shapes the user's MAIN roleplay chat. Be conservative: propose only what the user asked for.
+
+Workflow: 1) call get_preset_info (full:true) to read the current blocks verbatim. 2) Output ONE preset-changes block with your proposal. The user reviews it — never claim changes are applied.
+
+Operations:
+- add_variant: iterate on a block's CONTENT without destroying it. The engine creates a "{name} • AI N" copy right below the original, enables the copy and disables the original — reversible by toggles. PREFER this for every content change (style, wording, strictness).
+- edit: in-place change of block METADATA — name, role, injection_position (0 = list order, 1 = in chat at depth), injection_depth, injection_order. Change content in place ONLY when the user explicitly asks to modify that block in place.
+- toggle: enable or disable a block.
+
+Rules:
+- Blocks with "marker": true (Chat History, World Info, Char Description etc.) are content slots — never target them.
+- The preset is GLOBAL: it changes the user's live roleplay chats, not just this Copilot session.
+- Keep instruction text short, direct and positive; never emit empty placeholders — every content must be complete and functional.
+- Read the block with get_preset_info full:true before rewriting its content.
+
+{{preset_edit_format}}`;
+
 export const DEFAULT_MEMORY_PROMPT = `<memory_logic>
 Purpose: ADMINISTRATIVE META-MEMORY. This is a non-diegetic (OOC) database for ST-Copilot to track the Human operator's technical requirements, cognitive patterns, and workflow constraints. 
 
@@ -633,6 +658,20 @@ export const TOOL_DEFINITIONS = [
                     offset: { type: 'number', description: 'Only include messages at or after this chat index. Use with from_end:false and count to read the middle of a long chat, e.g. offset:N count:1 from_end:false reads message #N (default 0)' },
                     role: { type: 'string', enum: ['all', 'user', 'assistant'], description: 'Filter by role (default all)' },
                     full: { type: 'boolean', description: 'Return full untruncated text. REQUIRED before editing a message — anchors must quote the exact text (default false)' },
+                },
+            },
+        },
+        {
+            id: 'get_preset_info',
+            name: 'get_preset_info',
+            label: 'Get Preset Info',
+            icon: 'fa-sliders',
+            description: 'Read the active chat completion preset: preset name and prompt blocks (identifier, name, role, class, enabled, injection position/depth, content). Call with full:true before proposing preset edits.',
+            settingKey: 'toolsEnabled_get_preset_info',
+            schema: {
+                type: 'object',
+                properties: {
+                    full: { type: 'boolean', description: 'Return full untruncated block contents (default false). REQUIRED before rewriting a block — the new content must cover the original verbatim.' },
                 },
             },
         },

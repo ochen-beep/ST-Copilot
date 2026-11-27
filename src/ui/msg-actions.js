@@ -16,6 +16,7 @@ import { discoverProposalBlocks } from '../utils/util-block-discovery.js';
 import { createStreamRenderer } from './render/stream-renderer.js';
 import { computeRenderFrom } from './render/render-window.js';
 import { parseChatChangesFromText, stripChatChangesBlock } from '../features/feature-chatedit-engine.js';
+import { parsePresetChangesFromText, stripPresetChangesBlock } from '../features/feature-presetedit-engine.js';
 import { renderChatProposalCard } from '../features/feature-chatedit-ui.js';
 import { stripMemoryBlock } from '../features/feature-memory.js';
 import { parseToolCallsFromText } from '../features/feature-tools-engine.js';
@@ -578,10 +579,16 @@ export function handleEdit(wrapEl, msg) {
             renderCharCreationCard(charCreation, wrapEl); 
         } else document.querySelector(`.scp-char-creation-card[data-for="${msg.id}"]`)?.remove();
 
-        if (chatChanges?.length) { 
-            stripped = stripChatChangesBlock(stripped); 
-            renderChatProposalCard(chatChanges, wrapEl); 
+        if (chatChanges?.length) {
+            stripped = stripChatChangesBlock(stripped);
+            renderChatProposalCard(chatChanges, wrapEl);
         } else document.querySelector(`.scp-chat-proposal-card[data-for="${msg.id}"]`)?.remove();
+
+        const presetChanges = (flags.preset && getSettings().presetEditAIEnabled) ? parsePresetChangesFromText(textToRender) : null;
+        if (presetChanges?.length) {
+            stripped = stripPresetChangesBlock(stripped);
+            import('../features/feature-presetedit-ui.js').then(m => m.renderPresetProposalCard(presetChanges, wrapEl));
+        } else document.querySelector(`.scp-preset-proposal-card[data-for="${msg.id}"]`)?.remove();
         
         let tcIndex = 0;
         const resR = extractToolCallPlaceholders(stripped, tcIndex);

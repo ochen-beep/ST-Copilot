@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { discoverProposalBlocks } from '../src/utils/util-block-discovery.js';
 
-const EMPTY = { lb: false, char: false, charCreate: false, chat: false };
+const EMPTY = { lb: false, char: false, charCreate: false, chat: false, preset: false };
 
 describe('discoverProposalBlocks', () => {
     it('returns all-false for empty text', () => {
@@ -46,7 +46,7 @@ describe('discoverProposalBlocks', () => {
             '```chat-changes\n[]\n```',
             'Plain text between blocks. ```javascript\nconst x = 1;\n```',
         ].join('\n\n');
-        expect(discoverProposalBlocks(text)).toEqual({ lb: true, char: true, charCreate: true, chat: true });
+        expect(discoverProposalBlocks(text)).toEqual({ lb: true, char: true, charCreate: true, chat: true, preset: false });
     });
 
     it('detects open (unclosed) block — no trailing ```', () => {

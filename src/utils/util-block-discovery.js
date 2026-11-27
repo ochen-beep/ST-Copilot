@@ -24,6 +24,7 @@ const LANGIDS = {
     'character-changes': 'char',
     'character-create': 'charCreate',
     'chat-changes': 'chat',
+    'preset-changes': 'preset',
 };
 
 // Один regex на все ```LANGID маркеры. Захватывает LANGID (буквы/цифры/дефисы).
@@ -32,12 +33,12 @@ const FENCE_RE = /```([a-zA-Z][\w-]*)/g;
 
 /**
  * @param {string} text — любой текст (может быть null/undefined → все флаги false)
- * @returns {{lb: boolean, char: boolean, charCreate: boolean, chat: boolean}}
+ * @returns {{lb: boolean, char: boolean, charCreate: boolean, chat: boolean, preset: boolean}}
  *          Флаги выставляются в true, если хотя бы один маркер ```LANGID найден.
  *          Порядок ключей зафиксирован для стабильности сериализации в тестах.
  */
 export function discoverProposalBlocks(text) {
-    const result = { lb: false, char: false, charCreate: false, chat: false };
+    const result = { lb: false, char: false, charCreate: false, chat: false, preset: false };
     if (!text || typeof text !== 'string') return result;
 
     FENCE_RE.lastIndex = 0;

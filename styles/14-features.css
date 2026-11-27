@@ -225,6 +225,39 @@
     user-select: none;
 }
 
+/* ── Preset edit proposal card ───────────────────────────────── */
+.scp-preset-proposal-card .scp-pe-op {
+    font-size: 12px;
+    color: var(--scp-text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.scp-preset-proposal-card .scp-pe-diff {
+    margin: 6px 0 0 0;
+    font-size: 11px;
+    border-left: 2px solid var(--scp-accent-dim);
+    padding-left: 8px;
+}
+.scp-preset-proposal-card .scp-pe-diff-label {
+    color: var(--scp-text-muted);
+    font-size: 10px;
+}
+.scp-preset-proposal-card .scp-pe-diff-before {
+    color: var(--scp-danger);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 90px;
+    overflow: hidden;
+}
+.scp-preset-proposal-card .scp-pe-diff-after {
+    color: var(--scp-success);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 140px;
+    overflow: auto;
+}
+
 /* ── Picker multi-line preview ───────────────────────────────── */
 .scp-picker-text {
     white-space: pre-wrap !important;

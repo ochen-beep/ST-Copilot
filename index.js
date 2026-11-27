@@ -505,6 +505,31 @@ replacement text
 
 Identity guard: for every action that addresses existing messages (msg_index / msg_indices), copy the exact send_date value from get_recent_messages into msg_date (single) or msg_dates (array aligned with msg_indices). If the chat changed since the proposals were made, the engine skips the change instead of editing a shifted message.`;
 
+    const PRESET_EDIT_FORMAT_BLOCK = `\`\`\`preset-changes
+{"preset": "exact preset name from get_preset_info", "changes":[
+  {"action":"add_variant","target_identifier":"main","content":"Full new text of the block"},
+  {"action":"edit","identifier":"<identifier>","fields":{"injection_depth":4,"role":"system"}},
+  {"action":"toggle","identifier":"<identifier>","enabled":false}
+]}
+\`\`\``;
+
+    const DEFAULT_PRESET_EDIT_DIRECTIVE = `You may propose edits to the ACTIVE chat completion PRESET — the generation preset that shapes the user's MAIN roleplay chat. Be conservative: propose only what the user asked for.
+
+Workflow: 1) call get_preset_info (full:true) to read the current blocks verbatim. 2) Output ONE preset-changes block with your proposal. The user reviews it — never claim changes are applied.
+
+Operations:
+- add_variant: iterate on a block's CONTENT without destroying it. The engine creates a "{name} • AI N" copy right below the original, enables the copy and disables the original — reversible by toggles. PREFER this for every content change (style, wording, strictness).
+- edit: in-place change of block METADATA — name, role, injection_position (0 = list order, 1 = in chat at depth), injection_depth, injection_order. Change content in place ONLY when the user explicitly asks to modify that block in place.
+- toggle: enable or disable a block.
+
+Rules:
+- Blocks with "marker": true (Chat History, World Info, Char Description etc.) are content slots — never target them.
+- The preset is GLOBAL: it changes the user's live roleplay chats, not just this Copilot session.
+- Keep instruction text short, direct and positive; never emit empty placeholders — every content must be complete and functional.
+- Read the block with get_preset_info full:true before rewriting its content.
+
+{{preset_edit_format}}`;
+
     const DEFAULT_MEMORY_PROMPT = `<memory_logic>
 Purpose: ADMINISTRATIVE META-MEMORY. This is a non-diegetic (OOC) database for ST-Copilot to track the Human operator's technical requirements, cognitive patterns, and workflow constraints. 
 
@@ -869,6 +894,20 @@ Strict JSON only inside the fence: double quotes, escaped newlines in strings, n
                         offset: { type: 'number', description: 'Only include messages at or after this chat index. Use with from_end:false and count to read the middle of a long chat, e.g. offset:N count:1 from_end:false reads message #N (default 0)' },
                         role: { type: 'string', enum: ['all', 'user', 'assistant'], description: 'Filter by role (default all)' },
                         full: { type: 'boolean', description: 'Return full untruncated text. REQUIRED before editing a message — anchors must quote the exact text (default false)' },
+                    },
+                },
+            },
+            {
+                id: 'get_preset_info',
+                name: 'get_preset_info',
+                label: 'Get Preset Info',
+                icon: 'fa-sliders',
+                description: 'Read the active chat completion preset: preset name and prompt blocks (identifier, name, role, class, enabled, injection position/depth, content). Call with full:true before proposing preset edits.',
+                settingKey: 'toolsEnabled_get_preset_info',
+                schema: {
+                    type: 'object',
+                    properties: {
+                        full: { type: 'boolean', description: 'Return full untruncated block contents (default false). REQUIRED before rewriting a block — the new content must cover the original verbatim.' },
                     },
                 },
             },
@@ -1529,6 +1568,8 @@ Strict JSON only inside the fence: double quotes, escaped newlines in strings, n
         altGreetingIndices: [],
         chatEditAIEnabled: true,
         chatEditPrompt: '',
+        presetEditAIEnabled: false,
+        toolsEnabled_get_preset_info: true,
         lorebookExcludedBooks: [],
         pickerPreviewLines: 1,
         pickerPreviewLastLines: 0,
@@ -7621,6 +7662,7 @@ Strict JSON only inside the fence: double quotes, escaped newlines in strings, n
         'character-changes': 'char',
         'character-create': 'charCreate',
         'chat-changes': 'chat',
+        'preset-changes': 'preset',
     };
 
     // Один regex на все ```LANGID маркеры. Захватывает LANGID (буквы/цифры/дефисы).
@@ -7629,12 +7671,12 @@ Strict JSON only inside the fence: double quotes, escaped newlines in strings, n
 
     /**
      * @param {string} text — любой текст (может быть null/undefined → все флаги false)
-     * @returns {{lb: boolean, char: boolean, charCreate: boolean, chat: boolean}}
+     * @returns {{lb: boolean, char: boolean, charCreate: boolean, chat: boolean, preset: boolean}}
      *          Флаги выставляются в true, если хотя бы один маркер ```LANGID найден.
      *          Порядок ключей зафиксирован для стабильности сериализации в тестах.
      */
     function discoverProposalBlocks(text) {
-        const result = { lb: false, char: false, charCreate: false, chat: false };
+        const result = { lb: false, char: false, charCreate: false, chat: false, preset: false };
         if (!text || typeof text !== 'string') return result;
 
         FENCE_RE.lastIndex = 0;
@@ -9855,6 +9897,191 @@ ${scopeHtml}
         bringWindowToFront();
     }
 
+    // Preset editing engine: parse/validate/apply AI proposals for the ACTIVE chat
+    // completion preset. Lean v1 scope — three ops only:
+    //   add_variant (content iteration, reversible by toggles), edit (in-place
+    //   metadata), toggle (switch blocks). Deletion/creation/reorder/gen-fields are
+    //   deliberately out of scope: deletion is one manual click in the prompt
+    //   manager, everything else needs placement rules the model shouldn't guess.
+    //
+    // The preset is GLOBAL state — every apply is confirmed via proposal cards and
+    // in-place edits are preceded by a server-side backup preset.
+
+
+    // prompt_order uses this dummy character id for the global strategy
+    // (openai.js:697-700 — strategy 'global', dummyId 100001).
+    const GLOBAL_ORDER_CHARACTER_ID = 100001;
+    const EDIT_FIELDS = ['name', 'role', 'content', 'injection_position', 'injection_depth', 'injection_order'];
+    const ROLES = ['system', 'user', 'assistant'];
+
+    function buildPresetEditAIInstructions(settings) {
+        if (!settings.presetEditAIEnabled) return '';
+        const base = (settings.presetEditPrompt || DEFAULT_PRESET_EDIT_DIRECTIVE.trim())
+            .replace('{{preset_edit_format}}', PRESET_EDIT_FORMAT_BLOCK);
+        return `<preset_editing>\n${base}\n</preset_editing>`;
+    }
+
+    function parsePresetChangesFromText(text) {
+        const m = text.match(proposalFenceBodyRegex('preset-changes'));
+        if (!m || !m[1].trim()) return null;
+        const data = parseLooseJSON(m[1].trim());
+        if (data && Array.isArray(data.changes)) return _sanitizePresetChanges(data.changes);
+        return null;
+    }
+
+    function stripPresetChangesBlock(text) {
+        const { closed, open } = proposalStripRegexes('preset-changes');
+        return text.replace(closed, '').replace(open, '').trim();
+    }
+
+    function _sanitizePresetChanges(changes) {
+        if (!Array.isArray(changes)) return null;
+        const valid = [];
+        for (const c of changes) {
+            if (!c || typeof c !== 'object') continue;
+            if (c.action === 'add_variant') {
+                if (typeof c.target_identifier !== 'string' || !c.target_identifier.trim()) continue;
+                if (typeof c.content !== 'string' || !c.content.trim()) continue;
+                valid.push({
+                    action: 'add_variant',
+                    target_identifier: c.target_identifier.trim(),
+                    content: c.content,
+                    role: ROLES.includes(c.role) ? c.role : undefined,
+                });
+            } else if (c.action === 'edit') {
+                if (typeof c.identifier !== 'string' || !c.identifier.trim()) continue;
+                const raw = (c.fields && typeof c.fields === 'object') ? c.fields : {};
+                const fields = {};
+                for (const k of EDIT_FIELDS) if (raw[k] !== undefined) fields[k] = raw[k];
+                if (fields.role !== undefined && !ROLES.includes(fields.role)) delete fields.role;
+                if (fields.injection_position !== undefined) fields.injection_position = Number(fields.injection_position) === 1 ? 1 : 0;
+                if (fields.injection_depth !== undefined) fields.injection_depth = Math.max(0, Math.min(999, parseInt(fields.injection_depth) || 0));
+                if (fields.injection_order !== undefined) fields.injection_order = Math.max(0, parseInt(fields.injection_order) || 0);
+                if (fields.name !== undefined) fields.name = String(fields.name);
+                if (!Object.keys(fields).length) continue;
+                valid.push({ action: 'edit', identifier: c.identifier.trim(), fields });
+            } else if (c.action === 'toggle') {
+                if (typeof c.identifier !== 'string' || !c.identifier.trim()) continue;
+                valid.push({ action: 'toggle', identifier: c.identifier.trim(), enabled: c.enabled === undefined ? undefined : !!c.enabled });
+            }
+        }
+        return valid.length ? valid : null;
+    }
+
+    function _getOrderList(oai) {
+        let entry = (oai.prompt_order || []).find(o => Number(o.character_id) === GLOBAL_ORDER_CHARACTER_ID);
+        if (!entry) {
+            entry = { character_id: GLOBAL_ORDER_CHARACTER_ID, order: [] };
+            (oai.prompt_order = oai.prompt_order || []).push(entry);
+        }
+        return entry.order;
+    }
+
+    // saveOpenAIPreset is module-private in ST, but getChatCompletionPreset is
+    // exported — build the same body and hit the same endpoint ST's own Save
+    // button uses, so the saved file matches the native format byte-for-byte.
+    async function _savePresetCopy(oai, name) {
+        const mod = await import('/scripts/openai.js');
+        const ctx = SillyTavern.getContext();
+        const body = mod.getChatCompletionPreset(oai);
+        const res = await fetch('/api/presets/save', {
+            method: 'POST',
+            headers: ctx.getRequestHeaders(),
+            body: JSON.stringify({ apiId: 'openai', name, preset: body }),
+        });
+        if (!res.ok) throw new Error(`/api/presets/save ${res.status}`);
+        return body;
+    }
+
+    async function _saveCurrentPreset(oai) {
+        const name = oai.preset_settings_openai;
+        // Endpoint write is awaited (deterministic); the native silent Save button
+        // runs after it to refresh ST's in-memory per-preset cache the same way the
+        // UI's own Update button does.
+        await _savePresetCopy(oai, name);
+        document.getElementById('update_oai_preset')?.click();
+    }
+    async function applyPresetChanges(changes, presetName) {
+        const ctx = SillyTavern.getContext();
+        const oai = ctx.chatCompletionSettings;
+        if (!oai || !Array.isArray(oai.prompts)) return { error: 'Preset data unavailable.' };
+        const currentName = oai.preset_settings_openai;
+        if (presetName && presetName !== currentName) {
+            return { error: `Preset switched since the proposal (now "${currentName}"). Reject and re-ask.` };
+        }
+        const order = _getOrderList(oai);
+        const applied = [];
+        const skipped = [];
+        let snapshotName = null;
+
+        if (changes.some(c => c.action === 'edit')) {
+            snapshotName = `Backup (pre-copilot) ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+            try {
+                await _savePresetCopy(oai, snapshotName);
+            } catch (e) {
+                return { error: `Snapshot failed, nothing applied: ${e.message}` };
+            }
+        }
+
+        for (const c of changes) {
+            if (c.action === 'add_variant') {
+                const target = oai.prompts.find(p => p.identifier === c.target_identifier);
+                if (!target || target.marker === true) {
+                    skipped.push({ action: c.action, target: c.target_identifier, reason: 'target not found or content slot' });
+                    continue;
+                }
+                const baseName = target.name || target.identifier;
+                const variantCount = oai.prompts.filter(p => typeof p.name === 'string' && p.name.startsWith(`${baseName} • AI `)).length;
+                const newName = `${baseName} • AI ${variantCount + 2}`;
+                const newId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                const newPrompt = { ...structuredClone(target), identifier: newId, name: newName, content: c.content };
+                delete newPrompt.marker;
+                if (c.role) newPrompt.role = c.role;
+                oai.prompts.push(newPrompt);
+                const origEntry = order.find(e => e.identifier === target.identifier);
+                const idx = origEntry ? order.indexOf(origEntry) : order.length - 1;
+                order.splice(idx + 1, 0, { identifier: newId, enabled: true });
+                if (origEntry) origEntry.enabled = false;
+                if (target.identifier === 'main') oai.system_prompt = c.content;
+                applied.push({ action: 'add_variant', target: baseName, name: newName });
+            } else if (c.action === 'edit') {
+                const target = oai.prompts.find(p => p.identifier === c.identifier);
+                if (!target || target.marker === true) {
+                    skipped.push({ action: 'edit', target: c.identifier, reason: 'target not found or content slot' });
+                    continue;
+                }
+                for (const [k, v] of Object.entries(c.fields)) {
+                    target[k] = v;
+                }
+                if (c.fields.content !== undefined && c.identifier === 'main') oai.system_prompt = c.fields.content;
+                applied.push({ action: 'edit', target: target.name || target.identifier, fields: Object.keys(c.fields) });
+            } else if (c.action === 'toggle') {
+                const entry = order.find(e => e.identifier === c.identifier);
+                if (!entry) {
+                    skipped.push({ action: 'toggle', target: c.identifier, reason: 'block not in prompt order' });
+                    continue;
+                }
+                entry.enabled = c.enabled === undefined ? !entry.enabled : !!c.enabled;
+                applied.push({ action: 'toggle', target: c.identifier, enabled: entry.enabled });
+            }
+        }
+
+        if (applied.length) {
+            await _saveCurrentPreset(oai);
+            _dbgAdd('PRESET_APPLIED', { applied: applied.length, skipped: skipped.length, snapshot: snapshotName || undefined });
+            // Re-render the prompt manager straight from the mutated oai_settings.
+            // Do NOT trigger the preset dropdown's change event here: it reloads
+            // oai_settings from ST's per-preset cache, which the native button's
+            // own async save updates only after a round-trip — the reload raced
+            // the cache update and reverted the applied state in memory.
+            try {
+                const mod = await import('/scripts/openai.js');
+                mod.promptManager?.render?.();
+            } catch (_) { /* PM unavailable — settings UI just stays stale */ }
+        }
+        return { applied, skipped, snapshotName };
+    }
+
     // Чистый парсер текстовых tool-протоколов: без импортов и ST-зависимостей,
     // чтобы тесты и любые потребители не тянули граф движков/точку входа.
 
@@ -10529,6 +10756,34 @@ ${scopeHtml}
                 }
                 return result;
             }
+            case 'get_preset_info': {
+                const oai = ctx.chatCompletionSettings;
+                if (!oai || !Array.isArray(oai.prompts)) return { error: 'Preset data unavailable.' };
+                const full = !!toolInput.full;
+                const orderEntry = (oai.prompt_order || []).find(o => Number(o.character_id) === 100001);
+                const enabledById = new Map((orderEntry?.order || []).map(e => [e.identifier, e.enabled]));
+                const items = oai.prompts.filter(p => !p.marker).map(p => {
+                    const content = p.content || '';
+                    return {
+                        identifier: p.identifier,
+                        name: p.name || p.identifier,
+                        class: p.system_prompt ? 'system' : 'user',
+                        role: p.role || 'system',
+                        enabled: enabledById.get(p.identifier) ?? false,
+                        injection_position: p.injection_position ?? 0,
+                        injection_depth: p.injection_depth ?? 4,
+                        content: full ? content : (content.length > 200 ? content.slice(0, 200) + '...[truncated — request full=true]' : content),
+                    };
+                });
+                const markers = oai.prompts.filter(p => p.marker === true).map(p => p.identifier);
+                return {
+                    preset: oai.preset_settings_openai,
+                    prompt_order_note: 'Order is global (not per character); "enabled" flags come from prompt_order.',
+                    prompts: items,
+                    markers,
+                    note: 'markers are content slots (Chat History, World Info, Char Description...) — do NOT target them. Propose changes with a ```preset-changes``` block: add_variant for content iterations, edit for metadata, toggle to switch blocks.',
+                };
+            }
             case 'get_chat_stats': {
                 const incHidden = !!getEffectiveSettings().includeHiddenMessages;
                 const msgs = (ctx.chat || []).filter(m => !isMsgHidden(m, incHidden));
@@ -11185,6 +11440,9 @@ ${scopeHtml}
         { key: 'chatEditPrompt', stId: 'scp-chat-edit-prompt-st', spId: 'scp-sp-chat-edit-prompt', type: 'textarea', updCtx: true, profileKey: true,
           fromSetting: s => s.chatEditPrompt || DEFAULT_CHAT_EDIT_DIRECTIVE.trim(),
           toVal: v => v.trim() === DEFAULT_CHAT_EDIT_DIRECTIVE.trim() ? '' : v },
+
+        // ── Preset Edit ───────────────────────────────────────────────────────────
+        { key: 'presetEditAIEnabled', stId: 'scp-preset-edit-enabled-st', spId: 'scp-sp-preset-edit-enabled', type: 'checkbox', updCtx: true, profileKey: true },
 
         // ── Memory ────────────────────────────────────────────────────────────────
         { key: 'memoryEnabled',      stId: 'scp-memory-enabled', spId: 'scp-sp-memory-enabled', type: 'checkbox', updCtx: true },
@@ -14461,10 +14719,16 @@ ${resultHtml}
                 renderCharCreationCard(charCreation, wrapEl); 
             } else document.querySelector(`.scp-char-creation-card[data-for="${msg.id}"]`)?.remove();
 
-            if (chatChanges?.length) { 
-                stripped = stripChatChangesBlock(stripped); 
-                renderChatProposalCard(chatChanges, wrapEl); 
+            if (chatChanges?.length) {
+                stripped = stripChatChangesBlock(stripped);
+                renderChatProposalCard(chatChanges, wrapEl);
             } else document.querySelector(`.scp-chat-proposal-card[data-for="${msg.id}"]`)?.remove();
+
+            const presetChanges = (flags.preset && getSettings().presetEditAIEnabled) ? parsePresetChangesFromText(textToRender) : null;
+            if (presetChanges?.length) {
+                stripped = stripPresetChangesBlock(stripped);
+                Promise.resolve().then(function () { return featurePreseteditUi; }).then(m => m.renderPresetProposalCard(presetChanges, wrapEl));
+            } else document.querySelector(`.scp-preset-proposal-card[data-for="${msg.id}"]`)?.remove();
             
             let tcIndex = 0;
             const resR = extractToolCallPlaceholders(stripped, tcIndex);
@@ -15077,7 +15341,8 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             const charChanges = flags.char ? parseCharChangesFromText(msg.content) : null;
             const charCreation = flags.charCreate ? parseCharCreationFromText(msg.content) : null;
             const chatChanges = flags.chat ? parseChatChangesFromText(msg.content) : null;
-            const needsStrip = lbChanges?.length || charChanges?.length || charCreation || chatChanges?.length;
+            const presetChanges = (flags.preset && settings.presetEditAIEnabled) ? parsePresetChangesFromText(msg.content) : null;
+            const needsStrip = lbChanges?.length || charChanges?.length || charCreation || chatChanges?.length || presetChanges?.length;
 
             if (needsStrip) {
                 let stripped = displayText;
@@ -15085,14 +15350,16 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
                 if (charChanges?.length) stripped = stripCharChangesBlock(stripped);
                 if (charCreation) stripped = stripCharCreationBlock(stripped);
                 if (chatChanges?.length) stripped = stripChatChangesBlock(stripped);
-                
+                if (presetChanges?.length) stripped = stripPresetChangesBlock(stripped);
+
                 contentEl.innerHTML = renderMarkdown(getDisplayContent(stripped, settings).content);
                 postProcessHTMLBlocks(contentEl);
-                
+
                 if (lbChanges?.length) renderProposalCard(lbChanges, msgEl);
                 if (charChanges?.length) renderCharProposalCard(charChanges, msgEl);
                 if (charCreation) renderCharCreationCard(charCreation, msgEl);
                 if (chatChanges?.length) renderChatProposalCard(chatChanges, msgEl);
+                if (presetChanges?.length) Promise.resolve().then(function () { return featurePreseteditUi; }).then(m => m.renderPresetProposalCard(presetChanges, msgEl));
             } else {
                 contentEl.innerHTML = renderMarkdown(getDisplayContent(displayText, settings).content);
                 postProcessHTMLBlocks(contentEl);
@@ -17849,10 +18116,11 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
         const aiInstructions = buildLBAIInstructions(settings).trim();
         const charEditDirective = buildCharEditAIInstructions(settings).trim();
         const chatEditDirective = buildChatEditAIInstructions(settings).trim();
+        const presetEditDirective = buildPresetEditAIInstructions(settings).trim();
         const memoryAIInstr = buildMemoryAIInstructions(settings).trim();
         const toolsBlock = genOpts.noTools ? '' : buildToolCallsSystemBlock().trim();
 
-        const modules = [memoryAIInstr, aiInstructions, charEditDirective, chatEditDirective, toolsBlock].filter(Boolean);
+        const modules = [memoryAIInstr, aiInstructions, charEditDirective, chatEditDirective, presetEditDirective, toolsBlock].filter(Boolean);
         if (modules.length > 0) {
             const reminder = `\n\n[SYSTEM REMINDER: If you intend to modify anything you MUST write the appropriate structured markdown block containing your instructions. The system strictly relies on these blocks to parse and apply your changes automatically. Simply describing your changes in plain text without outputting the corresponding markdown block will result in failure to apply them.]`;
             parts.push(`\n\n<modules>\n${modules.join('\n\n')}${reminder}\n</modules>`);
@@ -20889,6 +21157,133 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
     } else {
         setTimeout(init, 0);
     }
+
+    // Proposal cards for AI preset edits. One card per message: op list + content
+    // diff + Apply all / Reject. Deliberately simpler than the chat-edit cards —
+    // no per-item editable fields, no persistence across reloads (the raw
+    // preset-changes block stays in msg.content until resolved, so an unresolved
+    // card simply re-appears on re-render).
+
+
+    const ACTION_LABELS = {
+        add_variant: '<i class="fa-solid fa-clone" style="margin-right:4px;"></i> Вариант',
+        edit: '<i class="fa-solid fa-pen-to-square" style="margin-right:4px;"></i> Правка',
+        toggle: '<i class="fa-solid fa-toggle-on" style="margin-right:4px;"></i> Тоггл',
+    };
+
+    function _diffRow(label, before, after) {
+        return `<div class="scp-pe-diff"><div class="scp-pe-diff-label">${escHtml(label)}</div>`
+            + `<div class="scp-pe-diff-before">${escHtml(String(before ?? '').slice(0, 400) || '—')}</div>`
+            + `<div class="scp-pe-diff-after">${escHtml(String(after ?? '').slice(0, 400) || '—')}</div></div>`;
+    }
+
+    function _opRow(change, orderEntries, prompts) {
+        const label = ACTION_LABELS[change.action] || escHtml(change.action);
+        let target = '';
+        let diff = '';
+        if (change.action === 'add_variant') {
+            const t = prompts.find(p => p.identifier === change.target_identifier);
+            target = `«${escHtml(t?.name || change.target_identifier)}»`;
+            diff = _diffRow('Контент', t?.content ?? '(маркер — не найден)', change.content);
+        } else {
+            const t = prompts.find(p => p.identifier === change.identifier);
+            const entry = orderEntries.find(e => e.identifier === change.identifier);
+            target = `«${escHtml(t?.name || change.identifier)}»`;
+            if (change.action === 'edit') {
+                for (const [k, v] of Object.entries(change.fields || {})) {
+                    diff += _diffRow(k, t?.[k], v);
+                }
+            } else if (change.action === 'toggle') {
+                diff = _diffRow('Включён', entry ? entry.enabled : '(нет в порядке)', change.enabled === undefined ? 'переключить' : !!change.enabled);
+            }
+        }
+        return `<div class="scp-lb-proposal-item scp-pe-item"><div class="scp-pe-op">${label} ${target}</div>${diff}</div>`;
+    }
+
+    function renderPresetProposalCard(changes, msgEl, presetName) {
+        if (!changes?.length) return;
+        document.querySelector(`.scp-preset-proposal-card[data-for="${msgEl.dataset.id}"]`)?.remove();
+
+        const ctx = SillyTavern.getContext();
+        const oai = ctx.chatCompletionSettings || {};
+        const prompts = Array.isArray(oai.prompts) ? oai.prompts : [];
+        const orderEntry = (oai.prompt_order || []).find(o => Number(o.character_id) === 100001);
+        const orderEntries = orderEntry?.order || [];
+
+        const card = document.createElement('div');
+        card.className = 'scp-lb-proposal-card scp-preset-proposal-card';
+        card.dataset.for = msgEl.dataset.id;
+        card.style.margin = '8px 0 0 0';
+
+        const hdr = document.createElement('div');
+        hdr.className = 'scp-lb-proposal-header';
+        hdr.innerHTML = `<div class="scp-lb-proposal-title"><i class="fa-solid fa-sliders" style="margin-right:6px;"></i>`
+            + `Правки пресета <b>${escHtml(presetName || oai.preset_settings_openai || '')}</b>`
+            + `<span class="scp-lb-count-badge">${changes.length}</span></div>`;
+
+        const list = document.createElement('div');
+        list.className = 'scp-lb-proposal-list';
+        list.innerHTML = changes.map(c => _opRow(c, orderEntries, prompts)).join('');
+
+        const footer = document.createElement('div');
+        footer.className = 'scp-lb-proposal-footer';
+        const applyBtn = document.createElement('button');
+        applyBtn.className = 'scp-lb-proposal-apply';
+        applyBtn.textContent = 'Применить всё';
+        const rejectBtn = document.createElement('button');
+        rejectBtn.className = 'scp-lb-proposal-reject';
+        rejectBtn.textContent = 'Отклонить';
+
+        const finish = () => {
+            const session = getCurrentSession();
+            const msg = session.messages.find(m => m.id === card.dataset.for);
+            if (msg) {
+                msg.content = stripPresetChangesBlock(msg.content);
+                if (msg.swipes) msg.swipes[msg.swipeIndex || 0].content = msg.content;
+                saveSessionsToMetadata();
+            }
+            card.remove();
+        };
+
+        applyBtn.addEventListener('click', async () => {
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Применение…';
+            try {
+                const res = await applyPresetChanges(changes, presetName);
+                if (res.error) {
+                    toastr.error(res.error, EXT_DISPLAY, { timeOut: 12000 });
+                    applyBtn.disabled = false;
+                    applyBtn.textContent = 'Применить всё';
+                    return;
+                }
+                const skippedNote = res.skipped?.length ? `, пропущено ${res.skipped.length}` : '';
+                toastr.success(`Пресет обновлён (${res.applied.length}${skippedNote})`
+                    + (res.snapshotName ? `. Снапшот: «${res.snapshotName}»` : ''), EXT_DISPLAY, { timeOut: 12000 });
+                finish();
+            } catch (e) {
+                toastr.error(`Ошибка: ${e.message}`, EXT_DISPLAY);
+                applyBtn.disabled = false;
+                applyBtn.textContent = 'Применить всё';
+            }
+        });
+
+        rejectBtn.addEventListener('click', finish);
+
+        footer.appendChild(applyBtn);
+        footer.appendChild(rejectBtn);
+        card.appendChild(hdr);
+        card.appendChild(list);
+        card.appendChild(footer);
+
+        const body = msgEl.querySelector('.scp-msg-body');
+        if (body) body.insertBefore(card, body.querySelector('.scp-swipe-bar'));
+        else msgEl.after(card);
+    }
+
+    var featurePreseteditUi = /*#__PURE__*/Object.freeze({
+        __proto__: null,
+        renderPresetProposalCard: renderPresetProposalCard
+    });
 
     exports.refreshSessionDropdown = refreshSessionDropdown;
 

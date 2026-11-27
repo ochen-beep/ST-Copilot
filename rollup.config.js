@@ -15,6 +15,7 @@ export default {
     external: [
         '/scripts/world-info.js', 
         '/scripts/utils.js',
+        '/scripts/openai.js',
         '/scripts/extensions/image-captioning/index.js',
         '/scripts/extensions/regex/engine.js'
     ],

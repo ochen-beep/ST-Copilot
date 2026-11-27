@@ -15,6 +15,7 @@ import { createStreamRenderer } from './render/stream-renderer.js';
 import { computeRenderFrom } from './render/render-window.js';
 import { parseChatChangesFromText, stripChatChangesBlock } from '../features/feature-chatedit-engine.js';
 import { renderChatProposalCard } from '../features/feature-chatedit-ui.js';
+import { parsePresetChangesFromText, stripPresetChangesBlock } from '../features/feature-presetedit-engine.js';
 import { stripMemoryBlock } from '../features/feature-memory.js';
 import { parseToolCallsFromText } from '../features/feature-tools-engine.js';
 import { postProcessToolCalls } from '../features/feature-tools-ui.js';
@@ -489,7 +490,8 @@ export function _renderMsgBodyContent(msgEl, msg) {
         const charChanges = flags.char ? parseCharChangesFromText(msg.content) : null;
         const charCreation = flags.charCreate ? parseCharCreationFromText(msg.content) : null;
         const chatChanges = flags.chat ? parseChatChangesFromText(msg.content) : null;
-        const needsStrip = lbChanges?.length || charChanges?.length || charCreation || chatChanges?.length;
+        const presetChanges = (flags.preset && settings.presetEditAIEnabled) ? parsePresetChangesFromText(msg.content) : null;
+        const needsStrip = lbChanges?.length || charChanges?.length || charCreation || chatChanges?.length || presetChanges?.length;
 
         if (needsStrip) {
             let stripped = displayText;
@@ -497,14 +499,16 @@ export function _renderMsgBodyContent(msgEl, msg) {
             if (charChanges?.length) stripped = stripCharChangesBlock(stripped);
             if (charCreation) stripped = stripCharCreationBlock(stripped);
             if (chatChanges?.length) stripped = stripChatChangesBlock(stripped);
-            
+            if (presetChanges?.length) stripped = stripPresetChangesBlock(stripped);
+
             contentEl.innerHTML = renderMarkdown(getDisplayContent(stripped, settings).content);
             postProcessHTMLBlocks(contentEl);
-            
+
             if (lbChanges?.length) renderProposalCard(lbChanges, msgEl);
             if (charChanges?.length) renderCharProposalCard(charChanges, msgEl);
             if (charCreation) renderCharCreationCard(charCreation, msgEl);
             if (chatChanges?.length) renderChatProposalCard(chatChanges, msgEl);
+            if (presetChanges?.length) import('../features/feature-presetedit-ui.js').then(m => m.renderPresetProposalCard(presetChanges, msgEl));
         } else {
             contentEl.innerHTML = renderMarkdown(getDisplayContent(displayText, settings).content);
             postProcessHTMLBlocks(contentEl);

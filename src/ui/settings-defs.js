@@ -116,6 +116,9 @@ export const _SETTINGS_DEF = [
       fromSetting: s => s.chatEditPrompt || DEFAULT_CHAT_EDIT_DIRECTIVE.trim(),
       toVal: v => v.trim() === DEFAULT_CHAT_EDIT_DIRECTIVE.trim() ? '' : v },
 
+    // ── Preset Edit ───────────────────────────────────────────────────────────
+    { key: 'presetEditAIEnabled', stId: 'scp-preset-edit-enabled-st', spId: 'scp-sp-preset-edit-enabled', type: 'checkbox', updCtx: true, profileKey: true },
+
     // ── Memory ────────────────────────────────────────────────────────────────
     { key: 'memoryEnabled',      stId: 'scp-memory-enabled', spId: 'scp-sp-memory-enabled', type: 'checkbox', updCtx: true },
     { key: 'memoryInject',       stId: 'scp-memory-inject',  spId: 'scp-sp-memory-inject',  type: 'checkbox', updCtx: true },

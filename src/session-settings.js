@@ -90,6 +90,8 @@ const DEFAULT_SETTINGS = {
     altGreetingIndices: [],
     chatEditAIEnabled: true,
     chatEditPrompt: '',
+    presetEditAIEnabled: false,
+    toolsEnabled_get_preset_info: true,
     lorebookExcludedBooks: [],
     pickerPreviewLines: 1,
     pickerPreviewLastLines: 0,
