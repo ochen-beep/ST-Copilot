@@ -14410,10 +14410,12 @@ ${resultHtml}
             const tempSession = { ...session, messages: session.messages.filter(m => m.id !== msgId) };
             if (!apiMod) throw new Error("API module not loaded");
             
-            // Регенерация — single-shot без tools-цикла: noTools убирает блок инструментов
-            // из промпта (иначе модель зовёт их и обрезается посреди текста), а GEN_START
-            // держит путь в дебаг-логе наравне с runGenerate/runContinue.
-            const builtMessages = await apiMod.assembleMessages(tempSession, settings, null, null, { noTools: true });
+            // Регенерация с tools-мини-циклом (макс. 2 раунда): полностью без тула
+            // регенерация не могла отвечать на tool-зависимые запросы (preset editing
+            // и т.п.) — модель видела инструкции без списка инструментов и заикалась.
+            // GEN_START держит путь в дебаг-логе наравне с runGenerate/runContinue.
+            const toolsForRegen = settings.toolsEnabled !== false;
+            const builtMessages = await apiMod.assembleMessages(tempSession, settings, null, null, { noTools: !toolsForRegen });
             // Same text-only flattening as runGenerate: array content (attachments)
             // would string-join as "[object Object]" and poison the token cache.
             const fullPromptText = builtMessages.map(m => typeof m.content === 'string' ? m.content
@@ -14429,7 +14431,7 @@ ${resultHtml}
                 path: 'swipe-regen',
             });
 
-            const result = await apiMod.callGenerate(tempSession, settings, null, onChunk);
+            let result = await apiMod.callGenerate(tempSession, settings, null, onChunk);
             cleanupCursor();
 
             if (result === null) {
@@ -14443,8 +14445,43 @@ ${resultHtml}
                 return;
             }
 
+            // Mini tool-loop: execute tool_call fences from the regen result and run
+            // one continuation round — the swipe path has no runGenerate's full loop,
+            // so without this a tool-dependent answer regenerates as a stub plan.
+            let regenToolCalls = [];
+            if (toolsForRegen) {
+                for (let round = 0; round < 2; round++) {
+                    const tcs = parseToolCallsFromText(result.text || '');
+                    if (!tcs.length) break;
+                    const entries = tcs.map(tc => ({ id: `tcr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, name: tc.name, input: tc.input || {}, status: 'running', result: undefined }));
+                    for (const entry of entries) {
+                        try {
+                            entry.result = await executeTool(entry.name, entry.input);
+                            entry.status = (entry.result && typeof entry.result === 'object' && typeof entry.result.error === 'string' && entry.result.error.trim()) ? 'error' : 'done';
+                        } catch (e) {
+                            const { userMessage } = classifyToolError(e);
+                            entry.result = { error: userMessage };
+                            entry.status = 'error';
+                        }
+                        _dbgAdd('TOOL_EXECUTED', { toolName: entry.name, status: entry.status, ms: 0 });
+                    }
+                    regenToolCalls.push(...entries);
+                    const toolResultsText = entries.map(e => `<tool_result name="${e.name}" status="${e.status}">\n${typeof e.result === 'string' ? e.result : JSON.stringify(e.result, null, 2)}\n</tool_result>`).join('\n');
+                    const contSession = { ...tempSession, messages: [...tempSession.messages, { role: 'user', content: `<tool_results>\n${toolResultsText}\n</tool_results>\n\nCONTINUE your response using these results. Write exactly where you left off.` }] };
+                    const next = await apiMod.callGenerate(contSession, settings, null, onChunk);
+                    if (next === null) break;
+                    result = {
+                        ...next,
+                        text: ((result.text || '') + '\n\n' + (next.text || '')).trim(),
+                        reasoning: result.reasoning || next.reasoning || null,
+                        isMaxTokens: next.isMaxTokens || false,
+                    };
+                }
+            }
+
             const { text: rawText, reasoning: fullReasoning } = result;
             const fullText = normalizeCharNamesInBlock(rawText);
+            if (regenToolCalls.length) msgData.toolCalls = regenToolCalls;
 
             msgData.swipes[msgData.swipeIndex] = { content: fullText, reasoning: fullReasoning || null };
             msgData.content = fullText;
