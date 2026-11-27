@@ -9968,13 +9968,13 @@ ${scopeHtml}
         return valid.length ? valid : null;
     }
 
-    function _getOrderList(oai) {
+    function _getOrderEntry(oai) {
         let entry = (oai.prompt_order || []).find(o => Number(o.character_id) === GLOBAL_ORDER_CHARACTER_ID);
         if (!entry) {
             entry = { character_id: GLOBAL_ORDER_CHARACTER_ID, order: [] };
             (oai.prompt_order = oai.prompt_order || []).push(entry);
         }
-        return entry.order;
+        return entry;
     }
 
     // saveOpenAIPreset is module-private in ST, but getChatCompletionPreset is
@@ -10001,15 +10001,37 @@ ${scopeHtml}
         await _savePresetCopy(oai, name);
         document.getElementById('update_oai_preset')?.click();
     }
-    async function applyPresetChanges(changes, presetName) {
+    async function applyPresetChanges(changes, presetName, promptsRefAtRender = null) {
         const ctx = SillyTavern.getContext();
         const oai = ctx.chatCompletionSettings;
         if (!oai || !Array.isArray(oai.prompts)) return { error: 'Preset data unavailable.' };
+        // The card captured the prompts array reference at render time. A preset
+        // switch replaces that array wholesale (PromptManager.setPrompts) BEFORE
+        // preset_settings_openai updates, so the name guard alone misses a switch
+        // in that lag window — reference identity is the reliable check.
+        if (promptsRefAtRender && oai.prompts !== promptsRefAtRender) {
+            return { error: `Preset switched since the proposal (now "${oai.preset_settings_openai || 'unknown'}"). Reject and re-ask.` };
+        }
         const currentName = oai.preset_settings_openai;
         if (presetName && presetName !== currentName) {
             return { error: `Preset switched since the proposal (now "${currentName}"). Reject and re-ask.` };
         }
-        const order = _getOrderList(oai);
+        // Snapshot references: a preset switch replaces oai.prompts and the order
+        // list wholesale (PromptManager.setPrompts), so reference identity is the
+        // reliable switch detector — preset_settings_openai can lag behind the
+        // swap, the name alone missed a race found by live testing.
+        const promptsRef = oai.prompts;
+        const orderEntryRef = _getOrderEntry(oai);
+        const orderRef = orderEntryRef.order;
+        const assertSamePreset = () => {
+            if (oai.prompts !== promptsRef || oai.prompt_order.find(o => o === orderEntryRef) !== orderEntryRef) {
+                return 'Preset switched during apply — changes discarded to protect the newly selected preset. Reject and re-ask.';
+            }
+            if (presetName && oai.preset_settings_openai !== presetName) {
+                return `Preset switched during apply (now "${oai.preset_settings_openai}") — changes discarded to protect the new preset. Reject and re-ask.`;
+            }
+            return null;
+        };
         const applied = [];
         const skipped = [];
         let snapshotName = null;
@@ -10021,31 +10043,49 @@ ${scopeHtml}
             } catch (e) {
                 return { error: `Snapshot failed, nothing applied: ${e.message}` };
             }
+            const race = assertSamePreset();
+            if (race) return { error: race };
         }
+
+        // Mutate detached copies; swap them into oai_settings atomically after the
+        // final race check. A preset switch landing mid-apply therefore discards
+        // the ops instead of leaking them into the newly selected preset.
+        const workPrompts = structuredClone(promptsRef);
+        const workOrder = structuredClone(orderRef);
+        const findPrompt = (id) => workPrompts.find(p => p.identifier === id);
 
         for (const c of changes) {
             if (c.action === 'add_variant') {
-                const target = oai.prompts.find(p => p.identifier === c.target_identifier);
+                const target = findPrompt(c.target_identifier);
                 if (!target || target.marker === true) {
                     skipped.push({ action: c.action, target: c.target_identifier, reason: 'target not found or content slot' });
                     continue;
                 }
                 const baseName = target.name || target.identifier;
-                const variantCount = oai.prompts.filter(p => typeof p.name === 'string' && p.name.startsWith(`${baseName} • AI `)).length;
+                const variantCount = workPrompts.filter(p => typeof p.name === 'string' && p.name.startsWith(`${baseName} • AI `)).length;
                 const newName = `${baseName} • AI ${variantCount + 2}`;
                 const newId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
                 const newPrompt = { ...structuredClone(target), identifier: newId, name: newName, content: c.content };
                 delete newPrompt.marker;
                 if (c.role) newPrompt.role = c.role;
-                oai.prompts.push(newPrompt);
-                const origEntry = order.find(e => e.identifier === target.identifier);
-                const idx = origEntry ? order.indexOf(origEntry) : order.length - 1;
-                order.splice(idx + 1, 0, { identifier: newId, enabled: true });
-                if (origEntry) origEntry.enabled = false;
-                if (target.identifier === 'main') oai.system_prompt = c.content;
-                applied.push({ action: 'add_variant', target: baseName, name: newName });
+                workPrompts.push(newPrompt);
+                const origEntry = workOrder.find(e => e.identifier === target.identifier);
+                const idx = origEntry ? workOrder.indexOf(origEntry) : workOrder.length - 1;
+                workOrder.splice(idx + 1, 0, { identifier: newId, enabled: true });
+                // Supersede the whole family: the original AND older variants of this
+                // block go dark, otherwise two copies of near-identical instructions
+                // both hit the prompt at once. Family = original + "{name} • AI *" siblings.
+                const familyPrefix = `${baseName} • AI `;
+                for (const e of workOrder) {
+                    if (e.identifier === newId) continue;
+                    const p = workPrompts.find(pp => pp.identifier === e.identifier);
+                    if (p && (p.identifier === target.identifier || (typeof p.name === 'string' && p.name.startsWith(familyPrefix)))) {
+                        e.enabled = false;
+                    }
+                }
+                applied.push({ action: 'add_variant', target: baseName, name: newName, mainContent: target.identifier === 'main' ? c.content : undefined });
             } else if (c.action === 'edit') {
-                const target = oai.prompts.find(p => p.identifier === c.identifier);
+                const target = findPrompt(c.identifier);
                 if (!target || target.marker === true) {
                     skipped.push({ action: 'edit', target: c.identifier, reason: 'target not found or content slot' });
                     continue;
@@ -10053,10 +10093,9 @@ ${scopeHtml}
                 for (const [k, v] of Object.entries(c.fields)) {
                     target[k] = v;
                 }
-                if (c.fields.content !== undefined && c.identifier === 'main') oai.system_prompt = c.fields.content;
-                applied.push({ action: 'edit', target: target.name || target.identifier, fields: Object.keys(c.fields) });
+                applied.push({ action: 'edit', target: target.name || target.identifier, fields: Object.keys(c.fields), mainContent: c.identifier === 'main' && c.fields.content !== undefined ? c.fields.content : undefined });
             } else if (c.action === 'toggle') {
-                const entry = order.find(e => e.identifier === c.identifier);
+                const entry = workOrder.find(e => e.identifier === c.identifier);
                 if (!entry) {
                     skipped.push({ action: 'toggle', target: c.identifier, reason: 'block not in prompt order' });
                     continue;
@@ -10067,6 +10106,14 @@ ${scopeHtml}
         }
 
         if (applied.length) {
+            const race = assertSamePreset();
+            if (race) return { error: race };
+            oai.prompts = workPrompts;
+            orderEntryRef.order = workOrder;
+            // main-sync AFTER the swap: system_prompt must follow the swapped-in
+            // main content (last main-touching op wins).
+            const mainSync = [...applied].reverse().find(a => a.mainContent !== undefined);
+            if (mainSync) oai.system_prompt = mainSync.mainContent;
             await _saveCurrentPreset(oai);
             _dbgAdd('PRESET_APPLIED', { applied: applied.length, skipped: skipped.length, snapshot: snapshotName || undefined });
             // Re-render the prompt manager straight from the mutated oai_settings.
@@ -21206,6 +21253,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
 
         const ctx = SillyTavern.getContext();
         const oai = ctx.chatCompletionSettings || {};
+        const promptsRef = oai.prompts;
         const prompts = Array.isArray(oai.prompts) ? oai.prompts : [];
         const orderEntry = (oai.prompt_order || []).find(o => Number(o.character_id) === 100001);
         const orderEntries = orderEntry?.order || [];
@@ -21249,7 +21297,7 @@ window.onerror=function(m){window.parent.postMessage({type:'scp-iframe-err',msg:
             applyBtn.disabled = true;
             applyBtn.textContent = 'Применение…';
             try {
-                const res = await applyPresetChanges(changes, presetName);
+                const res = await applyPresetChanges(changes, presetName, promptsRef);
                 if (res.error) {
                     toastr.error(res.error, EXT_DISPLAY, { timeOut: 12000 });
                     applyBtn.disabled = false;

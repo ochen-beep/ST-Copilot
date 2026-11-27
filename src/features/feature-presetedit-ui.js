@@ -50,6 +50,7 @@ export function renderPresetProposalCard(changes, msgEl, presetName) {
 
     const ctx = SillyTavern.getContext();
     const oai = ctx.chatCompletionSettings || {};
+    const promptsRef = oai.prompts;
     const prompts = Array.isArray(oai.prompts) ? oai.prompts : [];
     const orderEntry = (oai.prompt_order || []).find(o => Number(o.character_id) === 100001);
     const orderEntries = orderEntry?.order || [];
@@ -93,7 +94,7 @@ export function renderPresetProposalCard(changes, msgEl, presetName) {
         applyBtn.disabled = true;
         applyBtn.textContent = 'Применение…';
         try {
-            const res = await applyPresetChanges(changes, presetName);
+            const res = await applyPresetChanges(changes, presetName, promptsRef);
             if (res.error) {
                 toastr.error(res.error, EXT_DISPLAY, { timeOut: 12000 });
                 applyBtn.disabled = false;
